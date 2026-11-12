@@ -130,6 +130,8 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
 .picker-item { display: flex; align-items: center; gap: 7px; padding: 5px 10px; cursor: pointer; white-space: nowrap; }
 .picker-item:hover, .picker-item.active { background: linear-gradient(90deg, #4a3a20, #2a2216); }
 .picker-item.sel { color: var(--gold); }
+.picker-item.disabled { color: var(--dim); cursor: not-allowed; }
+.picker-item.disabled:hover { background: none; }
 .picker-item .hint { margin-left: auto; color: var(--muted); font-size: 12px; padding-left: 10px; }
 .picker-empty { padding: 8px 10px; color: var(--muted); }
 .slotpick { width: 96px; }
@@ -254,15 +256,15 @@ function makePicker(el, opts) {
       const q = input ? input.value.trim().toLowerCase() : "";
       shown = p.items.filter(i => !q || i.text.toLowerCase().includes(q));
       active = Math.max(0, Math.min(active, shown.length - 1));
-      list.innerHTML = shown.map((i, k) => `<div class="picker-item ${k === active ? "active" : ""} ${i.value === p.value ? "sel" : ""}" data-k="${k}">${i.html}</div>`).join("")
+      list.innerHTML = shown.map((i, k) => `<div class="picker-item ${k === active ? "active" : ""} ${i.value === p.value ? "sel" : ""} ${i.disabled ? "disabled" : ""}" data-k="${k}" title="${esc(i.title || "")}">${i.html}</div>`).join("")
         || `<div class="picker-empty">Nothing found</div>`;
       list.querySelector(".active")?.scrollIntoView({ block: "nearest" });
     };
-    list.addEventListener("mousedown", e => { const it = e.target.closest(".picker-item"); if (it) { e.preventDefault(); choose(shown[+it.dataset.k].value); } });
+    list.addEventListener("mousedown", e => { const it = e.target.closest(".picker-item"); if (it) { e.preventDefault(); if (!shown[+it.dataset.k].disabled) choose(shown[+it.dataset.k].value); } });
     const keys = e => {
       if (e.key === "ArrowDown") { active++; draw(); e.preventDefault(); }
       else if (e.key === "ArrowUp") { active--; draw(); e.preventDefault(); }
-      else if (e.key === "Enter" && shown[active]) { choose(shown[active].value); e.preventDefault(); }
+      else if (e.key === "Enter" && shown[active] && !shown[active].disabled) { choose(shown[active].value); e.preventDefault(); }
       else if (e.key === "Escape") close();
     };
     (input || btn).addEventListener("keydown", keys);
@@ -282,7 +284,7 @@ function makePicker(el, opts) {
   return p;
 }
 
-const skillItem = s => ({ value: s.id, text: s.name, html: `${skillIcon(s.color, s.name)}<span>${esc(s.name)}</span><span class="hint">max Lv${s.max}</span>` });
+const skillItem = s => ({ value: s.id, text: s.name, html: `${skillIcon(s.color, s.name)}<span>${esc(s.name)}</span>` });
 const slotItems = () => [{ value: 0, text: "any", html: `<span class="muted">any</span>` }]
   .concat([1, 2, 3, 4].map(l => ({ value: l, text: "Lv" + l, html: `${slot(l, false)}<span>Lv${l}</span>` })));
 let skillPick, levelPick, slotPicks;
@@ -310,10 +312,14 @@ function updateLevels() {
   const max = s ? s.max : 1;
   const a = S.armors.find(x => x.id === S.settings.armor);
   const have = s && a ? (a.skills.find(k => k.id === s.id) || { level: 0 }).level : 0;
-  levelPick.setItems([...Array(max).keys()].map(i => {
-    const lv = i + 1, reachable = lv <= have + 1;
-    return { value: lv, text: "Lv" + lv, html: `<span style="${reachable ? "" : "color:var(--dim)"}">Lv ${lv}</span>${lv === have ? `<span class="hint">on piece</span>` : ""}` };
-  }), 1);
+  const items = [...Array(max).keys()].map(i => {
+    const lv = i + 1, reachable = !a || lv <= have + 1;
+    const hint = lv <= have ? "on piece" : reachable ? "" : "impossible here";
+    return { value: lv, text: "Lv" + lv, disabled: !reachable,
+      title: reachable ? "" : `This piece has Lv${have}; one augment adds at most +1 to a skill.`,
+      html: `<span>Lv ${lv}</span>${hint ? `<span class="hint">${hint}</span>` : ""}` };
+  });
+  levelPick.setItems(items, Math.min(Math.max(1, have + 1), max));
 }
 
 function syncFilterUi() {
@@ -407,6 +413,7 @@ async function selectArmor(id) {
   S.settings.armor = id;
   renderArmors();
   updateLevels();
+  S.error = null;
   if (filtering()) return startFind();
   await api().find_cancel();
   clearInterval(pollTimer);
@@ -425,9 +432,10 @@ async function startFind() {
   clearInterval(pollTimer);
   const r = await api().find_start(S.settings.armor, F(), 50);
   if (r.error) {
-    S.pred = null; S.searching = false; status(r.error);
+    S.pred = null; S.searching = false; S.progress = {}; S.error = r.error; status(r.error);
     showSearchUi(); renderHead(); renderTabs(); renderTable(); return;
   }
+  S.error = null;
   S.searching = true; S.progress = {}; S.pred = null;
   status("Searching… every augment option advances together; up to 50 matches each.");
   showSearchUi(); renderHead(); renderTabs(); renderTable();
@@ -484,6 +492,10 @@ function renderTabs() {
 }
 
 function renderTable() {
+  if (S.error && filtering()) {
+    $("table").innerHTML = `<div class="empty" style="color:var(--down)">${esc(S.error)}<br><span class="muted">Remove that filter (✕) or pick a piece that already has the skill.</span></div>`;
+    return;
+  }
   if (!S.pred || (filtering() && !S.pred.search)) {
     $("table").innerHTML = `<div class="empty">${S.searching ? "Searching…" : "Pick an armor piece on the left."}</div>`;
     return;
