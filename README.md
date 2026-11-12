@@ -46,7 +46,8 @@ Validated against recordings from the game (`tests/test_validation.py`):
 * 160 `createResult` calls traced in game from known generator states: 160/160 identical;
 * 3 × 458 consecutive rolls exported by the "Qurious Preview and Export as csv" mod
   (Defense+, Slots+ and Stability, cost-10 armor): 1374/1374 identical;
-* 5 real Slots+ augments: 5/5 identical.
+* 5 real Slots+ augments: 5/5 identical;
+* 80,000 `createResult` calls from 20,000 random generator states, all four options: 80000/80000 identical.
 
 Known gaps: the generator used for armor with augment cost 12–20 follows the game's enum layout
 but has not been confirmed in game yet (all recordings used cost-10 armor).

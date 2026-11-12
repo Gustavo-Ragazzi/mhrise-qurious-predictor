@@ -34,8 +34,12 @@ Def/Res/Slot/Skill), `CustomBuildupArmorLotUserData` (buildup weights per catego
 4. Value index: lotted only when more than one value weight is non-zero.
 5. Skill: `+1` picks from the skills whose cost equals the buildup cost (`u % n`); `-1` picks one of
    the armor's skills (`u % n`).
-6. Rejected (draws already spent) when: cost > remaining; skill `+1` already added, already at
-   max level on the armor, or a third skill `+1`; skill `-1` more times than the armor's level.
+6. Rejected (draws already spent) when: cost > remaining; skill `-1` more times than the armor's
+   level; skill `+1` beyond the skill's max level; a skill `+1` of a skill the piece does not have
+   when the piece is out of skill slots (a piece holds 5 skills: the armor's own plus one per entry of
+   a new skill; raising an already added skill again is allowed). The forced Skills+ skill is lotted
+   again when it is the skill the forced `-1` just removed. The same skill can get `+1` more than once
+   in one augment.
 7. Accepted entries reduce `remaining`. If a group sums to 0 (all defense, one element's
    resistance, one skill), the whole group is removed and its cost refunded.
 8. The roll ends when `remaining == 0`.

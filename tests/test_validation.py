@@ -115,3 +115,23 @@ def test_real_rolls(gd):
         s = engine.summarize(engine.create_result(rng, tables, helm["table"], helm["cost"],
                                                   [tuple(x) for x in helm["skills"]], engine.TYPE_SLOT))
         assert (s.defense, s.slots, s.resistances, {(name(k), v) for k, v in s.skills}) == (d, slots, res, skills)
+
+
+def test_bulk(gd):
+    """80,000 createResult calls (20,000 generator states x 4 augment options) recorded with
+    tools/probes/qurious_bulk.lua on Flaming Espinas Brain; skipped without QuriousBulk.txt."""
+    path = Path(DATA) / "QuriousBulk.txt"
+    if not path.exists():
+        pytest.skip("no QuriousBulk.txt")
+    tables = gamedata.tables(gd)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    aid = re.search(r" id=(\d+) ", lines[0])[1]
+    a = gd["armors"][aid]
+    skills = [tuple(x) for x in a["skills"]]
+    bad = []
+    for ln in lines[1:]:
+        _seed, pre, t, *ents = ln.split()
+        out = engine.create_result(XorShift128(_state(pre)), tables, a["table"], a["cost"], skills, int(t))
+        if sorted(f"{e.category}/{e.id}/{e.value}/{e.skill}/{e.cost}" for e in out) != sorted(ents):
+            bad.append(ln[:40])
+    assert not bad, f"{len(bad)} mismatches, e.g. {bad[:3]}"

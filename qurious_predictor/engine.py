@@ -19,7 +19,7 @@ CAT_SKILL = 20
 
 LOT_CATEGORIES = [CAT_DEF, CAT_RES, CAT_SLOT, CAT_SKILL]
 MAX_ENTRIES = 7
-MAX_SKILL_ADDS = 2
+MAX_SKILLS_PER_PIECE = 5
 MAX_LOTS = 52  # the game gives up after 52 lots even if cost is left (fits 3x458 recorded rolls)
 
 # Augment types (GuiCustomBuildup.BuildupType).
@@ -206,18 +206,27 @@ def create_result(rng: XorShift128, tables: Tables, table: int, total_cost: int,
                 skill = pool[rng.next_u32() % len(pool)] if pool else 0
             elif armor_skills:
                 skill = armor_skills[rng.next_u32() % len(armor_skills)]
-        ok = b.cost <= remaining
+        ok, why = b.cost <= remaining, "cost"
         if ok and category == CAT_SKILL:
             adding = b.cost > 0
             same = sum(1 for e in res if e.category == CAT_SKILL and e.skill == skill and (e.cost > 0) == adding)
-            if adding and same:
-                ok = False
+            removed = {e.skill for e in res if e.category == CAT_SKILL and e.cost < 0}
+            added = {e.skill for e in res if e.category == CAT_SKILL and e.cost > 0}
+            if adding and forced and skill in removed:
+                ok, why = False, "conflict"  # the forced Skills+ skill is re-lotted (below)
             if not adding and same >= levels.get(skill, 0):
-                ok = False  # cannot remove more levels than the armor has
-            if adding and levels.get(skill, 0) > tables.max_levels.get(skill, 99):  # _MaxLevel is 0-based
-                ok = False  # the armor already has this skill at its max level
-            if adding and sum(1 for e in res if e.category == CAT_SKILL and e.cost > 0) >= MAX_SKILL_ADDS:
-                ok = False
+                ok, why = False, "level"  # cannot remove more levels than the armor has
+            if adding and skill not in levels and skill not in added:
+                # A new skill needs a free skill slot: a piece holds at most 5 skills, and every
+                # entry of a new skill uses one (the same new skill may then be raised again).
+                used = len(levels) + sum(1 for e in res if e.category == CAT_SKILL and e.cost > 0
+                                         and e.skill not in levels)
+                if used >= MAX_SKILLS_PER_PIECE:
+                    ok, why = False, "slots"
+            if adding and levels.get(skill, 0) + same > tables.max_levels.get(skill, 99):  # 0-based max
+                ok, why = False, "max level"
+        if not ok and why == "conflict":
+            k -= 1  # the game repeats the forced lot
         if ok:
             entry = Entry(category, bid, b.values[vi], skill, b.cost)
             res.append(entry)

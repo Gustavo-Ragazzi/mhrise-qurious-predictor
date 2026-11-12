@@ -19,6 +19,14 @@ DEFAULT_SETTINGS = {"rolls": 200, "lang": "en", "hunter": None, "armor": None, "
                     "filters": EMPTY_FILTERS, "game_dir": None}
 
 
+def _merge_skills(pairs):
+    """Same skill lotted more than once in one augment -> one entry with the total (e.g. +2)."""
+    total = {}
+    for sid, v in pairs:
+        total[sid] = total.get(sid, 0) + v
+    return [(sid, v) for sid, v in total.items() if v]
+
+
 def filters_active(f: dict) -> bool:
     return bool(f.get("skills") or any(f.get("slots") or []) or f.get("minDef") is not None
                 or f.get("noSkillLoss") or f.get("noNegRes"))
@@ -158,12 +166,11 @@ class Api:
         problems = []
         for w in filters.get("skills", []):
             sid, level = int(w["id"]), max(1, int(w.get("level") or 1))
-            name, have = self._skill(sid)["name"], base_lv.get(sid, 0)
-            if level > have + 1:
-                problems.append(f"{name} Lv{level} is impossible on this piece: it has Lv{have} and an augment "
-                                "adds at most +1 to a skill.")
-            elif have >= self.tables.max_levels.get(sid, 99) + 1 and level > have:
-                problems.append(f"{name} is already at its max level on this piece.")
+            name, max_lv = self._skill(sid)["name"], self.tables.max_levels.get(sid, 99) + 1
+            if level > max_lv:
+                problems.append(f"{name} only goes up to Lv{max_lv}.")
+            elif level > base_lv.get(sid, 0) and not any(s == sid for s, _ in self.tables.skill_costs):
+                problems.append(f"Qurious crafting cannot add {name}.")
         if problems:
             return {"error": " ".join(problems)}
         job = {"armor": str(armor_id), "progress": {}, "types": {}, "done": False, "cancel": False}
@@ -258,7 +265,7 @@ class Api:
             "slotPoints": s.slots,
             "slots": [{"lv": lv, "up": lv > ob} for lv, ob in zip(new, old)],
             "res": [s.resistances.get(e, 0) for e in engine.ELEMENTS],
-            "skills": [dict(self._skill(k), v=v) for k, v in s.skills],
+            "skills": [dict(self._skill(k), v=v) for k, v in _merge_skills(s.skills)],
         }
 
 

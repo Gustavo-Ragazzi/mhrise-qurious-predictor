@@ -312,11 +312,12 @@ function updateLevels() {
   const max = s ? s.max : 1;
   const a = S.armors.find(x => x.id === S.settings.armor);
   const have = s && a ? (a.skills.find(k => k.id === s.id) || { level: 0 }).level : 0;
+  // One augment can raise the same skill more than once (seen in game), so every level up to the
+  // skill's max is possible; levels far above the piece's own are just rarer.
   const items = [...Array(max).keys()].map(i => {
-    const lv = i + 1, reachable = !a || lv <= have + 1;
-    const hint = lv <= have ? "on piece" : reachable ? "" : "impossible here";
-    return { value: lv, text: "Lv" + lv, disabled: !reachable,
-      title: reachable ? "" : `This piece has Lv${have}; one augment adds at most +1 to a skill.`,
+    const lv = i + 1;
+    const hint = lv <= have ? "on piece" : lv > have + 1 ? "rare" : "";
+    return { value: lv, text: "Lv" + lv,
       html: `<span>Lv ${lv}</span>${hint ? `<span class="hint">${hint}</span>` : ""}` };
   });
   levelPick.setItems(items, Math.min(Math.max(1, have + 1), max));
@@ -493,7 +494,7 @@ function renderTabs() {
 
 function renderTable() {
   if (S.error && filtering()) {
-    $("table").innerHTML = `<div class="empty" style="color:var(--down)">${esc(S.error)}<br><span class="muted">Remove that filter (✕) or pick a piece that already has the skill.</span></div>`;
+    $("table").innerHTML = `<div class="empty" style="color:var(--down)">${esc(S.error)}</div>`;
     return;
   }
   if (!S.pred || (filtering() && !S.pred.search)) {
