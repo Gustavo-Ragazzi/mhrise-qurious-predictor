@@ -14,7 +14,7 @@ from pathlib import Path
 
 from mhrise_exporter.pak import open_game_paks
 
-CACHE_VERSION = 1
+CACHE_VERSION = 2
 
 # name -> (atlas, group, index)
 SPRITES = {
@@ -29,7 +29,7 @@ SPRITES = {
     "dragon": ("state_icon", 0, 7),
     "defense": ("state_icon", 0, 17),
     "defense_down": ("state_icon", 0, 18),
-    "gem": ("cmn_icon", 0, 53),
+    "skill": ("message_window", 0, 170),  # the skill icon of the status screen (as in mhrice)
     "head": ("EquipIcon", 0, 0),
     "chest": ("EquipIcon", 0, 1),
     "arms": ("EquipIcon", 0, 2),

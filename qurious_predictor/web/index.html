@@ -162,7 +162,7 @@ function img(name, title, cls = "") {
   const src = S.icons[name];
   return src ? `<img class="img ${cls}" src="${src}" title="${esc(title || name)}" alt="">` : `<span class="${cls}">${esc(title || name)}</span>`;
 }
-const gem = (color, title, cls = "") => mask("gem", ITEM_COLORS[color] || "#fff", title, cls);
+const skillIcon = (color, title, cls = "") => mask("skill", ITEM_COLORS[color] || "#fff", title, cls);
 function slot(lv, up) {
   if (!lv) return `<span class="slot-empty" title="no slot"></span>`;
   return mask("slot" + lv, up ? "var(--up)" : "#efe6d2", `Lv${lv} slot${up ? " (qurious)" : ""}`);
@@ -215,7 +215,7 @@ function renderArmors() {
       <div style="min-width:0">
         <div class="nm">${esc(a.name)}</div>
         <div class="sub">${a.slots.map(l => slot(l, false)).join("")}
-          ${a.skills.map(s => gem(s.color, `${s.name} Lv${s.level}`)).join("")}
+          ${a.skills.map(s => skillIcon(s.color, `${s.name} Lv${s.level}`)).join("")}
           ${a.count > 1 ? `<span>×${a.count}</span>` : ""}</div>
       </div>
       <span class="cost" title="Augment cost">${a.cost}</span>
@@ -241,7 +241,7 @@ function renderHead() {
   $("head").innerHTML = `
     ${mask(PARTS[a.part], "var(--gold)", PARTS[a.part])}<span class="big">${esc(a.name)}</span>
     <span>${a.slots.map(l => slot(l, false)).join("")}</span>
-    <span>${a.skills.map(s => `<span class="sk">${gem(s.color, s.name)}<span>${esc(s.name)} Lv${s.level}</span></span>`).join("")}</span>
+    <span>${a.skills.map(s => `<span class="sk">${skillIcon(s.color, s.name)}<span>${esc(s.name)} Lv${s.level}</span></span>`).join("")}</span>
     <span class="cost">Cost ${a.cost}</span>
     <div class="note">Roll #1 is the next ${S.types[t].name} augment. This sequence (generator ${seed}) is shared by every
       armor piece with cost ${a.cost} and the same augment type — ${S.pred.sameCost} in your box. Augmenting any of them
@@ -265,7 +265,7 @@ function renderTabs() {
 function renderWanted() {
   $("wanted").innerHTML = S.settings.wanted.map(id => {
     const s = S.skills.find(x => x.id === id) || { name: "#" + id, color: 0 };
-    return `<span class="want">${gem(s.color, s.name)}${esc(s.name)}<button data-unwant="${id}" title="Remove">✕</button></span>`;
+    return `<span class="want">${skillIcon(s.color, s.name)}${esc(s.name)}<button data-unwant="${id}" title="Remove">✕</button></span>`;
   }).join("");
 }
 
@@ -281,7 +281,7 @@ function renderTable() {
       <td>${img(r.def < 0 ? "defense_down" : "defense", "Defense", r.def ? "" : "off")} ${signed(r.def)}</td>
       <td class="slots">${r.slots.map(s => slot(s.lv, s.up)).join("")}</td>
       <td>${r.res.map((v, i) => `<span class="res">${img(ELEMENTS[i], ELEMENTS[i], v ? "" : "off")}${signed(v)}</span>`).join("")}</td>
-      <td>${r.skills.map(s => `<span class="sk ${wanted.has(s.id) && s.v > 0 ? "wanted" : ""}">${gem(s.color, s.name)}<span class="nm">${esc(s.name)}</span>${signed(s.v)}</span>`).join("")}</td>
+      <td>${r.skills.map(s => `<span class="sk ${wanted.has(s.id) && s.v > 0 ? "wanted" : ""}">${skillIcon(s.color, s.name)}<span class="nm">${esc(s.name)}</span>${signed(s.v)}</span>`).join("")}</td>
     </tr>`).join("") + `</tbody></table>`;
 }
 
