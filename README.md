@@ -16,7 +16,15 @@ stored in the character save. This tool:
    and reads the 56 generator states;
 2. re-implements the generator (`via.Random`, a xorshift128 with shifts 15/4/21) and
    `ArmorCustomBuildupData.createResult`, the game's augment roll;
-3. reads the augment tables (weights, costs, values) from your own game install.
+3. reads the augment tables (weights, costs, values) and the GUI icons from your own game install.
+
+Slot points follow the game's rule: each point adds a level-1 slot while the piece has fewer than
+three slots, otherwise it raises the highest slot below level 4.
+
+The window lists your qurious-capable armor (filter by name, part and cost) and, per augment
+type, the next rolls (200 by default; the value is remembered). Each roll shows defense, the
+resulting slots (qurious slots in green), the five resistances and the skills; add wanted skills to
+highlight and count the rolls that give all of them.
 
 The sequence of results is **shared** by all armor pieces with the same augment cost and type.
 Augmenting any of them advances it, so reload the save after each augment (save in game first).

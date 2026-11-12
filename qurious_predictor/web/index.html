@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MH Rise Qurious Predictor</title>
+<style>
+:root {
+  --bg: #14110d; --bg2: #1b1712; --panel: #211c15; --panel2: #2a231a; --line: #4a3d2a; --line2: #6e5a38;
+  --gold: #e8c47c; --gold2: #b8924f; --text: #efe6d2; --muted: #a39780; --dim: #5e5546;
+  --up: #6fe07c; --down: #f06a5a; --sel: #3a2f1f; --hover: #2d261b;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+  font: 14px/1.35 "Segoe UI", "Noto Sans", system-ui, sans-serif; }
+body { display: flex; flex-direction: column; overflow: hidden;
+  background: radial-gradient(ellipse at top, #241d14 0%, var(--bg) 60%); }
+button, input, select { font: inherit; color: var(--text); }
+.frame { border: 1px solid var(--line); background: linear-gradient(180deg, var(--panel2), var(--panel));
+  border-radius: 6px; box-shadow: inset 0 0 0 1px #00000060, 0 2px 10px #0008; }
+.frame > h2 { margin: 0; padding: 7px 12px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--gold); border-bottom: 1px solid var(--line); background: linear-gradient(90deg, #3b2f1d, transparent); }
+
+/* top bar */
+header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line2);
+  background: linear-gradient(180deg, #2c2418, #1a1510); }
+header .title { font-size: 18px; font-weight: 700; color: var(--gold); letter-spacing: .04em; margin-right: 10px;
+  text-shadow: 0 1px 0 #000; }
+header label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+select, input[type=text], input[type=number] { background: #120f0b; border: 1px solid var(--line2); border-radius: 4px;
+  height: 32px; padding: 0 8px; }
+input[type=number] { width: 80px; }
+select:focus, input:focus { outline: 1px solid var(--gold); }
+.btn { background: linear-gradient(180deg, #3c3120, #2a2216); border: 1px solid var(--line2); border-radius: 4px;
+  height: 32px; padding: 0 12px; cursor: pointer; }
+.btn:hover { border-color: var(--gold); }
+.spacer { flex: 1; }
+
+main { flex: 1; display: grid; grid-template-columns: 360px 1fr; gap: 10px; padding: 10px; min-height: 0; }
+.col { display: flex; flex-direction: column; min-height: 0; }
+
+/* armor list */
+.filters { padding: 8px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--line); }
+.filters input { width: 100%; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip { border: 1px solid var(--line); background: #17130e; border-radius: 4px; height: 30px; min-width: 34px;
+  padding: 0 7px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; cursor: pointer;
+  color: var(--muted); }
+.chip.on { border-color: var(--gold); color: var(--gold); background: #2e2517; }
+.list { overflow: auto; flex: 1; }
+.armor { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 8px; padding: 6px 10px;
+  border-bottom: 1px solid #2c251a; cursor: pointer; }
+.armor:hover { background: var(--hover); }
+.armor.sel { background: linear-gradient(90deg, #4a3a20, var(--sel)); box-shadow: inset 3px 0 0 var(--gold); }
+.armor .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.armor .sub { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 12px; }
+.cost { font-size: 12px; color: var(--gold2); border: 1px solid var(--line); border-radius: 3px; padding: 0 5px; }
+
+/* icons */
+.ico { display: inline-block; width: 20px; height: 20px; vertical-align: middle; flex: none;
+  -webkit-mask-size: contain; -webkit-mask-repeat: no-repeat; -webkit-mask-position: center; }
+.tint { position: relative; display: inline-block; width: 22px; height: 22px; vertical-align: middle; flex: none; isolation: isolate; }
+.tint > span { position: absolute; inset: 0; -webkit-mask-size: contain; -webkit-mask-repeat: no-repeat; -webkit-mask-position: center; }
+.tint > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; mix-blend-mode: multiply; }
+.img { width: 22px; height: 22px; object-fit: contain; vertical-align: middle; flex: none; }
+.off { opacity: .28; filter: grayscale(1); }
+.slot-empty { display: inline-block; width: 14px; height: 14px; border: 1px dashed var(--dim); border-radius: 50%;
+  vertical-align: middle; margin: 3px; }
+
+/* right side */
+.head { padding: 10px 14px; display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; border-bottom: 1px solid var(--line); }
+.head .big { font-size: 18px; font-weight: 700; color: var(--gold); }
+.head .note { width: 100%; color: var(--muted); font-size: 12px; }
+.tabs { display: flex; gap: 4px; padding: 8px 10px 0; border-bottom: 1px solid var(--line2); }
+.tab { border: 1px solid var(--line); border-bottom: none; border-radius: 5px 5px 0 0; padding: 7px 14px; cursor: pointer;
+  background: #18140f; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+.tab.on { background: linear-gradient(180deg, #4a3b22, #2a2216); color: var(--gold); border-color: var(--line2); }
+.badge { font-size: 11px; background: #0d0b08; border: 1px solid var(--line); border-radius: 8px; padding: 0 6px; color: var(--up); }
+.wantbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.wantbar input[type=text] { width: 240px; }
+.want { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line2); border-radius: 12px;
+  padding: 1px 4px 1px 6px; background: #241d13; }
+.want button { all: unset; cursor: pointer; color: var(--muted); padding: 0 4px; }
+.want button:hover { color: var(--down); }
+.check { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); cursor: pointer; }
+.table { overflow: auto; flex: 1; }
+table { border-collapse: collapse; width: 100%; }
+th { position: sticky; top: 0; z-index: 1; background: #231c13; color: var(--gold2); font-weight: 600; text-align: left;
+  font-size: 12px; text-transform: uppercase; letter-spacing: .06em; padding: 6px 8px; border-bottom: 1px solid var(--line2); }
+td { padding: 4px 8px; border-bottom: 1px solid #2a2319; vertical-align: middle; white-space: nowrap; }
+tr:hover td { background: var(--hover); }
+tr.match td { background: #1f2a17; }
+tr.match td:first-child { box-shadow: inset 3px 0 0 var(--up); }
+td.n { color: var(--muted); width: 48px; text-align: right; }
+.val { display: inline-block; min-width: 26px; text-align: right; font-variant-numeric: tabular-nums; }
+.pos { color: var(--up); } .neg { color: var(--down); } .zero { color: var(--dim); }
+.res { display: inline-flex; align-items: center; gap: 2px; margin-right: 8px; }
+.res .val { min-width: 18px; text-align: left; }
+.sk { display: inline-flex; align-items: center; gap: 4px; margin-right: 12px; }
+.sk.wanted .nm { color: var(--up); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.empty { padding: 40px; text-align: center; color: var(--muted); }
+#status { padding: 4px 14px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); background: #110e0a; }
+.loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #000a;
+  color: var(--gold); font-size: 16px; z-index: 5; }
+.slots .tint { width: 26px; height: 26px; margin-right: 1px; }
+.slots .slot-empty { width: 18px; height: 18px; margin: 4px; }
+</style>
+</head>
+<body>
+<header>
+  <span class="title">Qurious Predictor</span>
+  <label for="hunter">Hunter</label><select id="hunter"></select>
+  <button class="btn" id="reload" title="Read the save again (save in game first)">Reload save</button>
+  <span class="spacer"></span>
+  <label for="rolls">Rolls</label><input id="rolls" type="number" min="1" max="1000" step="10">
+  <label for="lang">Names</label><select id="lang"></select>
+  <button class="btn" id="gamedir">Game folder…</button>
+</header>
+<main>
+  <section class="frame col">
+    <h2>Armor in your box</h2>
+    <div class="filters">
+      <input id="afilter" type="text" placeholder="Search armor…">
+      <div class="chips" id="parts"></div>
+      <div class="chips" id="costs"></div>
+    </div>
+    <div class="list" id="armors"></div>
+  </section>
+  <section class="frame col">
+    <div class="head" id="head"><span class="muted">Select an armor piece.</span></div>
+    <div class="tabs" id="tabs"></div>
+    <div class="wantbar">
+      <input id="skillq" type="text" list="skilllist" placeholder="Wanted skill… (type and press Enter)">
+      <datalist id="skilllist"></datalist>
+      <span id="wanted"></span>
+      <span class="spacer"></span>
+      <label class="check"><input type="checkbox" id="only"> Only matching rolls</label>
+    </div>
+    <div class="table" id="table"></div>
+  </section>
+</main>
+<div id="status"></div>
+<div class="loading" id="loading">Reading game data…</div>
+
+<script>
+const ITEM_COLORS = {0:"#ffffff",1:"#ffffff",2:"#aeaeae",3:"#f072b8",4:"#ffff70",5:"#ffb356",6:"#ff721f",7:"#ff4c17",
+  8:"#2ce095",9:"#a443e0",10:"#486eff",11:"#5aa9ff",12:"#9fccff",13:"#9a7751",14:"#9ac183",15:"#ca0000",16:"#007bca",17:"#a800a8"};
+const PARTS = ["head", "chest", "arms", "waist", "legs"];
+const ELEMENTS = ["fire", "water", "thunder", "ice", "dragon"];
+const S = { icons: {}, settings: {}, armors: [], skills: [], pred: null, part: -1, cost: 0 };
+const $ = id => document.getElementById(id);
+const api = () => window.pywebview.api;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+/* Game icons are grayscale masks the game tints: color × luminance, alpha kept (like the game). */
+function mask(name, color, title, cls = "") {
+  const src = S.icons[name];
+  if (!src) return `<span class="ico ${cls}" title="${esc(title || name)}" style="background:${color};border-radius:50%"></span>`;
+  return `<span class="tint ${cls}" title="${esc(title || name)}"><span style="background:${color};-webkit-mask-image:url(${src})"></span><img src="${src}" alt=""></span>`;
+}
+function img(name, title, cls = "") {
+  const src = S.icons[name];
+  return src ? `<img class="img ${cls}" src="${src}" title="${esc(title || name)}" alt="">` : `<span class="${cls}">${esc(title || name)}</span>`;
+}
+const gem = (color, title, cls = "") => mask("gem", ITEM_COLORS[color] || "#fff", title, cls);
+function slot(lv, up) {
+  if (!lv) return `<span class="slot-empty" title="no slot"></span>`;
+  return mask("slot" + lv, up ? "var(--up)" : "#efe6d2", `Lv${lv} slot${up ? " (qurious)" : ""}`);
+}
+const signed = v => `<span class="val ${v > 0 ? "pos" : v < 0 ? "neg" : "zero"}">${v > 0 ? "+" + v : v}</span>`;
+const status = t => $("status").textContent = t;
+
+async function boot() {
+  const r = await api().init();
+  $("loading").style.display = "none";
+  if (r.error) { status(r.error); return; }
+  Object.assign(S, { icons: r.icons, settings: r.settings, types: r.types });
+  $("rolls").value = S.settings.rolls;
+  $("lang").innerHTML = r.langs.map(l => `<option ${l === S.settings.lang ? "selected" : ""}>${l}</option>`).join("");
+  $("hunter").innerHTML = r.hunters.map(h =>
+    `<option value="${h.key}">${esc(h.name)} — HR ${h.hr} / MR ${h.mr} (slot ${h.slot}${h.persona ? ", " + esc(h.persona) : ""})</option>`).join("");
+  if (r.hunters.some(h => h.key === S.settings.hunter)) $("hunter").value = S.settings.hunter;
+  $("only").checked = !!S.settings.only_matches;
+  S.skills = await api().skills();
+  $("skilllist").innerHTML = S.skills.map(s => `<option value="${esc(s.name)}">`).join("");
+  renderParts(); renderTabs(); renderWanted();
+  if (r.hunters.length) await loadHunter(); else status("No MH Rise save found on this PC.");
+}
+
+async function loadHunter() {
+  status("Reading save…");
+  const r = await api().load_hunter($("hunter").value);
+  if (r.error) { status(r.error); return; }
+  S.armors = r.armors;
+  const costs = [...new Set(S.armors.map(a => a.cost))].sort((a, b) => a - b);
+  $("costs").innerHTML = [0, ...costs].map(c => `<span class="chip ${S.cost === c ? "on" : ""}" data-cost="${c}">${c ? "Cost " + c : "All costs"}</span>`).join("");
+  renderArmors();
+  status(`${S.armors.length} qurious-capable armor pieces. Predictions follow the save as it is now: after augmenting, save in game and press Reload save.`);
+  const keep = S.armors.find(a => a.id === S.settings.armor);
+  if (keep) await selectArmor(keep.id); else { S.pred = null; renderHead(); renderTable(); }
+}
+
+function renderParts() {
+  $("parts").innerHTML = `<span class="chip ${S.part < 0 ? "on" : ""}" data-part="-1">All</span>` +
+    PARTS.map((p, i) => `<span class="chip ${S.part === i ? "on" : ""}" data-part="${i}" title="${p}">${mask(p, "var(--gold)", p)}</span>`).join("");
+}
+
+function renderArmors() {
+  const q = $("afilter").value.trim().toLowerCase();
+  const list = S.armors.filter(a => (S.part < 0 || a.part === S.part) && (!S.cost || a.cost === S.cost)
+    && (!q || a.name.toLowerCase().includes(q) || a.skills.some(s => s.name.toLowerCase().includes(q))));
+  $("armors").innerHTML = list.map(a => `
+    <div class="armor ${a.id === S.settings.armor ? "sel" : ""}" data-id="${a.id}">
+      ${mask(PARTS[a.part], "var(--gold)", PARTS[a.part])}
+      <div style="min-width:0">
+        <div class="nm">${esc(a.name)}</div>
+        <div class="sub">${a.slots.map(l => slot(l, false)).join("")}
+          ${a.skills.map(s => gem(s.color, `${s.name} Lv${s.level}`)).join("")}
+          ${a.count > 1 ? `<span>×${a.count}</span>` : ""}</div>
+      </div>
+      <span class="cost" title="Augment cost">${a.cost}</span>
+    </div>`).join("") || `<div class="empty">No armor matches.</div>`;
+}
+
+async function selectArmor(id) {
+  S.settings.armor = id;
+  renderArmors();
+  status("Simulating…");
+  const n = Math.max(1, Math.min(1000, parseInt($("rolls").value) || 200));
+  const r = await api().predict(id, n);
+  if (r.error) { status(r.error); return; }
+  S.pred = r;
+  status(`${n} rolls per augment type.`);
+  renderHead(); renderTabs(); renderTable();
+}
+
+function renderHead() {
+  const a = S.armors.find(x => x.id === S.settings.armor);
+  if (!a || !S.pred) { $("head").innerHTML = `<span class="muted">Select an armor piece.</span>`; return; }
+  const t = S.settings.type, seed = S.pred.types[t].seed;
+  $("head").innerHTML = `
+    ${mask(PARTS[a.part], "var(--gold)", PARTS[a.part])}<span class="big">${esc(a.name)}</span>
+    <span>${a.slots.map(l => slot(l, false)).join("")}</span>
+    <span>${a.skills.map(s => `<span class="sk">${gem(s.color, s.name)}<span>${esc(s.name)} Lv${s.level}</span></span>`).join("")}</span>
+    <span class="cost">Cost ${a.cost}</span>
+    <div class="note">Roll #1 is the next ${S.types[t].name} augment. This sequence (generator ${seed}) is shared by every
+      armor piece with cost ${a.cost} and the same augment type — ${S.pred.sameCost} in your box. Augmenting any of them
+      moves it forward, so reload the save after each augment. Other types and costs are independent.</div>`;
+}
+
+const isMatch = row => S.settings.wanted.length > 0 &&
+  S.settings.wanted.every(w => row.skills.some(s => s.id === w && s.v > 0));
+
+function renderTabs() {
+  $("tabs").innerHTML = (S.types || []).map(t => {
+    let badge = "";
+    if (S.pred && S.settings.wanted.length) {
+      const rows = S.pred.types[t.id].rolls, first = rows.find(isMatch), count = rows.filter(isMatch).length;
+      badge = `<span class="badge" title="matching rolls / first match">${count}${first ? " · #" + first.n : ""}</span>`;
+    }
+    return `<span class="tab ${t.id === S.settings.type ? "on" : ""}" data-type="${t.id}">${esc(t.name)}${badge}</span>`;
+  }).join("");
+}
+
+function renderWanted() {
+  $("wanted").innerHTML = S.settings.wanted.map(id => {
+    const s = S.skills.find(x => x.id === id) || { name: "#" + id, color: 0 };
+    return `<span class="want">${gem(s.color, s.name)}${esc(s.name)}<button data-unwant="${id}" title="Remove">✕</button></span>`;
+  }).join("");
+}
+
+function renderTable() {
+  if (!S.pred) { $("table").innerHTML = `<div class="empty">Pick an armor piece on the left.</div>`; return; }
+  let rows = S.pred.types[S.settings.type].rolls;
+  if (S.settings.only_matches && S.settings.wanted.length) rows = rows.filter(isMatch);
+  if (!rows.length) { $("table").innerHTML = `<div class="empty">No roll in range has every wanted skill. Raise "Rolls".</div>`; return; }
+  const wanted = new Set(S.settings.wanted);
+  $("table").innerHTML = `<table><thead><tr><th>#</th><th>Defense</th><th>Slots</th><th>Resistances</th><th>Skills</th></tr></thead><tbody>` +
+    rows.map(r => `<tr class="${isMatch(r) ? "match" : ""}">
+      <td class="n">${r.n}</td>
+      <td>${img(r.def < 0 ? "defense_down" : "defense", "Defense", r.def ? "" : "off")} ${signed(r.def)}</td>
+      <td class="slots">${r.slots.map(s => slot(s.lv, s.up)).join("")}</td>
+      <td>${r.res.map((v, i) => `<span class="res">${img(ELEMENTS[i], ELEMENTS[i], v ? "" : "off")}${signed(v)}</span>`).join("")}</td>
+      <td>${r.skills.map(s => `<span class="sk ${wanted.has(s.id) && s.v > 0 ? "wanted" : ""}">${gem(s.color, s.name)}<span class="nm">${esc(s.name)}</span>${signed(s.v)}</span>`).join("")}</td>
+    </tr>`).join("") + `</tbody></table>`;
+}
+
+function addWanted() {
+  const q = $("skillq").value.trim().toLowerCase();
+  if (!q) return;
+  const s = S.skills.find(x => x.name.toLowerCase() === q) || S.skills.find(x => x.name.toLowerCase().includes(q));
+  if (!s) { status(`No qurious skill matches "${$("skillq").value}".`); return; }
+  if (!S.settings.wanted.includes(s.id)) S.settings.wanted.push(s.id);
+  $("skillq").value = "";
+  api().save_settings({ wanted: S.settings.wanted });
+  renderWanted(); renderTabs(); renderTable();
+}
+
+document.addEventListener("click", e => {
+  const el = e.target.closest("[data-id],[data-part],[data-cost],[data-type],[data-unwant]");
+  if (!el) return;
+  if (el.dataset.id) selectArmor(el.dataset.id);
+  else if (el.dataset.part !== undefined) { S.part = +el.dataset.part; renderParts(); renderArmors(); }
+  else if (el.dataset.cost !== undefined) {
+    S.cost = +el.dataset.cost;
+    document.querySelectorAll("#costs .chip").forEach(c => c.classList.toggle("on", +c.dataset.cost === S.cost));
+    renderArmors();
+  }
+  else if (el.dataset.type !== undefined) {
+    S.settings.type = +el.dataset.type; api().save_settings({ type: S.settings.type });
+    renderHead(); renderTabs(); renderTable();
+  }
+  else if (el.dataset.unwant) {
+    S.settings.wanted = S.settings.wanted.filter(x => x !== +el.dataset.unwant);
+    api().save_settings({ wanted: S.settings.wanted }); renderWanted(); renderTabs(); renderTable();
+  }
+});
+$("afilter").addEventListener("input", renderArmors);
+$("hunter").addEventListener("change", loadHunter);
+$("reload").addEventListener("click", loadHunter);
+$("rolls").addEventListener("change", () => {
+  api().save_settings({ rolls: parseInt($("rolls").value) || 200 });
+  if (S.settings.armor) selectArmor(S.settings.armor);
+});
+$("lang").addEventListener("change", async () => {
+  S.settings.lang = $("lang").value; await api().save_settings({ lang: S.settings.lang });
+  S.skills = await api().skills();
+  $("skilllist").innerHTML = S.skills.map(s => `<option value="${esc(s.name)}">`).join("");
+  renderWanted(); await loadHunter();
+});
+$("skillq").addEventListener("keydown", e => { if (e.key === "Enter") addWanted(); });
+$("skillq").addEventListener("change", addWanted);
+$("only").addEventListener("change", () => {
+  S.settings.only_matches = $("only").checked; api().save_settings({ only_matches: S.settings.only_matches }); renderTable();
+});
+$("gamedir").addEventListener("click", async () => { if (await api().choose_game_dir()) location.reload(); });
+window.addEventListener("pywebviewready", boot);
+</script>
+</body>
+</html>

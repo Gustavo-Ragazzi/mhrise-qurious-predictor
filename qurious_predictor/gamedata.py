@@ -12,7 +12,7 @@ from mhrise_exporter.pak import open_game_paks
 
 from .engine import Buildup, Tables
 
-CACHE_VERSION = 3
+CACHE_VERSION = 4
 DIR = "data/Define/Player/Equip/CustomBuildup"
 
 # Extra RSZ layouts (v16), from the kvasszn/ree-save-editor type dump.
@@ -63,8 +63,10 @@ def build(game_dir: Path, log=print) -> dict:
         category_lots = {str(p["_TableNo"]): p["_LotNum"] for p in params("CustomBuildupArmorCategoryLotUserData")}
         skill_costs = [(p["_SkillId"], p["_Cost"]) for p in params("CustomBuildupEquipSkillDetailUserData")]
 
-        max_levels = {str(p["_Id"]): p["_MaxLevel"] for p in rsz.parse_user(pak.read_any(
-            "data/Define/Player/Skill/PlEquipSkill/PlEquipSkillBaseData.user", ["2"]))[0]["_Param"]}
+        skill_base = rsz.parse_user(pak.read_any(
+            "data/Define/Player/Skill/PlEquipSkill/PlEquipSkillBaseData.user", ["2"]))[0]["_Param"]
+        max_levels = {str(p["_Id"]): p["_MaxLevel"] for p in skill_base}
+        skill_colors = {str(p["_Id"]): p["_IconColor"] for p in skill_base}
 
         log("Reading skill names...")
         msg = "data/Define/Player/Skill/PlEquipSkill/PlayerSkill_Name"
@@ -93,11 +95,13 @@ def build(game_dir: Path, log=print) -> dict:
                 "cost": p["_CustomCost"],
                 "skills": [[s, lv] for s, lv in zip(p["_SkillList"], p["_SkillLvList"]) if s],
                 "slots": p["_DecorationsNumList"],
+                "part": kind - 1,
+                "rare": p["_Rare"],
             }
     finally:
         pak.close()
     return {"version": CACHE_VERSION, "base": base, "armor_lots": armor_lots, "category_lots": category_lots,
-            "skill_costs": skill_costs, "skills": skills, "max_levels": max_levels, "armors": armors}
+            "skill_costs": skill_costs, "skills": skills, "max_levels": max_levels, "skill_colors": skill_colors, "armors": armors}
 
 
 def _fingerprint(game_dir: Path) -> str:

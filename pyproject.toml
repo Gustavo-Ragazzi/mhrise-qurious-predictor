@@ -9,13 +9,16 @@ description = "Offline predictor of the next Qurious armor augments for Monster 
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
-dependencies = ["mhrise-exporter"]
+dependencies = ["mhrise-exporter", "pywebview>=5", "texture2ddecoder>=1.0", "pillow>=10"]
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]
 
 [project.gui-scripts]
-mhrise-qurious-predictor = "qurious_predictor.gui:main"
+mhrise-qurious-predictor = "qurious_predictor.app:main"
 
 [tool.setuptools]
 packages = ["qurious_predictor"]
+
+[tool.setuptools.package-data]
+qurious_predictor = ["web/*.html"]
