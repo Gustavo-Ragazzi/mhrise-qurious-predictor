@@ -39,6 +39,15 @@ python -m venv .venv
 .venv/Scripts/python -m qurious_predictor
 ```
 
+## Build a standalone executable
+
+```bash
+.venv/Scripts/python scripts/build.py
+```
+
+Writes `dist/MHRiseQuriousPredictor.exe` (one file, no Python needed) and a zip with the README and
+license. It needs Microsoft Edge WebView2, which ships with Windows 10/11.
+
 ## Accuracy
 
 Validated against recordings from the game (`tests/test_validation.py`):
