@@ -36,8 +36,8 @@ select:focus, input:focus { outline: 1px solid var(--gold); }
 .btn:hover { border-color: var(--gold); }
 .spacer { flex: 1; }
 
-main { flex: 1; display: grid; grid-template-columns: 360px 1fr; gap: 10px; padding: 10px; min-height: 0; }
-.col { display: flex; flex-direction: column; min-height: 0; }
+main { flex: 1; display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 10px; padding: 10px; min-height: 0; }
+.col { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }
 
 /* armor list */
 .filters { padding: 8px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--line); }
@@ -76,8 +76,6 @@ main { flex: 1; display: grid; grid-template-columns: 360px 1fr; gap: 10px; padd
   background: #18140f; color: var(--muted); display: flex; gap: 6px; align-items: center; }
 .tab.on { background: linear-gradient(180deg, #4a3b22, #2a2216); color: var(--gold); border-color: var(--line2); }
 .badge { font-size: 11px; background: #0d0b08; border: 1px solid var(--line); border-radius: 8px; padding: 0 6px; color: var(--up); }
-.wantbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
-.wantbar input[type=text] { width: 240px; }
 .want { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line2); border-radius: 12px;
   padding: 1px 4px 1px 6px; background: #241d13; }
 .want button { all: unset; cursor: pointer; color: var(--muted); padding: 0 4px; }
@@ -94,7 +92,9 @@ tr.match td:first-child { box-shadow: inset 3px 0 0 var(--up); }
 td.n { color: var(--muted); width: 48px; text-align: right; }
 .val { display: inline-block; min-width: 26px; text-align: right; font-variant-numeric: tabular-nums; }
 .pos { color: var(--up); } .neg { color: var(--down); } .zero { color: var(--dim); }
-.res { display: inline-flex; align-items: center; gap: 2px; margin-right: 8px; }
+.res { display: inline-flex; align-items: center; gap: 2px; margin-right: 4px; }
+td.skills { white-space: normal; min-width: 260px; }
+td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
 .res .val { min-width: 18px; text-align: left; }
 .sk { display: inline-flex; align-items: center; gap: 4px; margin-right: 12px; }
 .sk.wanted .nm { color: var(--up); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
@@ -104,6 +104,45 @@ td.n { color: var(--muted); width: 48px; text-align: right; }
   color: var(--gold); font-size: 16px; z-index: 5; }
 .slots .tint { width: 26px; height: 26px; margin-right: 1px; }
 .slots .slot-empty { width: 18px; height: 18px; margin: 4px; }
+/* filter bar */
+.filterbar { display: flex; flex-direction: column; gap: 8px; padding: 9px 10px; border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, #1d1812, #18140f); }
+.frow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.flabel { color: var(--gold2); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+.btn.gold { background: linear-gradient(180deg, #8a6a2c, #5d461b); border-color: var(--gold); color: #fff3d6; font-weight: 600; }
+.wantlist { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+
+/* custom dropdown */
+.picker { position: relative; display: inline-block; }
+.picker-btn { width: 100%; height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 28px 0 8px;
+  background: linear-gradient(180deg, #2b2318, #1a150f); border: 1px solid var(--line2); border-radius: 4px;
+  cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; }
+.picker-btn:hover, .picker.open .picker-btn { border-color: var(--gold); }
+.picker-btn::after { content: ""; position: absolute; right: 10px; top: 12px; border: 5px solid transparent;
+  border-top-color: var(--gold); }
+.picker.open .picker-btn::after { top: 7px; border-top-color: transparent; border-bottom-color: var(--gold); }
+.picker-btn .ph { color: var(--muted); }
+.picker-pop { position: absolute; z-index: 20; top: calc(100% + 3px); left: 0; min-width: 100%; max-height: 360px;
+  display: flex; flex-direction: column; background: #16120d; border: 1px solid var(--gold2); border-radius: 5px;
+  box-shadow: 0 8px 24px #000c, inset 0 0 0 1px #00000080; }
+.picker-pop input { margin: 6px; height: 30px; }
+.picker-list { overflow: auto; padding: 2px 0 4px; }
+.picker-item { display: flex; align-items: center; gap: 7px; padding: 5px 10px; cursor: pointer; white-space: nowrap; }
+.picker-item:hover, .picker-item.active { background: linear-gradient(90deg, #4a3a20, #2a2216); }
+.picker-item.sel { color: var(--gold); }
+.picker-item .hint { margin-left: auto; color: var(--muted); font-size: 12px; padding-left: 10px; }
+.picker-empty { padding: 8px 10px; color: var(--muted); }
+.slotpick { width: 96px; }
+
+/* toggles */
+.toggle { display: inline-flex; align-items: center; gap: 6px; color: var(--text); cursor: pointer; user-select: none; }
+.toggle input { display: none; }
+.toggle span { width: 32px; height: 18px; border-radius: 9px; background: #120f0b; border: 1px solid var(--line2);
+  position: relative; transition: .15s; }
+.toggle span::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--muted); transition: .15s; }
+.toggle input:checked + span { background: #3d5a2a; border-color: var(--up); }
+.toggle input:checked + span::after { left: 16px; background: var(--up); }
 </style>
 </head>
 <body>
@@ -129,15 +168,29 @@ td.n { color: var(--muted); width: 48px; text-align: right; }
   <section class="frame col">
     <div class="head" id="head"><span class="muted">Select an armor piece.</span></div>
     <div class="tabs" id="tabs"></div>
-    <div class="wantbar">
-      <input id="skillq" type="text" list="skilllist" placeholder="Find skill… e.g. Mail of Hellfire 2 (Enter)"
-        title="Skill name, optionally followed by the level you want on this piece. Only rolls that give every listed skill are shown.">
-      <datalist id="skilllist"></datalist>
-      <span id="wanted"></span>
-      <span class="spacer"></span>
-      <span id="progress" class="muted"></span>
-      <button class="btn" id="stop" style="display:none">Stop</button>
-      <button class="btn" id="clear" style="display:none">Clear filter</button>
+    <div class="filterbar">
+      <div class="frow">
+        <span class="flabel">Skill</span>
+        <div class="picker" id="skillpick" style="width:290px"></div>
+        <span class="flabel">Lv</span>
+        <div class="picker" id="levelpick" style="width:78px"></div>
+        <button class="btn gold" id="addskill">Add</button>
+        <span id="wanted" class="wantlist"></span>
+      </div>
+      <div class="frow">
+        <span class="flabel">Slots at least</span>
+        <div class="picker slotpick" id="slot0"></div>
+        <div class="picker slotpick" id="slot1"></div>
+        <div class="picker slotpick" id="slot2"></div>
+        <span class="flabel">Defense ≥</span>
+        <input id="mindef" type="number" step="1" placeholder="any" style="width:76px">
+        <label class="toggle"><input type="checkbox" id="noloss"><span></span>No skill loss</label>
+        <label class="toggle"><input type="checkbox" id="noneg"><span></span>No negative resistance</label>
+        <span class="spacer"></span>
+        <span id="progress" class="muted"></span>
+        <button class="btn" id="stop" style="display:none">Stop</button>
+        <button class="btn" id="clear" style="display:none">Clear filters</button>
+      </div>
     </div>
     <div class="table" id="table"></div>
   </section>
@@ -173,26 +226,145 @@ function slot(lv, up) {
 const signed = v => `<span class="val ${v > 0 ? "pos" : v < 0 ? "neg" : "zero"}">${v > 0 ? "+" + v : v}</span>`;
 const status = t => $("status").textContent = t;
 
-/* Wanted skills: [{id, level}] (level 0 = "+1 from the augment"). */
-const wanted = () => S.settings.wanted;
-const filtering = () => wanted().length > 0;
+/* ---- filters --------------------------------------------------------------------------------- */
+const EMPTY_FILTERS = { skills: [], slots: [0, 0, 0], minDef: null, noSkillLoss: false, noNegRes: false };
+const F = () => S.settings.filters;
+const filtering = () => {
+  const f = F();
+  return f.skills.length > 0 || f.slots.some(x => x) || f.minDef !== null || f.noSkillLoss || f.noNegRes;
+};
 
+/* Styled dropdown: items [{value, html, text}] ; opts {search, placeholder, onChange} */
+function makePicker(el, opts) {
+  const p = { el, items: [], value: null, opts };
+  el.innerHTML = `<div class="picker-btn" tabindex="0"></div>`;
+  const btn = el.firstChild;
+  const close = () => { el.classList.remove("open"); el.querySelector(".picker-pop")?.remove(); };
+  const choose = v => { p.set(v); close(); opts.onChange && opts.onChange(v); };
+  function open() {
+    document.querySelectorAll(".picker.open").forEach(x => { if (x !== el) { x.classList.remove("open"); x.querySelector(".picker-pop")?.remove(); } });
+    el.classList.add("open");
+    const pop = document.createElement("div");
+    pop.className = "picker-pop";
+    pop.innerHTML = (opts.search ? `<input type="text" placeholder="Search…">` : "") + `<div class="picker-list"></div>`;
+    el.appendChild(pop);
+    const list = pop.querySelector(".picker-list"), input = pop.querySelector("input");
+    let shown = [], active = 0;
+    const draw = () => {
+      const q = input ? input.value.trim().toLowerCase() : "";
+      shown = p.items.filter(i => !q || i.text.toLowerCase().includes(q));
+      active = Math.max(0, Math.min(active, shown.length - 1));
+      list.innerHTML = shown.map((i, k) => `<div class="picker-item ${k === active ? "active" : ""} ${i.value === p.value ? "sel" : ""}" data-k="${k}">${i.html}</div>`).join("")
+        || `<div class="picker-empty">Nothing found</div>`;
+      list.querySelector(".active")?.scrollIntoView({ block: "nearest" });
+    };
+    list.addEventListener("mousedown", e => { const it = e.target.closest(".picker-item"); if (it) { e.preventDefault(); choose(shown[+it.dataset.k].value); } });
+    const keys = e => {
+      if (e.key === "ArrowDown") { active++; draw(); e.preventDefault(); }
+      else if (e.key === "ArrowUp") { active--; draw(); e.preventDefault(); }
+      else if (e.key === "Enter" && shown[active]) { choose(shown[active].value); e.preventDefault(); }
+      else if (e.key === "Escape") close();
+    };
+    (input || btn).addEventListener("keydown", keys);
+    if (input) { input.addEventListener("input", () => { active = 0; draw(); }); setTimeout(() => input.focus(), 0); }
+    active = Math.max(0, p.items.findIndex(i => i.value === p.value));
+    draw();
+  }
+  btn.addEventListener("click", () => el.classList.contains("open") ? close() : open());
+  btn.addEventListener("keydown", e => { if ((e.key === "Enter" || e.key === "ArrowDown") && !el.classList.contains("open")) { open(); e.preventDefault(); } });
+  document.addEventListener("mousedown", e => { if (!el.contains(e.target)) close(); });
+  p.setItems = (items, value) => { p.items = items; p.set(value !== undefined ? value : p.value); };
+  p.set = v => {
+    p.value = v;
+    const it = p.items.find(i => i.value === v);
+    btn.innerHTML = it ? it.html : `<span class="ph">${esc(opts.placeholder || "Select…")}</span>`;
+  };
+  return p;
+}
+
+const skillItem = s => ({ value: s.id, text: s.name, html: `${skillIcon(s.color, s.name)}<span>${esc(s.name)}</span><span class="hint">max Lv${s.max}</span>` });
+const slotItems = () => [{ value: 0, text: "any", html: `<span class="muted">any</span>` }]
+  .concat([1, 2, 3, 4].map(l => ({ value: l, text: "Lv" + l, html: `${slot(l, false)}<span>Lv${l}</span>` })));
+let skillPick, levelPick, slotPicks;
+
+function setupFilters() {
+  skillPick = makePicker($("skillpick"), { search: true, placeholder: "Choose a skill…", onChange: updateLevels });
+  levelPick = makePicker($("levelpick"), {});
+  slotPicks = [0, 1, 2].map(i => makePicker($("slot" + i), {
+    onChange: v => { const s = [...F().slots]; s[i] = v; setFilters({ slots: s }); }
+  }));
+  $("addskill").addEventListener("click", addSkill);
+  let t = null;
+  $("mindef").addEventListener("input", () => {
+    clearTimeout(t);
+    t = setTimeout(() => { const v = $("mindef").value.trim(); setFilters({ minDef: v === "" ? null : parseInt(v) }); }, 500);
+  });
+  $("noloss").addEventListener("change", () => setFilters({ noSkillLoss: $("noloss").checked }));
+  $("noneg").addEventListener("change", () => setFilters({ noNegRes: $("noneg").checked }));
+  $("clear").addEventListener("click", () => setFilters({ ...EMPTY_FILTERS }));
+  $("stop").addEventListener("click", () => api().find_cancel());
+}
+
+function updateLevels() {
+  const s = S.skills.find(x => x.id === skillPick.value);
+  const max = s ? s.max : 1;
+  const a = S.armors.find(x => x.id === S.settings.armor);
+  const have = s && a ? (a.skills.find(k => k.id === s.id) || { level: 0 }).level : 0;
+  levelPick.setItems([...Array(max).keys()].map(i => {
+    const lv = i + 1, reachable = lv <= have + 1;
+    return { value: lv, text: "Lv" + lv, html: `<span style="${reachable ? "" : "color:var(--dim)"}">Lv ${lv}</span>${lv === have ? `<span class="hint">on piece</span>` : ""}` };
+  }), 1);
+}
+
+function syncFilterUi() {
+  const f = F();
+  slotPicks.forEach((p, i) => p.setItems(slotItems(), f.slots[i] || 0));
+  $("mindef").value = f.minDef === null ? "" : f.minDef;
+  $("noloss").checked = !!f.noSkillLoss;
+  $("noneg").checked = !!f.noNegRes;
+  $("wanted").innerHTML = f.skills.map((w, i) => {
+    const s = S.skills.find(x => x.id === w.id) || { name: "#" + w.id, color: 0 };
+    return `<span class="want">${skillIcon(s.color, s.name)}${esc(s.name)}<b style="color:var(--gold);margin-left:4px">Lv${w.level}</b><button data-unwant="${i}" title="Remove">✕</button></span>`;
+  }).join("");
+  showSearchUi();
+}
+
+function setFilters(patch) {
+  S.settings.filters = { ...F(), ...patch };
+  api().save_settings({ filters: S.settings.filters });
+  syncFilterUi();
+  if (S.settings.armor) selectArmor(S.settings.armor);
+}
+
+function addSkill() {
+  if (skillPick.value === null) { status("Choose a skill first."); return; }
+  const level = levelPick.value || 1;
+  setFilters({ skills: [...F().skills.filter(w => w.id !== skillPick.value), { id: skillPick.value, level }] });
+}
+
+/* ---- app ----------------------------------------------------------------------------------------- */
 async function boot() {
   const r = await api().init();
   $("loading").style.display = "none";
   if (r.error) { status(r.error); return; }
   Object.assign(S, { icons: r.icons, settings: r.settings, types: r.types });
-  S.settings.wanted = (S.settings.wanted || []).map(w => typeof w === "number" ? { id: w, level: 0 } : w);
+  S.settings.filters = { ...EMPTY_FILTERS, ...(S.settings.filters || {}) };
   $("rolls").value = S.settings.rolls;
   $("lang").innerHTML = r.langs.map(l => `<option ${l === S.settings.lang ? "selected" : ""}>${l}</option>`).join("");
   $("hunter").innerHTML = r.hunters.map(h =>
     `<option value="${h.key}">${esc(h.name)} — HR ${h.hr} / MR ${h.mr} (slot ${h.slot}${h.persona ? ", " + esc(h.persona) : ""})</option>`).join("");
   if (r.hunters.some(h => h.key === S.settings.hunter)) $("hunter").value = S.settings.hunter;
   if (!S.types.some(t => t.id === S.settings.type)) S.settings.type = S.types[0].id;
-  S.skills = await api().skills();
-  $("skilllist").innerHTML = S.skills.map(s => `<option value="${esc(s.name)}">`).join("");
-  renderParts(); renderTabs(); renderWanted();
+  setupFilters();
+  await loadSkills();
+  renderParts(); renderTabs(); syncFilterUi();
   if (r.hunters.length) await loadHunter(); else status("No MH Rise save found on this PC.");
+}
+
+async function loadSkills() {
+  S.skills = await api().skills();
+  skillPick.setItems(S.skills.map(skillItem), skillPick.value);
+  updateLevels();
 }
 
 async function loadHunter() {
@@ -234,6 +406,7 @@ function renderArmors() {
 async function selectArmor(id) {
   S.settings.armor = id;
   renderArmors();
+  updateLevels();
   if (filtering()) return startFind();
   await api().find_cancel();
   clearInterval(pollTimer);
@@ -250,7 +423,7 @@ let pollTimer = null;
 async function startFind() {
   if (!S.settings.armor) return;
   clearInterval(pollTimer);
-  const r = await api().find_start(S.settings.armor, wanted(), 50);
+  const r = await api().find_start(S.settings.armor, F(), 50);
   if (r.error) {
     S.pred = null; S.searching = false; status(r.error);
     showSearchUi(); renderHead(); renderTabs(); renderTable(); return;
@@ -310,15 +483,6 @@ function renderTabs() {
   }).join("");
 }
 
-const levelText = w => w.level ? ` Lv${w.level}` : " +1";
-function renderWanted() {
-  $("wanted").innerHTML = wanted().map((w, i) => {
-    const s = S.skills.find(x => x.id === w.id) || { name: "#" + w.id, color: 0 };
-    return `<span class="want">${skillIcon(s.color, s.name)}${esc(s.name)}<b style="color:var(--gold)">${levelText(w)}</b><button data-unwant="${i}" title="Remove">✕</button></span>`;
-  }).join("");
-  showSearchUi();
-}
-
 function renderTable() {
   if (!S.pred || (filtering() && !S.pred.search)) {
     $("table").innerHTML = `<div class="empty">${S.searching ? "Searching…" : "Pick an armor piece on the left."}</div>`;
@@ -328,39 +492,19 @@ function renderTable() {
   const rows = tp.rolls;
   if (!rows.length) {
     const why = tp.impossible ? "Augment: Stability never adds skills."
-      : `None of the next ${tp.scanned.toLocaleString()} rolls gives every wanted skill.`;
+      : `None of the next ${tp.scanned.toLocaleString()} rolls passes the filters.`;
     $("table").innerHTML = `<div class="empty">${why}</div>`;
     return;
   }
-  const ws = new Set(wanted().map(w => w.id));
+  const ws = new Set(F().skills.map(w => w.id));
   $("table").innerHTML = `<table><thead><tr><th>#</th><th>Defense</th><th>Slots</th><th>Resistances</th><th>Skills</th></tr></thead><tbody>` +
     rows.map(r => `<tr class="${filtering() ? "match" : ""}">
       <td class="n">${r.n.toLocaleString()}</td>
       <td>${img(r.def < 0 ? "defense_down" : "defense", "Defense", r.def ? "" : "off")} ${signed(r.def)}</td>
       <td class="slots">${r.slots.map(s => slot(s.lv, s.up)).join("")}</td>
       <td>${r.res.map((v, i) => `<span class="res">${img(ELEMENTS[i], ELEMENTS[i], v ? "" : "off")}${signed(v)}</span>`).join("")}</td>
-      <td>${r.skills.map(s => `<span class="sk ${ws.has(s.id) && s.v > 0 ? "wanted" : ""}">${skillIcon(s.color, s.name)}<span class="nm">${esc(s.name)}</span>${signed(s.v)}</span>`).join("")}</td>
+      <td class="skills">${r.skills.map(s => `<span class="sk ${ws.has(s.id) && s.v > 0 ? "wanted" : ""}">${skillIcon(s.color, s.name)}<span class="nm">${esc(s.name)}</span>${signed(s.v)}</span>`).join("")}</td>
     </tr>`).join("") + `</tbody></table>`;
-}
-
-function setWanted(list) {
-  S.settings.wanted = list;
-  api().save_settings({ wanted: list });
-  renderWanted();
-  if (S.settings.armor) selectArmor(S.settings.armor);
-}
-
-/* "Mail of Hellfire 2" -> skill + wanted level on the piece; "Attack Boost" -> any +1. */
-function addWanted() {
-  const raw = $("skillq").value.trim();
-  if (!raw) return;
-  const m = raw.match(/^(.*?)(?:\s+(?:lv\.?\s*)?(\d+))?$/i);
-  const q = m[1].trim().toLowerCase(), level = m[2] ? parseInt(m[2]) : 0;
-  const s = S.skills.find(x => x.name.toLowerCase() === q) || S.skills.find(x => x.name.toLowerCase().includes(q))
-    || S.skills.find(x => x.name.toLowerCase() === raw.toLowerCase());
-  if (!s) { status(`No skill that qurious crafting can add matches "${raw}".`); return; }
-  $("skillq").value = "";
-  setWanted([...wanted().filter(w => w.id !== s.id), { id: s.id, level }]);
 }
 
 document.addEventListener("click", e => {
@@ -377,7 +521,7 @@ document.addEventListener("click", e => {
     S.settings.type = +el.dataset.type; api().save_settings({ type: S.settings.type });
     renderHead(); renderTabs(); renderTable();
   }
-  else if (el.dataset.unwant !== undefined) setWanted(wanted().filter((_, i) => i !== +el.dataset.unwant));
+  else if (el.dataset.unwant !== undefined) setFilters({ skills: F().skills.filter((_, i) => i !== +el.dataset.unwant) });
 });
 $("afilter").addEventListener("input", renderArmors);
 $("hunter").addEventListener("change", loadHunter);
@@ -388,13 +532,8 @@ $("rolls").addEventListener("change", () => {
 });
 $("lang").addEventListener("change", async () => {
   S.settings.lang = $("lang").value; await api().save_settings({ lang: S.settings.lang });
-  S.skills = await api().skills();
-  $("skilllist").innerHTML = S.skills.map(s => `<option value="${esc(s.name)}">`).join("");
-  renderWanted(); await loadHunter();
+  await loadSkills(); syncFilterUi(); await loadHunter();
 });
-$("skillq").addEventListener("keydown", e => { if (e.key === "Enter") addWanted(); });
-$("stop").addEventListener("click", () => api().find_cancel());
-$("clear").addEventListener("click", () => setWanted([]));
 $("gamedir").addEventListener("click", async () => { if (await api().choose_game_dir()) location.reload(); });
 window.addEventListener("pywebviewready", boot);
 </script>

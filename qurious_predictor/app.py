@@ -14,8 +14,14 @@ from .predict import next_rolls
 
 TITLE = "MH Rise Qurious Predictor"
 WEB = Path(__file__).with_name("web") / "index.html"
+EMPTY_FILTERS = {"skills": [], "slots": [0, 0, 0], "minDef": None, "noSkillLoss": False, "noNegRes": False}
 DEFAULT_SETTINGS = {"rolls": 200, "lang": "en", "hunter": None, "armor": None, "type": engine.TYPE_AUGMENT,
-                    "wanted": [], "only_matches": False, "game_dir": None}
+                    "filters": EMPTY_FILTERS, "game_dir": None}
+
+
+def filters_active(f: dict) -> bool:
+    return bool(f.get("skills") or any(f.get("slots") or []) or f.get("minDef") is not None
+                or f.get("noSkillLoss") or f.get("noNegRes"))
 
 
 class Api:
@@ -87,7 +93,8 @@ class Api:
 
     def _skill(self, sid: int) -> dict:
         return {"id": sid, "name": self._name(self.data["skills"].get(str(sid), {"en": f"#{sid}"})),
-                "color": self.data["skill_colors"].get(str(sid), 0)}
+                "color": self.data["skill_colors"].get(str(sid), 0),
+                "max": self.data["max_levels"].get(str(sid), 0) + 1}  # _MaxLevel is 0-based
 
     def skills(self):
         """Every skill that qurious crafting can add, for the skill filter."""
@@ -136,10 +143,12 @@ class Api:
 
     # ---- search (background thread, polled by the page) ---------------------------------------------
 
-    def find_start(self, armor_id: str, wanted: list, max_matches: int = 50, limit: int = 2_000_000):
-        """Start scanning every augment type until ``max_matches`` rolls give all wanted skills.
+    def find_start(self, armor_id: str, filters: dict, max_matches: int = 50, limit: int = 2_000_000):
+        """Scan every augment option until ``max_matches`` rolls pass ``filters``.
 
-        ``wanted`` = [{"id": skill id, "level": total level wanted on the piece, or 0 for "+1"}].
+        filters = {"skills": [{"id", "level"}]  (level = minimum level on the piece after the augment),
+                   "slots": [lv, lv, lv]          (minimum final slot levels, 0 = any),
+                   "minDef": int | None, "noSkillLoss": bool, "noNegRes": bool}
         """
         self.find_cancel()
         a = self.data["armors"].get(str(armor_id)) if self.data else None
@@ -147,15 +156,14 @@ class Api:
             return {"error": "Select a hunter and an armor piece."}
         base_lv = {s: lv for s, lv in a["skills"]}
         problems = []
-        for w in wanted:
-            sid, level = int(w["id"]), int(w.get("level") or 0)
-            name = self._skill(sid)["name"]
-            max_lv = self.tables.max_levels.get(sid, 99) + 1
-            if level and level > base_lv.get(sid, 0) + 1:
-                problems.append(f"{name} Lv{level} is impossible on this piece: it has Lv{base_lv.get(sid, 0)} "
-                                "and an augment adds at most +1 to a skill.")
-            elif base_lv.get(sid, 0) >= max_lv:
-                problems.append(f"{name} is already at its max level (Lv{max_lv}) on this piece.")
+        for w in filters.get("skills", []):
+            sid, level = int(w["id"]), max(1, int(w.get("level") or 1))
+            name, have = self._skill(sid)["name"], base_lv.get(sid, 0)
+            if level > have + 1:
+                problems.append(f"{name} Lv{level} is impossible on this piece: it has Lv{have} and an augment "
+                                "adds at most +1 to a skill.")
+            elif have >= self.tables.max_levels.get(sid, 99) + 1 and level > have:
+                problems.append(f"{name} is already at its max level on this piece.")
         if problems:
             return {"error": " ".join(problems)}
         job = {"armor": str(armor_id), "progress": {}, "types": {}, "done": False, "cancel": False}
@@ -163,7 +171,7 @@ class Api:
 
         def run():
             try:
-                job["types"] = self._find(a, wanted, max_matches, limit, job)
+                job["types"] = self._find(a, filters, max_matches, limit, job)
             finally:
                 job["done"] = True
         threading.Thread(target=run, daemon=True).start()
@@ -182,26 +190,44 @@ class Api:
             job["cancel"] = True
         return True
 
-    def _find(self, a: dict, wanted: list, max_matches: int, limit: int, job: dict) -> dict:
+    def _matcher(self, a: dict, f: dict):
         base_lv = {s: lv for s, lv in a["skills"]}
-        goals = [(int(w["id"]), int(w.get("level") or 0)) for w in wanted]
+        goals = [(int(w["id"]), max(1, int(w.get("level") or 1))) for w in f.get("skills", [])]
+        min_slots = sorted((int(x) for x in (f.get("slots") or [0, 0, 0])), reverse=True)
+        base_slots = _expand_slots(a["slots"])
+        min_def = f.get("minDef")
+        no_loss, no_neg = f.get("noSkillLoss"), f.get("noNegRes")
 
-        def matches(summary) -> bool:
+        def ok(s) -> bool:
             delta = {}
-            for sid, v in summary.skills:
+            for sid, v in s.skills:
                 delta[sid] = delta.get(sid, 0) + v
             for sid, level in goals:
-                d = delta.get(sid, 0)
-                if d <= 0 or base_lv.get(sid, 0) + d < level:
+                if base_lv.get(sid, 0) + delta.get(sid, 0) < level:
+                    return False
+            if no_loss and any(v < 0 for v in delta.values()):
+                return False
+            if no_neg and any(v < 0 for v in s.resistances.values()):
+                return False
+            if min_def is not None and s.defense < int(min_def):
+                return False
+            if any(min_slots):
+                final = (apply_slot_bonus(base_slots, s.slots) + [0, 0, 0])[:3]
+                if any(have < need for have, need in zip(final, min_slots)):
                     return False
             return True
+        return ok
 
+    def _find(self, a: dict, f: dict, max_matches: int, limit: int, job: dict) -> dict:
+        matches = self._matcher(a, f)
+        base = {s: lv for s, lv in a["skills"]}
+        need_skill = any(int(w.get("level") or 1) > base.get(int(w["id"]), 0) for w in f.get("skills", []))
         skills = [tuple(x) for x in a["skills"]]
         state = {}
         for t in engine.TYPE_NAMES:
             seed = engine.seed_index(a["cost"], t)
             state[t] = {"seed": seed, "rng": self.generators[seed].copy(), "rolls": [], "scanned": 0,
-                        "impossible": t == engine.TYPE_STABILITY and bool(goals)}  # Stability adds no skills
+                        "impossible": t == engine.TYPE_STABILITY and need_skill}  # Stability adds no skills
         active = [t for t in state if not state[t]["impossible"]]
         while active and not job["cancel"]:
             for t in list(active):  # round-robin so every tab advances together
@@ -216,9 +242,8 @@ class Api:
                         active.remove(t)
                         break
                 job["progress"][t] = {"scanned": st["scanned"], "found": len(st["rolls"])}
-        out = {t: {"seed": st["seed"], "rolls": st["rolls"], "scanned": st["scanned"],
-                   "impossible": st["impossible"], "cancelled": job["cancel"]} for t, st in state.items()}
-        return out
+        return {t: {"seed": st["seed"], "rolls": st["rolls"], "scanned": st["scanned"],
+                    "impossible": st["impossible"], "cancelled": job["cancel"]} for t, st in state.items()}
 
     def _same_cost(self, a: dict) -> int:
         return sum(1 for aid in self.owned if self.data["armors"][aid]["cost"] == a["cost"])
