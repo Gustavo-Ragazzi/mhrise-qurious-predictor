@@ -1,72 +1,98 @@
 # MH Rise Qurious Predictor
 
-Offline predictor for **Qurious armor crafting** (armor augments) in *Monster Hunter Rise: Sunbreak*
-(PC/Steam). It reads your save file, finds every qurious-capable armor piece in your box, and shows
-the **next augment results** for each augment type: Defense+, Skills+, Slots+ and Stability.
+Offline predictor for **Qurious Crafting** of armor (augments) in *Monster Hunter Rise: Sunbreak*
+(PC/Steam). It reads your save, lists every qurious-capable armor piece in your box and shows the
+**next augment results** for each option of the game's menu: **Augment**, **Augment: Stability**,
+**Augment: Skills+** and **Augment: Slots+**. Filters search ahead until they find what you want
+(a skill at a given level, minimum slots, defense, no skill loss, no negative resistance).
 
 The game does not need to be running and no mod is needed. The save is only read, never written.
 
+## Download
+
+Get `MHRiseQuriousPredictor-<version>-windows.zip` from the
+[Releases](../../releases) page, unzip and run `MHRiseQuriousPredictor.exe`. No installation and no
+Python needed. The window uses Microsoft Edge WebView2, which ships with Windows 10/11.
+
+The executable is not code-signed, so Windows SmartScreen may warn on first launch
+("More info" → "Run anyway").
+
+The app finds the game and your Steam saves on its own (any Steam account on the PC); use
+**Game folder…** if the game is installed somewhere unusual. On first launch it reads the game
+data and icons from your install (a few seconds) and caches them in
+`%LOCALAPPDATA%\mhrise-qurious-predictor`.
+
+## How to use
+
+1. Pick your hunter and an armor piece on the left (filter by name, part or augment cost).
+2. Pick the augment option tab. Roll **#1** is what that option gives on the next augment of this
+   piece, #2 the one after, and so on (200 rolls by default; the value is remembered).
+3. To look for something specific, add filters: the search keeps simulating until it finds up to
+   50 matching rolls per option, and only those are listed.
+4. Each roll shows the defense change, the resulting slots (qurious slots in green), the five
+   resistances and the skills gained/lost.
+
+**The sequence is shared.** All armor pieces with the same augment cost (10, 12, … 20) and the same
+augment option use one sequence. Augmenting any of them moves it forward, so after augmenting:
+save in game, then press **Reload save**. Other options and costs are not affected.
+
 ## How it works
 
-The game decides augments with its own pseudo-random generators, one per augment cost tier and
-augment type (`FacilityDataManager.RandomSeedManual.CustomBuildup_TT_YY`). Their current states are
-stored in the character save. This tool:
+The game decides augments with its own pseudo-random generators, one per augment cost and option
+(`FacilityDataManager.RandomSeedManual.CustomBuildup_TT_YY`), whose states are stored in the
+character save. This tool:
 
 1. decrypts the save (via [mhrise-exporter](https://github.com/Gustavo-Ragazzi/mhrise-exporter))
    and reads the 56 generator states;
 2. re-implements the generator (`via.Random`, a xorshift128 with shifts 15/4/21) and
    `ArmorCustomBuildupData.createResult`, the game's augment roll;
-3. reads the augment tables (weights, costs, values) and the GUI icons from your own game install.
+3. reads the augment tables (weights, costs, values), skill data and GUI icons from your own install.
 
-Slot points follow the game's rule: each point adds a level-1 slot while the piece has fewer than
-three slots, otherwise it raises the highest slot below level 4.
-
-The window lists your qurious-capable armor (filter by name, part and cost) and, per augment
-type, the next rolls (200 by default; the value is remembered). Each roll shows defense, the
-resulting slots (qurious slots in green), the five resistances and the skills; add wanted skills to
-highlight and count the rolls that give all of them.
-
-The sequence of results is **shared** by all armor pieces with the same augment cost and type.
-Augmenting any of them advances it, so reload the save after each augment (save in game first).
-
-See [docs/RESEARCH.md](docs/RESEARCH.md) for how the algorithm was reconstructed and validated.
-
-## Run
-
-```bash
-python -m venv .venv
-.venv/Scripts/pip install -e ../mhrise-exporter -e .
-.venv/Scripts/python -m qurious_predictor
-```
-
-## Build a standalone executable
-
-```bash
-.venv/Scripts/python scripts/build.py
-```
-
-Writes `dist/MHRiseQuriousPredictor.exe` (one file, no Python needed) and a zip with the README and
-license. It needs Microsoft Edge WebView2, which ships with Windows 10/11.
+The game executable is packed, so nothing was disassembled: the algorithm was reconstructed
+black-box, by calling the game's own functions through REFramework from known generator states.
+See [docs/RESEARCH.md](docs/RESEARCH.md) and the scripts in [tools/probes](tools/probes).
 
 ## Accuracy
 
 Validated against recordings from the game (`tests/test_validation.py`):
 
-* 160 `createResult` calls traced in game from known generator states: 160/160 identical;
-* 3 × 458 consecutive rolls exported by the "Qurious Preview and Export as csv" mod
-  (Defense+, Slots+ and Stability, cost-10 armor): 1374/1374 identical;
-* 5 real Slots+ augments: 5/5 identical;
-* 80,000 `createResult` calls from 20,000 random generator states, all four options: 80000/80000 identical.
+* 80,000 `createResult` calls from 20,000 random generator states, all four options: 80,000/80,000 identical;
+* 160 calls traced in game, including the inner lottery functions: 160/160 identical;
+* 3 × 458 consecutive rolls exported by the "Qurious Preview and Export as csv" mod: 1,374/1,374 identical;
+* 5 real augments done in game: 5/5 identical.
 
-Known gaps: the generator used for armor with augment cost 12–20 follows the game's enum layout
-but has not been confirmed in game yet (all recordings used cost-10 armor).
+Known gap: every recording used armor with augment cost 10. The generator used for costs 12–20
+follows the game's enum layout (`CustomBuildup_01_01` … `CustomBuildup_06_04`) but has not been
+confirmed in game yet.
+
+## Run from source
+
+```bash
+python -m venv .venv
+.venv/Scripts/pip install -e .[dev]
+.venv/Scripts/python -m qurious_predictor
+```
+
+Tests: `.venv/Scripts/python -m pytest`. The validation tests need the game and the recordings
+(`MHR_GAME_DIR`, `MHR_QURIOUS_DATA` = a folder with the probe outputs) and are skipped otherwise.
+
+Build the executable (also done by GitHub Actions on `v*` tags):
+
+```bash
+.venv/Scripts/python scripts/build.py
+```
 
 ## Credits
 
 * Save decryption and PAK/RSZ readers: mhrise-exporter, which ports
   [jinghaihan/mhrise-save-converter](https://github.com/jinghaihan/mhrise-save-converter) (MIT) and
-  [wwylele/mhrice](https://github.com/wwylele/mhrice) (MIT/Apache-2.0).
+  [wwylele/mhrice](https://github.com/wwylele/mhrice) (MIT/Apache-2.0); icon formats and the skill
+  icon location also come from mhrice.
 * RSZ type layouts: [kvasszn/ree-save-editor](https://github.com/kvasszn/ree-save-editor).
-* The "Qurious Preview and Export as csv" REFramework mod, used as ground truth.
+* [REFramework](https://github.com/praydog/REFramework), used for the research probes.
+* The "Qurious Preview and Export as csv" REFramework mod (Nexus Mods), used as ground truth.
 
-Monster Hunter Rise © CAPCOM. No game data is distributed; everything is read from your install.
+## License
+
+MIT, see [LICENSE](LICENSE). Monster Hunter Rise © CAPCOM. This is an unofficial fan tool; no game
+data is distributed, everything is read from your own install.
