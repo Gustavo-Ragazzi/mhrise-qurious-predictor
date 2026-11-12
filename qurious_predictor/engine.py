@@ -23,18 +23,20 @@ MAX_SKILL_ADDS = 2
 MAX_LOTS = 52  # the game gives up after 52 lots even if cost is left (fits 3x458 recorded rolls)
 
 # Augment types (GuiCustomBuildup.BuildupType).
-TYPE_DEFENSE = 0
+TYPE_AUGMENT = 0
 TYPE_SKILL = 1
 TYPE_SLOT = 2
 TYPE_STABILITY = 3
-TYPE_NAMES = {TYPE_DEFENSE: "Defense+", TYPE_SKILL: "Skills+", TYPE_SLOT: "Slots+", TYPE_STABILITY: "Stability"}
+# Names as in the game's Qurious Crafting menu, listed in menu order.
+TYPE_NAMES = {TYPE_AUGMENT: "Augment", TYPE_STABILITY: "Augment: Stability", TYPE_SKILL: "Augment: Skills+",
+              TYPE_SLOT: "Augment: Slots+"}
 
 # Buildup ids used by the forced first lots of each augment type.
 ID_SKILL_DOWN = 149
 ID_DEF_PENALTY = 61
 FORCED_CATEGORY = {
-    (TYPE_DEFENSE, 0): CAT_DEF,
-    (TYPE_DEFENSE, 1): CAT_SKILL,
+    (TYPE_AUGMENT, 0): CAT_DEF,
+    (TYPE_AUGMENT, 1): CAT_SKILL,
     (TYPE_SKILL, 0): CAT_SKILL,
     (TYPE_SKILL, 1): CAT_RES_PENALTY,
     (TYPE_SKILL, 2): CAT_SKILL,

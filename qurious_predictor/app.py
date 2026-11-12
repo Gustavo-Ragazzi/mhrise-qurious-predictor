@@ -14,7 +14,7 @@ from .predict import next_rolls
 
 TITLE = "MH Rise Qurious Predictor"
 WEB = Path(__file__).with_name("web") / "index.html"
-DEFAULT_SETTINGS = {"rolls": 200, "lang": "en", "hunter": None, "armor": None, "type": engine.TYPE_SKILL,
+DEFAULT_SETTINGS = {"rolls": 200, "lang": "en", "hunter": None, "armor": None, "type": engine.TYPE_AUGMENT,
                     "wanted": [], "only_matches": False, "game_dir": None}
 
 
@@ -128,26 +128,113 @@ class Api:
                 return {"error": "Select a hunter and an armor piece."}
             count = max(1, min(1000, int(count)))
             self.save_settings({"armor": str(armor_id), "rolls": count})
-            base = _expand_slots(a["slots"])
             out = {}
             for t in engine.TYPE_NAMES:
                 seed, rolls = next_rolls(self.generators, self.tables, a, t, count)
-                rows = []
-                for r in rolls:
-                    s = r.summary
-                    new = (apply_slot_bonus(base, s.slots) + [0, 0, 0])[:3]
-                    old = (sorted(base, reverse=True) + [0, 0, 0])[:3]
-                    rows.append({
-                        "n": r.n,
-                        "def": s.defense,
-                        "slotPoints": s.slots,
-                        "slots": [{"lv": lv, "up": lv > ob} for lv, ob in zip(new, old)],
-                        "res": [s.resistances.get(e, 0) for e in engine.ELEMENTS],
-                        "skills": [dict(self._skill(k), v=v) for k, v in s.skills],
-                    })
-                out[t] = {"seed": seed, "rolls": rows}
-            same = sum(1 for aid in self.owned if self.data["armors"][aid]["cost"] == a["cost"])
-            return {"types": out, "sameCost": same}
+                out[t] = {"seed": seed, "rolls": [self._row(a, r.n, r.summary) for r in rolls]}
+            return {"types": out, "sameCost": self._same_cost(a)}
+
+    # ---- search (background thread, polled by the page) ---------------------------------------------
+
+    def find_start(self, armor_id: str, wanted: list, max_matches: int = 50, limit: int = 2_000_000):
+        """Start scanning every augment type until ``max_matches`` rolls give all wanted skills.
+
+        ``wanted`` = [{"id": skill id, "level": total level wanted on the piece, or 0 for "+1"}].
+        """
+        self.find_cancel()
+        a = self.data["armors"].get(str(armor_id)) if self.data else None
+        if not a or not self.generators:
+            return {"error": "Select a hunter and an armor piece."}
+        base_lv = {s: lv for s, lv in a["skills"]}
+        problems = []
+        for w in wanted:
+            sid, level = int(w["id"]), int(w.get("level") or 0)
+            name = self._skill(sid)["name"]
+            max_lv = self.tables.max_levels.get(sid, 99) + 1
+            if level and level > base_lv.get(sid, 0) + 1:
+                problems.append(f"{name} Lv{level} is impossible on this piece: it has Lv{base_lv.get(sid, 0)} "
+                                "and an augment adds at most +1 to a skill.")
+            elif base_lv.get(sid, 0) >= max_lv:
+                problems.append(f"{name} is already at its max level (Lv{max_lv}) on this piece.")
+        if problems:
+            return {"error": " ".join(problems)}
+        job = {"armor": str(armor_id), "progress": {}, "types": {}, "done": False, "cancel": False}
+        self._job = job
+
+        def run():
+            try:
+                job["types"] = self._find(a, wanted, max_matches, limit, job)
+            finally:
+                job["done"] = True
+        threading.Thread(target=run, daemon=True).start()
+        return {"started": True}
+
+    def find_status(self):
+        job = getattr(self, "_job", None)
+        if not job:
+            return {"done": True, "types": {}}
+        return {"done": job["done"], "progress": dict(job["progress"]), "types": job["types"] if job["done"] else {},
+                "sameCost": self._same_cost(self.data["armors"][job["armor"]])}
+
+    def find_cancel(self):
+        job = getattr(self, "_job", None)
+        if job and not job["done"]:
+            job["cancel"] = True
+        return True
+
+    def _find(self, a: dict, wanted: list, max_matches: int, limit: int, job: dict) -> dict:
+        base_lv = {s: lv for s, lv in a["skills"]}
+        goals = [(int(w["id"]), int(w.get("level") or 0)) for w in wanted]
+
+        def matches(summary) -> bool:
+            delta = {}
+            for sid, v in summary.skills:
+                delta[sid] = delta.get(sid, 0) + v
+            for sid, level in goals:
+                d = delta.get(sid, 0)
+                if d <= 0 or base_lv.get(sid, 0) + d < level:
+                    return False
+            return True
+
+        skills = [tuple(x) for x in a["skills"]]
+        state = {}
+        for t in engine.TYPE_NAMES:
+            seed = engine.seed_index(a["cost"], t)
+            state[t] = {"seed": seed, "rng": self.generators[seed].copy(), "rolls": [], "scanned": 0,
+                        "impossible": t == engine.TYPE_STABILITY and bool(goals)}  # Stability adds no skills
+        active = [t for t in state if not state[t]["impossible"]]
+        while active and not job["cancel"]:
+            for t in list(active):  # round-robin so every tab advances together
+                st = state[t]
+                for _ in range(1000):
+                    st["scanned"] += 1
+                    s = engine.summarize(engine.create_result(st["rng"], self.tables, a["table"], a["cost"],
+                                                              skills, t))
+                    if matches(s):
+                        st["rolls"].append(self._row(a, st["scanned"], s))
+                    if len(st["rolls"]) >= max_matches or st["scanned"] >= limit:
+                        active.remove(t)
+                        break
+                job["progress"][t] = {"scanned": st["scanned"], "found": len(st["rolls"])}
+        out = {t: {"seed": st["seed"], "rolls": st["rolls"], "scanned": st["scanned"],
+                   "impossible": st["impossible"], "cancelled": job["cancel"]} for t, st in state.items()}
+        return out
+
+    def _same_cost(self, a: dict) -> int:
+        return sum(1 for aid in self.owned if self.data["armors"][aid]["cost"] == a["cost"])
+
+    def _row(self, a: dict, n: int, s) -> dict:
+        base = _expand_slots(a["slots"])
+        new = (apply_slot_bonus(base, s.slots) + [0, 0, 0])[:3]
+        old = (sorted(base, reverse=True) + [0, 0, 0])[:3]
+        return {
+            "n": n,
+            "def": s.defense,
+            "slotPoints": s.slots,
+            "slots": [{"lv": lv, "up": lv > ob} for lv, ob in zip(new, old)],
+            "res": [s.resistances.get(e, 0) for e in engine.ELEMENTS],
+            "skills": [dict(self._skill(k), v=v) for k, v in s.skills],
+        }
 
 
 def main():

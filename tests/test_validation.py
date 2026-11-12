@@ -83,7 +83,7 @@ def _csv_runs():
 
 @pytest.mark.parametrize("run,armor,btype", [
     (0, "Prudence Coil", engine.TYPE_STABILITY),
-    (1, "Valstrax Coil - Epoch", engine.TYPE_DEFENSE),  # the mod recorded type 0 for this run
+    (1, "Valstrax Coil - Epoch", engine.TYPE_AUGMENT),  # the mod recorded type 0 (plain Augment) for this run
     (2, "Valstrax Helm - Epoch", engine.TYPE_SLOT),
 ])
 def test_mod_csv(gd, run, armor, btype):

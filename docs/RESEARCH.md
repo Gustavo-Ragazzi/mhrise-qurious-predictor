@@ -42,7 +42,7 @@ Def/Res/Slot/Skill), `CustomBuildupArmorLotUserData` (buildup weights per catego
 
 | type | forced lots |
 | --- | --- |
-| 0 Defense+ | Def (lotted), Skill (lotted) |
+| 0 Augment | Def (lotted), Skill (lotted) |
 | 1 Skills+ | Skill −1 (149), resistance penalty −7 (lotted element), skill +1 of cost 9/12/15 |
 | 2 Slots+ | Skill −1 (149), Def −25 (61), slot +1/+2 (139/140) |
 | 3 Stability | Def (lotted); then no Skill, no negative buildups |

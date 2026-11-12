@@ -130,11 +130,14 @@ td.n { color: var(--muted); width: 48px; text-align: right; }
     <div class="head" id="head"><span class="muted">Select an armor piece.</span></div>
     <div class="tabs" id="tabs"></div>
     <div class="wantbar">
-      <input id="skillq" type="text" list="skilllist" placeholder="Wanted skill… (type and press Enter)">
+      <input id="skillq" type="text" list="skilllist" placeholder="Find skill… e.g. Mail of Hellfire 2 (Enter)"
+        title="Skill name, optionally followed by the level you want on this piece. Only rolls that give every listed skill are shown.">
       <datalist id="skilllist"></datalist>
       <span id="wanted"></span>
       <span class="spacer"></span>
-      <label class="check"><input type="checkbox" id="only"> Only matching rolls</label>
+      <span id="progress" class="muted"></span>
+      <button class="btn" id="stop" style="display:none">Stop</button>
+      <button class="btn" id="clear" style="display:none">Clear filter</button>
     </div>
     <div class="table" id="table"></div>
   </section>
@@ -170,17 +173,22 @@ function slot(lv, up) {
 const signed = v => `<span class="val ${v > 0 ? "pos" : v < 0 ? "neg" : "zero"}">${v > 0 ? "+" + v : v}</span>`;
 const status = t => $("status").textContent = t;
 
+/* Wanted skills: [{id, level}] (level 0 = "+1 from the augment"). */
+const wanted = () => S.settings.wanted;
+const filtering = () => wanted().length > 0;
+
 async function boot() {
   const r = await api().init();
   $("loading").style.display = "none";
   if (r.error) { status(r.error); return; }
   Object.assign(S, { icons: r.icons, settings: r.settings, types: r.types });
+  S.settings.wanted = (S.settings.wanted || []).map(w => typeof w === "number" ? { id: w, level: 0 } : w);
   $("rolls").value = S.settings.rolls;
   $("lang").innerHTML = r.langs.map(l => `<option ${l === S.settings.lang ? "selected" : ""}>${l}</option>`).join("");
   $("hunter").innerHTML = r.hunters.map(h =>
     `<option value="${h.key}">${esc(h.name)} — HR ${h.hr} / MR ${h.mr} (slot ${h.slot}${h.persona ? ", " + esc(h.persona) : ""})</option>`).join("");
   if (r.hunters.some(h => h.key === S.settings.hunter)) $("hunter").value = S.settings.hunter;
-  $("only").checked = !!S.settings.only_matches;
+  if (!S.types.some(t => t.id === S.settings.type)) S.settings.type = S.types[0].id;
   S.skills = await api().skills();
   $("skilllist").innerHTML = S.skills.map(s => `<option value="${esc(s.name)}">`).join("");
   renderParts(); renderTabs(); renderWanted();
@@ -197,7 +205,7 @@ async function loadHunter() {
   renderArmors();
   status(`${S.armors.length} qurious-capable armor pieces. Predictions follow the save as it is now: after augmenting, save in game and press Reload save.`);
   const keep = S.armors.find(a => a.id === S.settings.armor);
-  if (keep) await selectArmor(keep.id); else { S.pred = null; renderHead(); renderTable(); }
+  if (keep) await selectArmor(keep.id); else { S.pred = null; renderHead(); renderTabs(); renderTable(); }
 }
 
 function renderParts() {
@@ -222,78 +230,137 @@ function renderArmors() {
     </div>`).join("") || `<div class="empty">No armor matches.</div>`;
 }
 
+/* Either the next N rolls (no filter) or a search that runs until it finds matches. */
 async function selectArmor(id) {
   S.settings.armor = id;
   renderArmors();
+  if (filtering()) return startFind();
+  await api().find_cancel();
+  clearInterval(pollTimer);
   status("Simulating…");
   const n = Math.max(1, Math.min(1000, parseInt($("rolls").value) || 200));
   const r = await api().predict(id, n);
   if (r.error) { status(r.error); return; }
-  S.pred = r;
-  status(`${n} rolls per augment type.`);
-  renderHead(); renderTabs(); renderTable();
+  S.pred = r; S.searching = false;
+  status(`Next ${n} rolls per augment option.`);
+  showSearchUi(); renderHead(); renderTabs(); renderTable();
+}
+
+let pollTimer = null;
+async function startFind() {
+  if (!S.settings.armor) return;
+  clearInterval(pollTimer);
+  const r = await api().find_start(S.settings.armor, wanted(), 50);
+  if (r.error) {
+    S.pred = null; S.searching = false; status(r.error);
+    showSearchUi(); renderHead(); renderTabs(); renderTable(); return;
+  }
+  S.searching = true; S.progress = {}; S.pred = null;
+  status("Searching… every augment option advances together; up to 50 matches each.");
+  showSearchUi(); renderHead(); renderTabs(); renderTable();
+  pollTimer = setInterval(pollFind, 400);
+}
+async function pollFind() {
+  const r = await api().find_status();
+  S.progress = r.progress || {};
+  if (r.done) {
+    clearInterval(pollTimer);
+    S.searching = false;
+    S.pred = { types: r.types, sameCost: r.sameCost, search: true };
+    const total = Object.values(r.types).reduce((n, t) => n + t.scanned, 0);
+    status(`Search finished: ${total.toLocaleString()} rolls simulated.`);
+    renderHead();
+  }
+  showSearchUi(); renderTabs(); renderTable();
+}
+
+function showSearchUi() {
+  $("stop").style.display = S.searching ? "" : "none";
+  $("clear").style.display = filtering() ? "" : "none";
+  $("progress").textContent = S.searching
+    ? "Scanned " + Object.values(S.progress || {}).reduce((n, p) => n + p.scanned, 0).toLocaleString() + " rolls…" : "";
 }
 
 function renderHead() {
   const a = S.armors.find(x => x.id === S.settings.armor);
-  if (!a || !S.pred) { $("head").innerHTML = `<span class="muted">Select an armor piece.</span>`; return; }
-  const t = S.settings.type, seed = S.pred.types[t].seed;
+  if (!a) { $("head").innerHTML = `<span class="muted">Select an armor piece.</span>`; return; }
+  const t = S.settings.type, tp = S.types.find(x => x.id === t);
+  const seed = S.pred && S.pred.types[t] ? S.pred.types[t].seed : "…";
+  const same = S.pred ? S.pred.sameCost : "…";
   $("head").innerHTML = `
     ${mask(PARTS[a.part], "var(--gold)", PARTS[a.part])}<span class="big">${esc(a.name)}</span>
     <span>${a.slots.map(l => slot(l, false)).join("")}</span>
     <span>${a.skills.map(s => `<span class="sk">${skillIcon(s.color, s.name)}<span>${esc(s.name)} Lv${s.level}</span></span>`).join("")}</span>
     <span class="cost">Cost ${a.cost}</span>
-    <div class="note">Roll #1 is the next ${S.types[t].name} augment. This sequence (generator ${seed}) is shared by every
-      armor piece with cost ${a.cost} and the same augment type — ${S.pred.sameCost} in your box. Augmenting any of them
-      moves it forward, so reload the save after each augment. Other types and costs are independent.</div>`;
+    <div class="note">Roll #1 is the next "${esc(tp.name)}" on this piece. This sequence (generator ${seed}) is shared by every
+      armor piece with cost ${a.cost} and the same augment option — ${same} in your box. Augmenting any of them
+      moves it forward, so reload the save after each augment. Other options and costs are independent.</div>`;
 }
-
-const isMatch = row => S.settings.wanted.length > 0 &&
-  S.settings.wanted.every(w => row.skills.some(s => s.id === w && s.v > 0));
 
 function renderTabs() {
   $("tabs").innerHTML = (S.types || []).map(t => {
     let badge = "";
-    if (S.pred && S.settings.wanted.length) {
-      const rows = S.pred.types[t.id].rolls, first = rows.find(isMatch), count = rows.filter(isMatch).length;
-      badge = `<span class="badge" title="matching rolls / first match">${count}${first ? " · #" + first.n : ""}</span>`;
+    if (filtering()) {
+      const p = S.progress && S.progress[t.id], done = S.pred && S.pred.search && S.pred.types[t.id];
+      if (done && done.impossible) badge = `<span class="badge" style="color:var(--dim)">no skills</span>`;
+      else if (done) badge = `<span class="badge" title="matches found / first match">${done.rolls.length}${done.rolls.length ? " · #" + done.rolls[0].n.toLocaleString() : ""}</span>`;
+      else if (p) badge = `<span class="badge" title="matches so far">${p.found}…</span>`;
     }
     return `<span class="tab ${t.id === S.settings.type ? "on" : ""}" data-type="${t.id}">${esc(t.name)}${badge}</span>`;
   }).join("");
 }
 
+const levelText = w => w.level ? ` Lv${w.level}` : " +1";
 function renderWanted() {
-  $("wanted").innerHTML = S.settings.wanted.map(id => {
-    const s = S.skills.find(x => x.id === id) || { name: "#" + id, color: 0 };
-    return `<span class="want">${skillIcon(s.color, s.name)}${esc(s.name)}<button data-unwant="${id}" title="Remove">✕</button></span>`;
+  $("wanted").innerHTML = wanted().map((w, i) => {
+    const s = S.skills.find(x => x.id === w.id) || { name: "#" + w.id, color: 0 };
+    return `<span class="want">${skillIcon(s.color, s.name)}${esc(s.name)}<b style="color:var(--gold)">${levelText(w)}</b><button data-unwant="${i}" title="Remove">✕</button></span>`;
   }).join("");
+  showSearchUi();
 }
 
 function renderTable() {
-  if (!S.pred) { $("table").innerHTML = `<div class="empty">Pick an armor piece on the left.</div>`; return; }
-  let rows = S.pred.types[S.settings.type].rolls;
-  if (S.settings.only_matches && S.settings.wanted.length) rows = rows.filter(isMatch);
-  if (!rows.length) { $("table").innerHTML = `<div class="empty">No roll in range has every wanted skill. Raise "Rolls".</div>`; return; }
-  const wanted = new Set(S.settings.wanted);
+  if (!S.pred || (filtering() && !S.pred.search)) {
+    $("table").innerHTML = `<div class="empty">${S.searching ? "Searching…" : "Pick an armor piece on the left."}</div>`;
+    return;
+  }
+  const tp = S.pred.types[S.settings.type];
+  const rows = tp.rolls;
+  if (!rows.length) {
+    const why = tp.impossible ? "Augment: Stability never adds skills."
+      : `None of the next ${tp.scanned.toLocaleString()} rolls gives every wanted skill.`;
+    $("table").innerHTML = `<div class="empty">${why}</div>`;
+    return;
+  }
+  const ws = new Set(wanted().map(w => w.id));
   $("table").innerHTML = `<table><thead><tr><th>#</th><th>Defense</th><th>Slots</th><th>Resistances</th><th>Skills</th></tr></thead><tbody>` +
-    rows.map(r => `<tr class="${isMatch(r) ? "match" : ""}">
-      <td class="n">${r.n}</td>
+    rows.map(r => `<tr class="${filtering() ? "match" : ""}">
+      <td class="n">${r.n.toLocaleString()}</td>
       <td>${img(r.def < 0 ? "defense_down" : "defense", "Defense", r.def ? "" : "off")} ${signed(r.def)}</td>
       <td class="slots">${r.slots.map(s => slot(s.lv, s.up)).join("")}</td>
       <td>${r.res.map((v, i) => `<span class="res">${img(ELEMENTS[i], ELEMENTS[i], v ? "" : "off")}${signed(v)}</span>`).join("")}</td>
-      <td>${r.skills.map(s => `<span class="sk ${wanted.has(s.id) && s.v > 0 ? "wanted" : ""}">${skillIcon(s.color, s.name)}<span class="nm">${esc(s.name)}</span>${signed(s.v)}</span>`).join("")}</td>
+      <td>${r.skills.map(s => `<span class="sk ${ws.has(s.id) && s.v > 0 ? "wanted" : ""}">${skillIcon(s.color, s.name)}<span class="nm">${esc(s.name)}</span>${signed(s.v)}</span>`).join("")}</td>
     </tr>`).join("") + `</tbody></table>`;
 }
 
+function setWanted(list) {
+  S.settings.wanted = list;
+  api().save_settings({ wanted: list });
+  renderWanted();
+  if (S.settings.armor) selectArmor(S.settings.armor);
+}
+
+/* "Mail of Hellfire 2" -> skill + wanted level on the piece; "Attack Boost" -> any +1. */
 function addWanted() {
-  const q = $("skillq").value.trim().toLowerCase();
-  if (!q) return;
-  const s = S.skills.find(x => x.name.toLowerCase() === q) || S.skills.find(x => x.name.toLowerCase().includes(q));
-  if (!s) { status(`No qurious skill matches "${$("skillq").value}".`); return; }
-  if (!S.settings.wanted.includes(s.id)) S.settings.wanted.push(s.id);
+  const raw = $("skillq").value.trim();
+  if (!raw) return;
+  const m = raw.match(/^(.*?)(?:\s+(?:lv\.?\s*)?(\d+))?$/i);
+  const q = m[1].trim().toLowerCase(), level = m[2] ? parseInt(m[2]) : 0;
+  const s = S.skills.find(x => x.name.toLowerCase() === q) || S.skills.find(x => x.name.toLowerCase().includes(q))
+    || S.skills.find(x => x.name.toLowerCase() === raw.toLowerCase());
+  if (!s) { status(`No skill that qurious crafting can add matches "${raw}".`); return; }
   $("skillq").value = "";
-  api().save_settings({ wanted: S.settings.wanted });
-  renderWanted(); renderTabs(); renderTable();
+  setWanted([...wanted().filter(w => w.id !== s.id), { id: s.id, level }]);
 }
 
 document.addEventListener("click", e => {
@@ -310,17 +377,14 @@ document.addEventListener("click", e => {
     S.settings.type = +el.dataset.type; api().save_settings({ type: S.settings.type });
     renderHead(); renderTabs(); renderTable();
   }
-  else if (el.dataset.unwant) {
-    S.settings.wanted = S.settings.wanted.filter(x => x !== +el.dataset.unwant);
-    api().save_settings({ wanted: S.settings.wanted }); renderWanted(); renderTabs(); renderTable();
-  }
+  else if (el.dataset.unwant !== undefined) setWanted(wanted().filter((_, i) => i !== +el.dataset.unwant));
 });
 $("afilter").addEventListener("input", renderArmors);
 $("hunter").addEventListener("change", loadHunter);
 $("reload").addEventListener("click", loadHunter);
 $("rolls").addEventListener("change", () => {
   api().save_settings({ rolls: parseInt($("rolls").value) || 200 });
-  if (S.settings.armor) selectArmor(S.settings.armor);
+  if (S.settings.armor && !filtering()) selectArmor(S.settings.armor);
 });
 $("lang").addEventListener("change", async () => {
   S.settings.lang = $("lang").value; await api().save_settings({ lang: S.settings.lang });
@@ -329,10 +393,8 @@ $("lang").addEventListener("change", async () => {
   renderWanted(); await loadHunter();
 });
 $("skillq").addEventListener("keydown", e => { if (e.key === "Enter") addWanted(); });
-$("skillq").addEventListener("change", addWanted);
-$("only").addEventListener("change", () => {
-  S.settings.only_matches = $("only").checked; api().save_settings({ only_matches: S.settings.only_matches }); renderTable();
-});
+$("stop").addEventListener("click", () => api().find_cancel());
+$("clear").addEventListener("click", () => setWanted([]));
 $("gamedir").addEventListener("click", async () => { if (await api().choose_game_dir()) location.reload(); });
 window.addEventListener("pywebviewready", boot);
 </script>
