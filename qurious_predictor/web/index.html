@@ -73,6 +73,9 @@ main { flex: 1; display: grid; grid-template-columns: 440px minmax(0, 1fr); gap:
 .and { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
 td.arm { white-space: nowrap; }
 td.arm .opt { color: var(--gold2); font-size: 12px; margin-left: 26px; }
+td.arm .base { display: flex; flex-wrap: wrap; gap: 0 8px; margin: 2px 0 0 26px; font-size: 12px; color: var(--muted); }
+td.arm .base .sk { margin: 0; gap: 3px; }
+td.arm .base .tint { width: 16px; height: 16px; }
 #table.all td.skills { min-width: 0; }
 #table.all .res { margin-right: 0; }
 #table.all td { padding: 4px 5px; }
@@ -111,8 +114,9 @@ table { border-collapse: collapse; width: 100%; }
 th { position: sticky; top: 0; z-index: 1; background: #231c13; color: var(--gold2); font-weight: 600; text-align: left;
   font-size: 12px; text-transform: uppercase; letter-spacing: .06em; padding: 6px 8px; border-bottom: 1px solid var(--line2); }
 td { padding: 4px 8px; border-bottom: 1px solid #2a2319; vertical-align: middle; white-space: nowrap; }
-tr:hover td { background: var(--hover); }
 tr.match td { background: #1f2a17; }
+tbody tr:hover td, tbody tr.match:hover td { background: #4a3c22; }
+tbody tr:hover td:first-child { box-shadow: inset 3px 0 0 var(--gold); }
 tr.match td:first-child { box-shadow: inset 3px 0 0 var(--up); }
 td.n { color: var(--muted); width: 48px; text-align: right; }
 .val { display: inline-block; min-width: 26px; text-align: right; font-variant-numeric: tabular-nums; }
@@ -712,7 +716,8 @@ function renderAllTable() {
         <td class="n">${e.n.toLocaleString()}</td>
         <td class="arm">${mask(PARTS[arm.part], "var(--gold)", PARTS[arm.part])} <span class="nm">${esc(arm.name)}</span>
           <span class="muted"> R${arm.rarity}</span>${arm.count ? ` <span class="own">✓</span>` : ""}
-          <div class="opt">${esc(typeName(e.type))}</div></td>${rowCells(e.row, ws)}</tr>`;
+          <div class="opt">${esc(typeName(e.type))}</div>
+          <div class="base" title="Skills the piece already has">${(arm.skills || []).map(s => `<span class="sk">${skillIcon(s.color, s.name)}${esc(s.name)} ${s.level}</span>`).join("")}</div></td>${rowCells(e.row, ws)}</tr>`;
     }).join("") + `</tbody></table>` +
     (a.results.length > MAX_ALL_ROWS ? `<div class="empty">Showing the closest ${MAX_ALL_ROWS} of ${a.results.length.toLocaleString()} results.</div>` : "");
 }
