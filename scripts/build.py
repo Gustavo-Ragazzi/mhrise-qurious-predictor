@@ -46,7 +46,7 @@ def main():
     shutil.rmtree(WORK, ignore_errors=True)
     launcher = WORK / "launcher.py"
     WORK.mkdir(parents=True, exist_ok=True)
-    launcher.write_text("from qurious_predictor.app import main\n\nmain()\n", encoding="utf-8")
+    launcher.write_text("from qurious_predictor.app import main\n\nif __name__ == '__main__':\n    main()\n", encoding="utf-8")
     web = ROOT / "qurious_predictor" / "web" / "index.html"
     run(py, "-m", "PyInstaller", "--noconfirm", "--clean", "--onefile", "--windowed", "--log-level", "WARN",
         "--name", NAME, "--distpath", DIST, "--workpath", WORK / "work", "--specpath", WORK,

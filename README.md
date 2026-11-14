@@ -1,10 +1,11 @@
 # MH Rise Qurious Predictor
 
 Offline predictor for **Qurious Crafting** of armor (augments) in *Monster Hunter Rise: Sunbreak*
-(PC/Steam). It reads your save, lists every qurious-capable armor piece in your box and shows the
-**next augment results** for each option of the game's menu: **Augment**, **Augment: Stability**,
-**Augment: Skills+** and **Augment: Slots+**. Filters search ahead until they find what you want
-(a skill at a given level, minimum slots, defense, no skill loss, no negative resistance).
+(PC/Steam). It reads your save and shows the **next augment results** of every qurious-capable armor
+piece in the game (crafted or not) for each option of the game's menu: **Augment**,
+**Augment: Stability**, **Augment: Skills+** and **Augment: Slots+**. Filters search ahead until they
+find what you want (skills at a minimum level, with AND/OR, minimum slots, defense, no skill loss, no
+negative resistance), and one search can look through every armor piece at once.
 
 The game does not need to be running and no mod is needed. The save is only read, never written.
 
@@ -24,12 +25,20 @@ data and icons from your install (a few seconds) and caches them in
 
 ## How to use
 
-1. Pick your hunter and an armor piece on the left (filter by name, part or augment cost).
-2. Pick the augment option tab. Roll **#1** is what that option gives on the next augment of this
-   piece, #2 the one after, and so on (200 rolls by default; the value is remembered).
-3. To look for something specific, add filters: the search keeps simulating until it finds up to
-   50 matching rolls per option, and only those are listed.
-4. Each roll shows the defense change, the resulting slots (qurious slots in green), the five
+1. Pick your hunter. The list on the left has every qurious-capable armor piece (master rank),
+   grouped by rarity; filter by name or skill, part and rarity, or switch on **Crafted only**.
+2. **Selected piece**: click a piece and pick the augment option tab. Roll **#1** is what that option
+   gives on the next augment of this piece, #2 the one after, and so on (200 rolls by default; the
+   value is remembered).
+3. To look for something specific, add filters. A skill filter means "at least this level on the piece
+   after the augment". **Add** requires one more skill (AND); **Or** accepts this skill instead of the
+   last one added (for example *Frenzied Bloodlust ≥ Lv1 or Mail of Hellfire ≥ Lv1*). The search runs
+   on every CPU core until it finds up to 50 matching rolls per option; matches appear as they are
+   found.
+4. **Search all listed armor**: with filters set, press **Search** to find, for every piece listed on
+   the left and every augment option, the closest roll that passes them, closest first. Here a wanted
+   skill must be added by the augment itself. Click a result to open that piece.
+5. Each roll shows the defense change, the resulting slots (qurious slots in green), the five
    resistances and the skills gained/lost.
 
 **The sequence is shared.** All armor pieces with the same augment cost (10, 12, … 20) and the same

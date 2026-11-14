@@ -36,7 +36,7 @@ select:focus, input:focus { outline: 1px solid var(--gold); }
 .btn:hover { border-color: var(--gold); }
 .spacer { flex: 1; }
 
-main { flex: 1; display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 10px; padding: 10px; min-height: 0; }
+main { flex: 1; display: grid; grid-template-columns: 440px minmax(0, 1fr); gap: 10px; padding: 10px; min-height: 0; }
 .col { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }
 
 /* armor list */
@@ -48,13 +48,38 @@ main { flex: 1; display: grid; grid-template-columns: 360px minmax(0, 1fr); gap:
   color: var(--muted); }
 .chip.on { border-color: var(--gold); color: var(--gold); background: #2e2517; }
 .list { overflow: auto; flex: 1; }
-.armor { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 8px; padding: 6px 10px;
+.armor { display: grid; grid-template-columns: 28px 1fr auto; align-items: start; gap: 8px; padding: 7px 10px;
   border-bottom: 1px solid #2c251a; cursor: pointer; }
+.armor > .tint { margin-top: 1px; }
 .armor:hover { background: var(--hover); }
 .armor.sel { background: linear-gradient(90deg, #4a3a20, var(--sel)); box-shadow: inset 3px 0 0 var(--gold); }
-.armor .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.armor .sub { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 12px; }
+.armor .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.armor .sub { display: flex; gap: 2px; align-items: center; color: var(--muted); font-size: 12px; margin-top: 1px; }
+.armor .askills { display: flex; flex-wrap: wrap; gap: 1px 10px; font-size: 12.5px; color: var(--text); margin-top: 2px; }
+.armor .askills .sk { margin: 0; gap: 3px; }
+.armor .askills .tint { width: 18px; height: 18px; }
+.armor .askills b { color: var(--gold); font-weight: 600; }
+.armor .own { font-size: 12px; color: var(--up); white-space: nowrap; }
+.group { position: sticky; top: 0; z-index: 1; padding: 4px 10px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--gold); background: linear-gradient(90deg, #3b2f1d, #1d1811); border-bottom: 1px solid var(--line2); }
+.group span { color: var(--muted); text-transform: none; letter-spacing: 0; margin-left: 6px; }
 .cost { font-size: 12px; color: var(--gold2); border: 1px solid var(--line); border-radius: 3px; padding: 0 5px; }
+.rar { font-size: 12px; color: var(--gold); border: 1px solid var(--line2); border-radius: 3px; padding: 0 5px; white-space: nowrap; }
+.modes { display: flex; gap: 4px; padding: 8px 10px 0; border-bottom: 1px solid var(--line2); background: #15110c; }
+.mode { padding: 7px 16px; cursor: pointer; border: 1px solid var(--line); border-bottom: none; border-radius: 5px 5px 0 0;
+  color: var(--muted); background: #18140f; font-weight: 600; letter-spacing: .03em; }
+.mode.on { color: var(--gold); background: linear-gradient(180deg, #4a3b22, #2a2216); border-color: var(--line2); }
+.or { color: var(--gold2); font-size: 12px; font-style: italic; margin: 0 2px; }
+.and { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+td.arm { white-space: nowrap; }
+td.arm .opt { color: var(--gold2); font-size: 12px; margin-left: 26px; }
+#table.all td.skills { min-width: 0; }
+#table.all .res { margin-right: 0; }
+#table.all td { padding: 4px 5px; }
+#table.all td.skills .sk { margin-right: 8px; }
+#table.all .res .val { min-width: 16px; }
+td.arm .nm { font-weight: 600; }
+tr.click { cursor: pointer; }
 
 /* icons */
 .ico { display: inline-block; width: 20px; height: 20px; vertical-align: middle; flex: none;
@@ -99,6 +124,7 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
 .sk { display: inline-flex; align-items: center; gap: 4px; margin-right: 12px; }
 .sk.wanted .nm { color: var(--up); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
 .empty { padding: 40px; text-align: center; color: var(--muted); }
+.muted { color: var(--muted); }
 #status { padding: 4px 14px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); background: #110e0a; }
 .loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #000a;
   color: var(--gold); font-size: 16px; z-index: 5; }
@@ -159,15 +185,20 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
 </header>
 <main>
   <section class="frame col">
-    <h2>Armor in your box</h2>
+    <h2 id="listtitle">Armor</h2>
     <div class="filters">
-      <input id="afilter" type="text" placeholder="Search armor…">
+      <input id="afilter" type="text" placeholder="Search armor or skill…">
       <div class="chips" id="parts"></div>
-      <div class="chips" id="costs"></div>
+      <div class="frow"><div class="chips" id="rarities"></div><span class="spacer"></span>
+        <label class="toggle" title="Only pieces you have crafted"><input type="checkbox" id="ownedonly"><span></span>Crafted only</label></div>
     </div>
     <div class="list" id="armors"></div>
   </section>
   <section class="frame col">
+    <div class="modes" id="modes">
+      <span class="mode" data-mode="piece">Selected piece</span>
+      <span class="mode" data-mode="all">Search all listed armor</span>
+    </div>
     <div class="head" id="head"><span class="muted">Select an armor piece.</span></div>
     <div class="tabs" id="tabs"></div>
     <div class="filterbar">
@@ -176,7 +207,8 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
         <div class="picker" id="skillpick" style="width:290px"></div>
         <span class="flabel">Lv</span>
         <div class="picker" id="levelpick" style="width:78px"></div>
-        <button class="btn gold" id="addskill">Add</button>
+        <button class="btn gold" id="addskill" title="Also require this skill (AND)">Add</button>
+        <button class="btn" id="orskill" title="Accept this skill instead of the last one added (OR)">Or</button>
         <span id="wanted" class="wantlist"></span>
       </div>
       <div class="frow">
@@ -190,6 +222,7 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
         <label class="toggle"><input type="checkbox" id="noneg"><span></span>No negative resistance</label>
         <span class="spacer"></span>
         <span id="progress" class="muted"></span>
+        <button class="btn gold" id="searchall" style="display:none">Search</button>
         <button class="btn" id="stop" style="display:none">Stop</button>
         <button class="btn" id="clear" style="display:none">Clear filters</button>
       </div>
@@ -205,7 +238,7 @@ const ITEM_COLORS = {0:"#ffffff",1:"#ffffff",2:"#aeaeae",3:"#f072b8",4:"#ffff70"
   8:"#2ce095",9:"#a443e0",10:"#486eff",11:"#5aa9ff",12:"#9fccff",13:"#9a7751",14:"#9ac183",15:"#ca0000",16:"#007bca",17:"#a800a8"};
 const PARTS = ["head", "chest", "arms", "waist", "legs"];
 const ELEMENTS = ["fire", "water", "thunder", "ice", "dragon"];
-const S = { icons: {}, settings: {}, armors: [], skills: [], pred: null, part: -1, cost: 0 };
+const S = { icons: {}, settings: {}, armors: [], skills: [], pred: null, all: null, mode: "piece" };
 const $ = id => document.getElementById(id);
 const api = () => window.pywebview.api;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -229,12 +262,16 @@ const signed = v => `<span class="val ${v > 0 ? "pos" : v < 0 ? "neg" : "zero"}"
 const status = t => $("status").textContent = t;
 
 /* ---- filters --------------------------------------------------------------------------------- */
+/* skills = AND of OR groups: [[{id, level}, ...], ...]; level = minimum level on the piece after the augment. */
 const EMPTY_FILTERS = { skills: [], slots: [0, 0, 0], minDef: null, noSkillLoss: false, noNegRes: false };
+const LIST_DEFAULTS = { ownedOnly: false, rarity: 0, part: -1 };
 const F = () => S.settings.filters;
+const L = () => S.settings.list;
 const filtering = () => {
   const f = F();
   return f.skills.length > 0 || f.slots.some(x => x) || f.minDef !== null || f.noSkillLoss || f.noNegRes;
 };
+const groupsOf = skills => (skills || []).map(g => Array.isArray(g) ? g : [g]).filter(g => g.length);
 
 /* Styled dropdown: items [{value, html, text}] ; opts {search, placeholder, onChange} */
 function makePicker(el, opts) {
@@ -295,7 +332,8 @@ function setupFilters() {
   slotPicks = [0, 1, 2].map(i => makePicker($("slot" + i), {
     onChange: v => { const s = [...F().slots]; s[i] = v; setFilters({ slots: s }); }
   }));
-  $("addskill").addEventListener("click", addSkill);
+  $("addskill").addEventListener("click", () => addSkill(false));
+  $("orskill").addEventListener("click", () => addSkill(true));
   let t = null;
   $("mindef").addEventListener("input", () => {
     clearTimeout(t);
@@ -305,22 +343,23 @@ function setupFilters() {
   $("noneg").addEventListener("change", () => setFilters({ noNegRes: $("noneg").checked }));
   $("clear").addEventListener("click", () => setFilters({ ...EMPTY_FILTERS }));
   $("stop").addEventListener("click", () => api().find_cancel());
+  $("searchall").addEventListener("click", startAll);
 }
 
 function updateLevels() {
   const s = S.skills.find(x => x.id === skillPick.value);
   const max = s ? s.max : 1;
-  const a = S.armors.find(x => x.id === S.settings.armor);
+  const a = S.mode === "piece" ? S.armors.find(x => x.id === S.settings.armor) : null;
   const have = s && a ? (a.skills.find(k => k.id === s.id) || { level: 0 }).level : 0;
   // One augment can raise the same skill more than once (seen in game), so every level up to the
   // skill's max is possible; levels far above the piece's own are just rarer.
   const items = [...Array(max).keys()].map(i => {
     const lv = i + 1;
-    const hint = lv <= have ? "on piece" : lv > have + 1 ? "rare" : "";
+    const hint = !a ? "" : lv <= have ? "on piece" : lv > have + 1 ? "rare" : "";
     return { value: lv, text: "Lv" + lv,
-      html: `<span>Lv ${lv}</span>${hint ? `<span class="hint">${hint}</span>` : ""}` };
+      html: `<span>≥ Lv ${lv}</span>${hint ? `<span class="hint">${hint}</span>` : ""}` };
   });
-  levelPick.setItems(items, Math.min(Math.max(1, have + 1), max));
+  levelPick.setItems(items, a ? Math.min(Math.max(1, have + 1), max) : 1);
 }
 
 function syncFilterUi() {
@@ -329,10 +368,12 @@ function syncFilterUi() {
   $("mindef").value = f.minDef === null ? "" : f.minDef;
   $("noloss").checked = !!f.noSkillLoss;
   $("noneg").checked = !!f.noNegRes;
-  $("wanted").innerHTML = f.skills.map((w, i) => {
+  $("orskill").disabled = !f.skills.length;
+  $("orskill").style.opacity = f.skills.length ? 1 : .45;
+  $("wanted").innerHTML = f.skills.map((g, gi) => `<span class="want">${g.map((w, wi) => {
     const s = S.skills.find(x => x.id === w.id) || { name: "#" + w.id, color: 0 };
-    return `<span class="want">${skillIcon(s.color, s.name)}${esc(s.name)}<b style="color:var(--gold);margin-left:4px">Lv${w.level}</b><button data-unwant="${i}" title="Remove">✕</button></span>`;
-  }).join("");
+    return `${wi ? `<span class="or">or</span>` : ""}${skillIcon(s.color, s.name)}${esc(s.name)}<b style="color:var(--gold);margin-left:4px">≥ Lv${w.level}</b><button data-unwant="${gi}:${wi}" title="Remove">✕</button>`;
+  }).join("")}</span>`).join(`<span class="and">and</span>`);
   showSearchUi();
 }
 
@@ -340,13 +381,20 @@ function setFilters(patch) {
   S.settings.filters = { ...F(), ...patch };
   api().save_settings({ filters: S.settings.filters });
   syncFilterUi();
-  if (S.settings.armor) selectArmor(S.settings.armor);
+  filtersChanged();
 }
 
-function addSkill() {
+function addSkill(asOr) {
   if (skillPick.value === null) { status("Choose a skill first."); return; }
-  const level = levelPick.value || 1;
-  setFilters({ skills: [...F().skills.filter(w => w.id !== skillPick.value), { id: skillPick.value, level }] });
+  const w = { id: skillPick.value, level: levelPick.value || 1 };
+  const groups = F().skills.map(g => g.filter(x => x.id !== w.id)).filter(g => g.length);
+  if (asOr && groups.length) groups[groups.length - 1].push(w); else groups.push([w]);
+  setFilters({ skills: groups });
+}
+
+function removeSkill(gi, wi) {
+  const groups = F().skills.map((g, i) => i === gi ? g.filter((_, j) => j !== wi) : g).filter(g => g.length);
+  setFilters({ skills: groups });
 }
 
 /* ---- app ----------------------------------------------------------------------------------------- */
@@ -356,7 +404,11 @@ async function boot() {
   if (r.error) { status(r.error); return; }
   Object.assign(S, { icons: r.icons, settings: r.settings, types: r.types });
   S.settings.filters = { ...EMPTY_FILTERS, ...(S.settings.filters || {}) };
+  S.settings.filters.skills = groupsOf(S.settings.filters.skills);
+  S.settings.list = { ...LIST_DEFAULTS, ...(S.settings.list || {}) };
+  S.mode = S.settings.mode === "all" ? "all" : "piece";
   $("rolls").value = S.settings.rolls;
+  $("ownedonly").checked = !!L().ownedOnly;
   $("lang").innerHTML = r.langs.map(l => `<option ${l === S.settings.lang ? "selected" : ""}>${l}</option>`).join("");
   $("hunter").innerHTML = r.hunters.map(h =>
     `<option value="${h.key}">${esc(h.name)} — HR ${h.hr} / MR ${h.mr} (slot ${h.slot}${h.persona ? ", " + esc(h.persona) : ""})</option>`).join("");
@@ -364,7 +416,7 @@ async function boot() {
   if (!S.types.some(t => t.id === S.settings.type)) S.settings.type = S.types[0].id;
   setupFilters();
   await loadSkills();
-  renderParts(); renderTabs(); syncFilterUi();
+  renderParts(); renderModes(); syncFilterUi();
   if (r.hunters.length) await loadHunter(); else status("No MH Rise save found on this PC.");
 }
 
@@ -376,123 +428,244 @@ async function loadSkills() {
 
 async function loadHunter() {
   status("Reading save…");
+  await stopJob();
   const r = await api().load_hunter($("hunter").value);
   if (r.error) { status(r.error); return; }
   S.armors = r.armors;
-  const costs = [...new Set(S.armors.map(a => a.cost))].sort((a, b) => a - b);
-  $("costs").innerHTML = [0, ...costs].map(c => `<span class="chip ${S.cost === c ? "on" : ""}" data-cost="${c}">${c ? "Cost " + c : "All costs"}</span>`).join("");
-  renderArmors();
-  status(`${S.armors.length} qurious-capable armor pieces. Predictions follow the save as it is now: after augmenting, save in game and press Reload save.`);
+  S.all = null;
+  renderRarities(); renderArmors();
+  const owned = S.armors.filter(a => a.count).length;
+  status(`${S.armors.length} qurious-capable armor pieces in the game, ${owned} crafted. Predictions follow the save as it is now: after augmenting, save in game and press Reload save.`);
+  if (S.mode === "all") return showMode();
   const keep = S.armors.find(a => a.id === S.settings.armor);
-  if (keep) await selectArmor(keep.id); else { S.pred = null; renderHead(); renderTabs(); renderTable(); }
+  if (keep) await selectArmor(keep.id); else { S.pred = null; showMode(); }
+}
+
+function saveList(patch) {
+  S.settings.list = { ...L(), ...patch };
+  api().save_settings({ list: S.settings.list });
 }
 
 function renderParts() {
-  $("parts").innerHTML = `<span class="chip ${S.part < 0 ? "on" : ""}" data-part="-1">All</span>` +
-    PARTS.map((p, i) => `<span class="chip ${S.part === i ? "on" : ""}" data-part="${i}" title="${p}">${mask(p, "var(--gold)", p)}</span>`).join("");
+  $("parts").innerHTML = `<span class="chip ${L().part < 0 ? "on" : ""}" data-part="-1">All</span>` +
+    PARTS.map((p, i) => `<span class="chip ${L().part === i ? "on" : ""}" data-part="${i}" title="${p}">${mask(p, "var(--gold)", p)}</span>`).join("");
+}
+
+function renderRarities() {
+  const rars = [...new Set(S.armors.map(a => a.rarity))].sort((a, b) => b - a);
+  if (L().rarity && !rars.includes(L().rarity)) saveList({ rarity: 0 });
+  $("rarities").innerHTML = [0, ...rars].map(r => `<span class="chip ${L().rarity === r ? "on" : ""}" data-rarity="${r}">${r ? "Rarity " + r : "All"}</span>`).join("");
+}
+
+function listedArmors() {
+  const q = $("afilter").value.trim().toLowerCase(), l = L();
+  return S.armors.filter(a => (l.part < 0 || a.part === l.part) && (!l.rarity || a.rarity === l.rarity)
+    && (!l.ownedOnly || a.count > 0)
+    && (!q || a.name.toLowerCase().includes(q) || a.skills.some(s => s.name.toLowerCase().includes(q))));
 }
 
 function renderArmors() {
-  const q = $("afilter").value.trim().toLowerCase();
-  const list = S.armors.filter(a => (S.part < 0 || a.part === S.part) && (!S.cost || a.cost === S.cost)
-    && (!q || a.name.toLowerCase().includes(q) || a.skills.some(s => s.name.toLowerCase().includes(q))));
-  $("armors").innerHTML = list.map(a => `
-    <div class="armor ${a.id === S.settings.armor ? "sel" : ""}" data-id="${a.id}">
+  const list = listedArmors();
+  $("listtitle").textContent = `Armor (${list.length})`;
+  let html = "", group = null;
+  for (const a of list) {
+    if (a.rarity !== group) {
+      group = a.rarity;
+      const n = list.filter(x => x.rarity === group).length, costs = [...new Set(list.filter(x => x.rarity === group).map(x => x.cost))].sort((x, y) => x - y);
+      html += `<div class="group">Rarity ${group}<span>${n} pieces · augment cost ${costs.join(", ")}</span></div>`;
+    }
+    html += `
+    <div class="armor ${S.mode === "piece" && a.id === S.settings.armor ? "sel" : ""}" data-id="${a.id}">
       ${mask(PARTS[a.part], "var(--gold)", PARTS[a.part])}
       <div style="min-width:0">
         <div class="nm">${esc(a.name)}</div>
-        <div class="sub">${a.slots.map(l => slot(l, false)).join("")}
-          ${a.skills.map(s => skillIcon(s.color, `${s.name} Lv${s.level}`)).join("")}
-          ${a.count > 1 ? `<span>×${a.count}</span>` : ""}</div>
+        <div class="askills">${a.skills.map(s => `<span class="sk">${skillIcon(s.color, s.name)}${esc(s.name)} <b>${s.level}</b></span>`).join("") || `<span class="muted">no skills</span>`}</div>
       </div>
-      <span class="cost" title="Augment cost">${a.cost}</span>
-    </div>`).join("") || `<div class="empty">No armor matches.</div>`;
+      <div style="text-align:right">
+        <div class="sub" style="justify-content:flex-end">${a.slots.map(l => slot(l, false)).join("")}</div>
+        ${a.count ? `<div class="own" title="Crafted">✓ ×${a.count}</div>` : ""}
+      </div>
+    </div>`;
+  }
+  $("armors").innerHTML = html || `<div class="empty">No armor matches.</div>`;
 }
 
-/* Either the next N rolls (no filter) or a search that runs until it finds matches. */
+/* ---- modes ----------------------------------------------------------------------------------------- */
+function renderModes() {
+  document.querySelectorAll(".mode").forEach(m => m.classList.toggle("on", m.dataset.mode === S.mode));
+  $("tabs").style.display = S.mode === "piece" ? "" : "none";
+}
+
+async function setMode(mode) {
+  if (mode === S.mode) return;
+  await stopJob();
+  S.mode = mode; api().save_settings({ mode });
+  renderModes(); renderArmors(); updateLevels();
+  if (mode === "piece" && S.settings.armor && S.armors.some(a => a.id === S.settings.armor)) return selectArmor(S.settings.armor);
+  showMode();
+}
+
+function showMode() {
+  renderModes(); showSearchUi(); renderHead(); renderTabs(); renderTable();
+}
+
+function filtersChanged() {
+  if (S.mode === "piece") { if (S.settings.armor) selectArmor(S.settings.armor); }
+  else { if (S.all) S.all.stale = true; showSearchUi(); renderHead(); }
+}
+
+/* ---- piece mode: either the next N rolls (no filter) or a search that runs until it finds matches ---- */
 async function selectArmor(id) {
   S.settings.armor = id;
   renderArmors();
+  document.querySelector("#armors .armor.sel")?.scrollIntoView({ block: "nearest" });
   updateLevels();
   S.error = null;
   if (filtering()) return startFind();
-  await api().find_cancel();
-  clearInterval(pollTimer);
+  await stopJob();
   status("Simulating…");
   const n = Math.max(1, Math.min(1000, parseInt($("rolls").value) || 200));
   const r = await api().predict(id, n);
   if (r.error) { status(r.error); return; }
-  S.pred = r; S.searching = false;
+  S.pred = r;
   status(`Next ${n} rolls per augment option.`);
-  showSearchUi(); renderHead(); renderTabs(); renderTable();
+  showMode();
 }
 
 let pollTimer = null;
+async function stopJob() {
+  clearInterval(pollTimer); pollTimer = null;
+  S.searching = false; S.job = null;
+  await api().find_cancel();
+}
+
+function startPolling(job) {
+  S.job = job; S.searching = true;
+  clearInterval(pollTimer);
+  pollTimer = setInterval(poll, 350);
+}
+
 async function startFind() {
   if (!S.settings.armor) return;
-  clearInterval(pollTimer);
+  await stopJob();
   const r = await api().find_start(S.settings.armor, F(), 50);
   if (r.error) {
-    S.pred = null; S.searching = false; S.progress = {}; S.error = r.error; status(r.error);
-    showSearchUi(); renderHead(); renderTabs(); renderTable(); return;
+    S.pred = null; S.error = r.error; status(r.error); showMode(); return;
   }
   S.error = null;
-  S.searching = true; S.progress = {}; S.pred = null;
-  status("Searching… every augment option advances together; up to 50 matches each.");
-  showSearchUi(); renderHead(); renderTabs(); renderTable();
-  pollTimer = setInterval(pollFind, 400);
+  const types = {};
+  for (const t of S.types) types[t.id] = { rolls: [], scanned: 0, ended: true, impossible: true };
+  r.streams.forEach(s => Object.assign(types[s.type], { ended: false, impossible: false }));
+  S.pred = { types, search: true, sameCost: "…" };
+  startPolling({ kind: "piece", since: 0, streams: r.streams });
+  status("Searching… every augment option advances together, results appear as they are found (up to 50 each).");
+  showMode();
 }
-async function pollFind() {
-  const r = await api().find_status();
-  S.progress = r.progress || {};
-  if (r.done) {
-    clearInterval(pollTimer);
-    S.searching = false;
-    S.pred = { types: r.types, sameCost: r.sameCost, search: true };
-    const total = Object.values(r.types).reduce((n, t) => n + t.scanned, 0);
-    status(`Search finished: ${total.toLocaleString()} rolls simulated.`);
-    renderHead();
+
+async function startAll() {
+  const ids = listedArmors().map(a => a.id);
+  await stopJob();
+  const r = await api().scan_all_start(ids, F());
+  if (r.error) { S.all = { error: r.error, results: [] }; status(r.error); showMode(); return; }
+  S.all = { results: [], pieces: ids.length, streams: r.streams.length, depth: 0, total: 0, done: false, stale: false };
+  startPolling({ kind: "all", since: 0, streams: r.streams });
+  status(`Searching ${ids.length} pieces × augment options on every CPU core; closest results first.`);
+  showMode();
+}
+
+async function poll() {
+  const job = S.job;
+  if (!job) return;
+  const r = await api().find_status(job.since);
+  if (job !== S.job) return;
+  job.since += r.events.length;
+  if (job.kind === "piece") {
+    for (const e of r.events) S.pred.types[e.type].rolls.push(e.row);
+    for (const [k, st] of Object.entries(r.streams)) {
+      const tp = S.pred.types[job.streams[k].type];
+      tp.scanned = st.scanned; tp.ended = st.ended;
+    }
+    S.pred.total = r.total;
+  } else {
+    for (const e of r.events) S.all.results.push(e);
+    if (r.events.length) S.all.results.sort((a, b) => a.n - b.n);
+    Object.assign(S.all, { depth: r.depth, total: r.total, done: r.done, found: S.all.results.length });
   }
-  showSearchUi(); renderTabs(); renderTable();
+  if (r.done) {
+    clearInterval(pollTimer); pollTimer = null;
+    S.searching = false;
+    status(`Search ${r.cancelled ? "stopped" : "finished"}: ${r.total.toLocaleString()} rolls simulated.`);
+  }
+  showSearchUi(); renderTabs(); renderHead();
+  const empty = job.kind === "piece" ? !S.pred.types[S.settings.type].rolls.length : !S.all.results.length;
+  if (r.events.length || r.done || empty) renderTable();
 }
 
 function showSearchUi() {
   $("stop").style.display = S.searching ? "" : "none";
   $("clear").style.display = filtering() ? "" : "none";
-  $("progress").textContent = S.searching
-    ? "Scanned " + Object.values(S.progress || {}).reduce((n, p) => n + p.scanned, 0).toLocaleString() + " rolls…" : "";
+  $("searchall").style.display = S.mode === "all" ? "" : "none";
+  $("searchall").textContent = S.all && !S.all.stale && !S.searching && S.all.results ? "Search again" : "Search";
+  let p = "";
+  if (S.searching && S.job && S.job.kind === "piece") p = `Scanned ${(S.pred.total || 0).toLocaleString()} rolls…`;
+  if (S.searching && S.job && S.job.kind === "all") p = !S.all.total ? "Starting search on every CPU core…" : `Every piece checked to roll #${S.all.depth.toLocaleString()} · ${S.all.total.toLocaleString()} rolls`;
+  $("progress").textContent = p;
 }
 
 function renderHead() {
+  if (S.mode === "all") {
+    const n = listedArmors().length, a = S.all;
+    let note = `Finds, for every armor piece listed on the left and every augment option, the closest roll that passes the
+      filters, using all CPU cores. Wanted skills must be added by the augment itself (pieces that already have
+      them are not listed at roll #1). Roll #n means n−1 augments of that same piece and option first (pieces with the same
+      augment cost share the sequence).`;
+    if (a && a.stale) note += ` <b style="color:var(--gold)">Filters or list changed: press Search again.</b>`;
+    else if (a && a.done && !a.error) note += ` Every piece without a result was checked up to roll #${a.depth.toLocaleString()}.`;
+    $("head").innerHTML = `<span class="big">All listed armor</span><span class="rar">${n} pieces</span>
+      ${L().ownedOnly ? `<span class="rar">crafted only</span>` : ""}${L().rarity ? `<span class="rar">Rarity ${L().rarity}</span>` : ""}
+      <div class="note">${note}</div>`;
+    return;
+  }
   const a = S.armors.find(x => x.id === S.settings.armor);
   if (!a) { $("head").innerHTML = `<span class="muted">Select an armor piece.</span>`; return; }
   const t = S.settings.type, tp = S.types.find(x => x.id === t);
-  const seed = S.pred && S.pred.types[t] ? S.pred.types[t].seed : "…";
-  const same = S.pred ? S.pred.sameCost : "…";
+  const seed = S.pred && S.pred.types[t] && S.pred.types[t].seed !== undefined ? S.pred.types[t].seed : "";
+  const same = S.armors.filter(x => x.count && x.cost === a.cost).length;
   $("head").innerHTML = `
     ${mask(PARTS[a.part], "var(--gold)", PARTS[a.part])}<span class="big">${esc(a.name)}</span>
     <span>${a.slots.map(l => slot(l, false)).join("")}</span>
     <span>${a.skills.map(s => `<span class="sk">${skillIcon(s.color, s.name)}<span>${esc(s.name)} Lv${s.level}</span></span>`).join("")}</span>
-    <span class="cost">Cost ${a.cost}</span>
-    <div class="note">Roll #1 is the next "${esc(tp.name)}" on this piece. This sequence (generator ${seed}) is shared by every
-      armor piece with cost ${a.cost} and the same augment option — ${same} in your box. Augmenting any of them
+    <span class="rar">Rarity ${a.rarity}</span><span class="cost">Cost ${a.cost}</span>
+    ${a.count ? `<span class="own">✓ crafted ×${a.count}</span>` : `<span class="muted">not crafted yet</span>`}
+    <div class="note">Roll #1 is the next "${esc(tp.name)}" on this piece. This sequence${seed !== "" ? ` (generator ${seed})` : ""} is shared by every
+      armor piece with cost ${a.cost} and the same augment option (${same} crafted in your box). Augmenting any of them
       moves it forward, so reload the save after each augment. Other options and costs are independent.</div>`;
 }
 
 function renderTabs() {
+  if (S.mode !== "piece") { $("tabs").innerHTML = ""; return; }
   $("tabs").innerHTML = (S.types || []).map(t => {
     let badge = "";
-    if (filtering()) {
-      const p = S.progress && S.progress[t.id], done = S.pred && S.pred.search && S.pred.types[t.id];
-      if (done && done.impossible) badge = `<span class="badge" style="color:var(--dim)">no skills</span>`;
-      else if (done) badge = `<span class="badge" title="matches found / first match">${done.rolls.length}${done.rolls.length ? " · #" + done.rolls[0].n.toLocaleString() : ""}</span>`;
-      else if (p) badge = `<span class="badge" title="matches so far">${p.found}…</span>`;
+    const tp = S.pred && S.pred.search && S.pred.types[t.id];
+    if (filtering() && tp) {
+      if (tp.impossible) badge = `<span class="badge" style="color:var(--dim)">never</span>`;
+      else badge = `<span class="badge" title="matches found / first match">${tp.rolls.length}${tp.ended ? "" : "…"}${tp.rolls.length ? " · #" + tp.rolls[0].n.toLocaleString() : ""}</span>`;
     }
     return `<span class="tab ${t.id === S.settings.type ? "on" : ""}" data-type="${t.id}">${esc(t.name)}${badge}</span>`;
   }).join("");
 }
 
+const rowCells = (r, ws) => `
+  <td>${img(r.def < 0 ? "defense_down" : "defense", "Defense", r.def ? "" : "off")} ${signed(r.def)}</td>
+  <td class="slots">${r.slots.map(s => slot(s.lv, s.up)).join("")}</td>
+  <td>${r.res.map((v, i) => `<span class="res">${img(ELEMENTS[i], ELEMENTS[i], v ? "" : "off")}${signed(v)}</span>`).join("")}</td>
+  <td class="skills">${r.skills.map(s => `<span class="sk ${ws.has(s.id) && s.v > 0 ? "wanted" : ""}">${skillIcon(s.color, s.name)}<span class="nm">${esc(s.name)}</span>${signed(s.v)}</span>`).join("")}</td>`;
+const wantedIds = () => new Set(F().skills.flat().map(w => w.id));
+const MAX_ALL_ROWS = 400;
+
 function renderTable() {
+  $("table").classList.remove("all");
+  if (S.mode === "all") return renderAllTable();
   if (S.error && filtering()) {
     $("table").innerHTML = `<div class="empty" style="color:var(--down)">${esc(S.error)}</div>`;
     return;
@@ -504,44 +677,75 @@ function renderTable() {
   const tp = S.pred.types[S.settings.type];
   const rows = tp.rolls;
   if (!rows.length) {
-    const why = tp.impossible ? "Augment: Stability never adds skills."
+    const why = tp.impossible ? `"${S.types.find(x => x.id === S.settings.type).name}" can never pass these filters on this piece${S.settings.type === 3 ? " (it never adds skills)" : ""}.`
+      : !tp.ended ? `Searching… ${tp.scanned.toLocaleString()} rolls checked, no match yet.`
       : `None of the next ${tp.scanned.toLocaleString()} rolls passes the filters.`;
     $("table").innerHTML = `<div class="empty">${why}</div>`;
     return;
   }
-  const ws = new Set(F().skills.map(w => w.id));
+  const ws = wantedIds();
   $("table").innerHTML = `<table><thead><tr><th>#</th><th>Defense</th><th>Slots</th><th>Resistances</th><th>Skills</th></tr></thead><tbody>` +
-    rows.map(r => `<tr class="${filtering() ? "match" : ""}">
-      <td class="n">${r.n.toLocaleString()}</td>
-      <td>${img(r.def < 0 ? "defense_down" : "defense", "Defense", r.def ? "" : "off")} ${signed(r.def)}</td>
-      <td class="slots">${r.slots.map(s => slot(s.lv, s.up)).join("")}</td>
-      <td>${r.res.map((v, i) => `<span class="res">${img(ELEMENTS[i], ELEMENTS[i], v ? "" : "off")}${signed(v)}</span>`).join("")}</td>
-      <td class="skills">${r.skills.map(s => `<span class="sk ${ws.has(s.id) && s.v > 0 ? "wanted" : ""}">${skillIcon(s.color, s.name)}<span class="nm">${esc(s.name)}</span>${signed(s.v)}</span>`).join("")}</td>
-    </tr>`).join("") + `</tbody></table>`;
+    rows.map(r => `<tr class="${filtering() ? "match" : ""}"><td class="n">${r.n.toLocaleString()}</td>${rowCells(r, ws)}</tr>`).join("")
+    + `</tbody></table>`;
+}
+
+function renderAllTable() {
+  const a = S.all;
+  $("table").classList.add("all");
+  if (!a) {
+    $("table").innerHTML = `<div class="empty">${filtering() ? "Press <b>Search</b> to look through every armor piece listed on the left."
+      : "Add a filter above (for example a skill), then press <b>Search</b>."}</div>`;
+    return;
+  }
+  if (a.error) { $("table").innerHTML = `<div class="empty" style="color:var(--down)">${esc(a.error)}</div>`; return; }
+  if (!a.results.length) {
+    $("table").innerHTML = `<div class="empty">${a.done ? "No piece reached a match." : "Searching…"}</div>`;
+    return;
+  }
+  const ws = wantedIds(), byId = Object.fromEntries(S.armors.map(x => [x.id, x]));
+  const typeName = id => S.types.find(t => t.id === id).name;
+  const rows = a.results.slice(0, MAX_ALL_ROWS);
+  $("table").innerHTML = `<table><thead><tr><th>#</th><th>Armor · option</th><th>Defense</th><th>Slots</th><th>Resistances</th><th>Skills</th></tr></thead><tbody>` +
+    rows.map(e => {
+      const arm = byId[e.armor] || { name: e.armor, part: 0, rarity: "?" };
+      return `<tr class="match click" data-goto="${e.armor}:${e.type}" title="Open this piece">
+        <td class="n">${e.n.toLocaleString()}</td>
+        <td class="arm">${mask(PARTS[arm.part], "var(--gold)", PARTS[arm.part])} <span class="nm">${esc(arm.name)}</span>
+          <span class="muted"> R${arm.rarity}</span>${arm.count ? ` <span class="own">✓</span>` : ""}
+          <div class="opt">${esc(typeName(e.type))}</div></td>${rowCells(e.row, ws)}</tr>`;
+    }).join("") + `</tbody></table>` +
+    (a.results.length > MAX_ALL_ROWS ? `<div class="empty">Showing the closest ${MAX_ALL_ROWS} of ${a.results.length.toLocaleString()} results.</div>` : "");
 }
 
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-id],[data-part],[data-cost],[data-type],[data-unwant]");
+  const el = e.target.closest("[data-id],[data-part],[data-rarity],[data-type],[data-unwant],[data-mode],[data-goto]");
   if (!el) return;
-  if (el.dataset.id) selectArmor(el.dataset.id);
-  else if (el.dataset.part !== undefined) { S.part = +el.dataset.part; renderParts(); renderArmors(); }
-  else if (el.dataset.cost !== undefined) {
-    S.cost = +el.dataset.cost;
-    document.querySelectorAll("#costs .chip").forEach(c => c.classList.toggle("on", +c.dataset.cost === S.cost));
-    renderArmors();
+  if (el.dataset.id) { if (S.mode !== "piece") { S.settings.armor = el.dataset.id; setMode("piece"); } else selectArmor(el.dataset.id); }
+  else if (el.dataset.part !== undefined) { saveList({ part: +el.dataset.part }); renderParts(); listChanged(); }
+  else if (el.dataset.rarity !== undefined) { saveList({ rarity: +el.dataset.rarity }); renderRarities(); listChanged(); }
+  else if (el.dataset.mode) setMode(el.dataset.mode);
+  else if (el.dataset.goto) {
+    const [id, t] = el.dataset.goto.split(":");
+    S.settings.type = +t; api().save_settings({ type: S.settings.type });
+    S.settings.armor = id; setMode("piece");
   }
   else if (el.dataset.type !== undefined) {
     S.settings.type = +el.dataset.type; api().save_settings({ type: S.settings.type });
     renderHead(); renderTabs(); renderTable();
   }
-  else if (el.dataset.unwant !== undefined) setFilters({ skills: F().skills.filter((_, i) => i !== +el.dataset.unwant) });
+  else if (el.dataset.unwant !== undefined) { const [g, w] = el.dataset.unwant.split(":").map(Number); removeSkill(g, w); }
 });
-$("afilter").addEventListener("input", renderArmors);
+function listChanged() {
+  renderArmors();
+  if (S.mode === "all") { if (S.all) S.all.stale = true; renderHead(); showSearchUi(); }
+}
+$("afilter").addEventListener("input", listChanged);
+$("ownedonly").addEventListener("change", () => { saveList({ ownedOnly: $("ownedonly").checked }); listChanged(); });
 $("hunter").addEventListener("change", loadHunter);
 $("reload").addEventListener("click", loadHunter);
 $("rolls").addEventListener("change", () => {
   api().save_settings({ rolls: parseInt($("rolls").value) || 200 });
-  if (S.settings.armor && !filtering()) selectArmor(S.settings.armor);
+  if (S.mode === "piece" && S.settings.armor && !filtering()) selectArmor(S.settings.armor);
 });
 $("lang").addEventListener("change", async () => {
   S.settings.lang = $("lang").value; await api().save_settings({ lang: S.settings.lang });

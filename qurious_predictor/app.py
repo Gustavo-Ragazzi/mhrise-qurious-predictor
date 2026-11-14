@@ -9,14 +9,16 @@ from pathlib import Path
 from mhrise_exporter import core, steam
 from mhrise_exporter.export import _expand_slots, apply_slot_bonus
 
-from . import engine, gamedata, icons, savedata
+from . import engine, gamedata, icons, savedata, search
 from .predict import next_rolls
 
 TITLE = "MH Rise Qurious Predictor"
 WEB = Path(__file__).with_name("web") / "index.html"
 EMPTY_FILTERS = {"skills": [], "slots": [0, 0, 0], "minDef": None, "noSkillLoss": False, "noNegRes": False}
+LIST_DEFAULTS = {"ownedOnly": False, "rarity": 0, "part": -1}
 DEFAULT_SETTINGS = {"rolls": 200, "lang": "en", "hunter": None, "armor": None, "type": engine.TYPE_AUGMENT,
-                    "filters": EMPTY_FILTERS, "game_dir": None}
+                    "filters": EMPTY_FILTERS, "game_dir": None, "list": LIST_DEFAULTS,
+                    "mode": "piece"}
 
 
 def _merge_skills(pairs):
@@ -25,11 +27,6 @@ def _merge_skills(pairs):
     for sid, v in pairs:
         total[sid] = total.get(sid, 0) + v
     return [(sid, v) for sid, v in total.items() if v]
-
-
-def filters_active(f: dict) -> bool:
-    return bool(f.get("skills") or any(f.get("slots") or []) or f.get("minDef") is not None
-                or f.get("noSkillLoss") or f.get("noNegRes"))
 
 
 class Api:
@@ -123,17 +120,29 @@ class Api:
                 return {"error": f"Cannot read the save: {e}"}
             self.save_settings({"hunter": key})
             self.owned = {str(o.armor_id): o for o in owned if str(o.armor_id) in self.data["armors"]}
-            armors = []
-            for aid, o in self.owned.items():
-                a = self.data["armors"][aid]
-                armors.append({
-                    "id": aid, "name": self._name(a["names"]), "part": a["part"], "rare": a["rare"],
-                    "cost": a["cost"], "count": o.count, "augmented": o.augmented,
-                    "slots": (_expand_slots(a["slots"]) + [0, 0, 0])[:3],
-                    "skills": [dict(self._skill(s), level=lv) for s, lv in a["skills"]],
-                })
-            armors.sort(key=lambda x: (x["part"], x["cost"], x["name"]))
-            return {"armors": armors}
+            return {"armors": self._armor_list()}
+
+    def _armor_list(self) -> list[dict]:
+        """Every qurious-capable piece in the game (G rank). Pieces that exist twice with the same
+        name, stats and augment table (variants) are listed once, preferring the owned one."""
+        picked = {}
+        for aid, a in self.data["armors"].items():
+            key = (a["names"].get("en"), a["part"], a["cost"], a["table"], str(a["skills"]), str(a["slots"]))
+            cur = picked.get(key)
+            if cur is None or (aid in self.owned and cur not in self.owned):
+                picked[key] = aid
+        armors = []
+        for aid in picked.values():
+            a, o = self.data["armors"][aid], self.owned.get(aid)
+            armors.append({
+                "id": aid, "name": self._name(a["names"]), "part": a["part"], "rarity": a["rare"] + 1,
+                "series": int(aid) & 0xFFFF, "cost": a["cost"], "count": o.count if o else 0,
+                "augmented": o.augmented if o else 0,
+                "slots": (_expand_slots(a["slots"]) + [0, 0, 0])[:3],
+                "skills": [dict(self._skill(s), level=lv) for s, lv in a["skills"]],
+            })
+        armors.sort(key=lambda x: (-x["rarity"], x["series"], x["part"]))
+        return armors
 
     def predict(self, armor_id: str, count: int):
         """Next ``count`` rolls of every augment type for one armor piece."""
@@ -149,108 +158,69 @@ class Api:
                 out[t] = {"seed": seed, "rolls": [self._row(a, r.n, r.summary) for r in rolls]}
             return {"types": out, "sameCost": self._same_cost(a)}
 
-    # ---- search (background thread, polled by the page) ---------------------------------------------
+    # ---- search (worker processes, polled by the page) -----------------------------------------------
 
-    def find_start(self, armor_id: str, filters: dict, max_matches: int = 50, limit: int = 2_000_000):
-        """Scan every augment option until ``max_matches`` rolls pass ``filters``.
-
-        filters = {"skills": [{"id", "level"}]  (level = minimum level on the piece after the augment),
-                   "slots": [lv, lv, lv]          (minimum final slot levels, 0 = any),
-                   "minDef": int | None, "noSkillLoss": bool, "noNegRes": bool}
-        """
-        self.find_cancel()
-        a = self.data["armors"].get(str(armor_id)) if self.data else None
-        if not a or not self.generators:
-            return {"error": "Select a hunter and an armor piece."}
-        base_lv = {s: lv for s, lv in a["skills"]}
+    def _skill_problems(self, armors: list[dict], filters: dict) -> list[str]:
+        """Filters no piece can ever meet (level above the skill's max, or a skill qurious cannot add)."""
         problems = []
-        for w in filters.get("skills", []):
-            sid, level = int(w["id"]), max(1, int(w.get("level") or 1))
-            name, max_lv = self._skill(sid)["name"], self.tables.max_levels.get(sid, 99) + 1
-            if level > max_lv:
-                problems.append(f"{name} only goes up to Lv{max_lv}.")
-            elif level > base_lv.get(sid, 0) and not any(s == sid for s, _ in self.tables.skill_costs):
-                problems.append(f"Qurious crafting cannot add {name}.")
+        addable = {s for s, _ in self.tables.skill_costs}
+        for g in search.skill_groups(filters):
+            for sid, level in g:
+                name, max_lv = self._skill(sid)["name"], self.tables.max_levels.get(sid, 99) + 1
+                if level > max_lv:
+                    problems.append(f"{name} only goes up to Lv{max_lv}.")
+                elif sid not in addable and not any(lv >= level for a in armors for s, lv in a["skills"] if s == sid):
+                    problems.append(f"Qurious crafting cannot add {name}.")
+        return problems
+
+    def _start(self, armor_ids: list[str], filters: dict, max_matches: int, limit: int):
+        self.find_cancel()
+        if not self.data or not self.generators:
+            return {"error": "Select a hunter first."}
+        armors = [self.data["armors"][aid] for aid in armor_ids if aid in self.data["armors"]]
+        if not armors:
+            return {"error": "No armor piece to search."}
+        if not search.active(filters):
+            return {"error": "Add at least one filter to search."}
+        problems = self._skill_problems(armors, filters)
         if problems:
             return {"error": " ".join(problems)}
-        job = {"armor": str(armor_id), "progress": {}, "types": {}, "done": False, "cancel": False}
-        self._job = job
+        add_tables = search.adding_tables(self.tables)
+        streams = [(aid, t) for aid in armor_ids if aid in self.data["armors"]
+                   for t in search.reachable(self.data["armors"][aid], filters, self.tables, add_tables)]
+        if not streams:
+            if len(armors) == 1:
+                never_adds = armors[0]["table"] not in add_tables
+                return {"error": "Qurious crafting never adds skills to this piece." if never_adds
+                        else "No augment option can ever pass these skill filters on this piece."}
+            return {"error": "No listed armor piece can ever pass these filters."}
+        self._job = search.Search(self.data, self.generators, streams, filters, max_matches, limit,
+                                  lambda aid, s, n: self._row(self.data["armors"][aid], n, s))
+        return {"started": True, "streams": [{"armor": aid, "type": t} for aid, t in streams]}
 
-        def run():
-            try:
-                job["types"] = self._find(a, filters, max_matches, limit, job)
-            finally:
-                job["done"] = True
-        threading.Thread(target=run, daemon=True).start()
-        return {"started": True}
+    def find_start(self, armor_id: str, filters: dict, max_matches: int = 50, limit: int = 5_000_000):
+        """Every augment option of one piece, until ``max_matches`` rolls per option pass ``filters``."""
+        r = self._start([str(armor_id)], filters, max_matches, limit)
+        if "started" in r:
+            self.save_settings({"armor": str(armor_id)})
+        return r
 
-    def find_status(self):
+    def scan_all_start(self, armor_ids: list, filters: dict, limit: int = 5_000_000):
+        """First matching roll of every augment option on every listed piece (closest first)."""
+        # Pieces that already have the skill would all match at roll #1: only augments that add it count.
+        return self._start([str(a) for a in armor_ids], {**filters, "gainOnly": True}, 1, limit)
+
+    def find_status(self, since: int = 0):
         job = getattr(self, "_job", None)
         if not job:
-            return {"done": True, "types": {}}
-        return {"done": job["done"], "progress": dict(job["progress"]), "types": job["types"] if job["done"] else {},
-                "sameCost": self._same_cost(self.data["armors"][job["armor"]])}
+            return {"done": True, "events": [], "total": 0, "depth": 0, "streams": {}}
+        return job.snapshot(int(since))
 
     def find_cancel(self):
         job = getattr(self, "_job", None)
-        if job and not job["done"]:
-            job["cancel"] = True
+        if job and not job.done:
+            job.cancel()
         return True
-
-    def _matcher(self, a: dict, f: dict):
-        base_lv = {s: lv for s, lv in a["skills"]}
-        goals = [(int(w["id"]), max(1, int(w.get("level") or 1))) for w in f.get("skills", [])]
-        min_slots = sorted((int(x) for x in (f.get("slots") or [0, 0, 0])), reverse=True)
-        base_slots = _expand_slots(a["slots"])
-        min_def = f.get("minDef")
-        no_loss, no_neg = f.get("noSkillLoss"), f.get("noNegRes")
-
-        def ok(s) -> bool:
-            delta = {}
-            for sid, v in s.skills:
-                delta[sid] = delta.get(sid, 0) + v
-            for sid, level in goals:
-                if base_lv.get(sid, 0) + delta.get(sid, 0) < level:
-                    return False
-            if no_loss and any(v < 0 for v in delta.values()):
-                return False
-            if no_neg and any(v < 0 for v in s.resistances.values()):
-                return False
-            if min_def is not None and s.defense < int(min_def):
-                return False
-            if any(min_slots):
-                final = (apply_slot_bonus(base_slots, s.slots) + [0, 0, 0])[:3]
-                if any(have < need for have, need in zip(final, min_slots)):
-                    return False
-            return True
-        return ok
-
-    def _find(self, a: dict, f: dict, max_matches: int, limit: int, job: dict) -> dict:
-        matches = self._matcher(a, f)
-        base = {s: lv for s, lv in a["skills"]}
-        need_skill = any(int(w.get("level") or 1) > base.get(int(w["id"]), 0) for w in f.get("skills", []))
-        skills = [tuple(x) for x in a["skills"]]
-        state = {}
-        for t in engine.TYPE_NAMES:
-            seed = engine.seed_index(a["cost"], t)
-            state[t] = {"seed": seed, "rng": self.generators[seed].copy(), "rolls": [], "scanned": 0,
-                        "impossible": t == engine.TYPE_STABILITY and need_skill}  # Stability adds no skills
-        active = [t for t in state if not state[t]["impossible"]]
-        while active and not job["cancel"]:
-            for t in list(active):  # round-robin so every tab advances together
-                st = state[t]
-                for _ in range(1000):
-                    st["scanned"] += 1
-                    s = engine.summarize(engine.create_result(st["rng"], self.tables, a["table"], a["cost"],
-                                                              skills, t))
-                    if matches(s):
-                        st["rolls"].append(self._row(a, st["scanned"], s))
-                    if len(st["rolls"]) >= max_matches or st["scanned"] >= limit:
-                        active.remove(t)
-                        break
-                job["progress"][t] = {"scanned": st["scanned"], "found": len(st["rolls"])}
-        return {t: {"seed": st["seed"], "rolls": st["rolls"], "scanned": st["scanned"],
-                    "impossible": st["impossible"], "cancelled": job["cancel"]} for t, st in state.items()}
 
     def _same_cost(self, a: dict) -> int:
         return sum(1 for aid in self.owned if self.data["armors"][aid]["cost"] == a["cost"])
@@ -270,6 +240,9 @@ class Api:
 
 
 def main():
+    import multiprocessing
+
+    multiprocessing.freeze_support()  # search workers in the frozen exe
     import webview
 
     api = Api()
