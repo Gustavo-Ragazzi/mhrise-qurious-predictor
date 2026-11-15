@@ -98,6 +98,9 @@ td.arm .opt { color: var(--gold2); font-size: 12px; margin-left: 26px; }
 td.arm .base { display: flex; flex-wrap: wrap; gap: 0 8px; margin: 2px 0 0 26px; font-size: 12px; color: var(--muted); }
 td.arm .base .sk { margin: 0; gap: 3px; }
 td.arm .base .tint { width: 16px; height: 16px; }
+td.arm .base .bslots { display: inline-flex; align-items: center; }
+td.arm .base .bslots .tint { width: 18px; height: 18px; }
+td.arm .base .bslots .slot-empty { width: 12px; height: 12px; margin: 3px; }
 #table.all td.skills { min-width: 0; }
 #table.all .res { margin-right: 0; }
 #table.all td { padding: 4px 5px; }
@@ -818,7 +821,7 @@ function renderAllTable() {
         <td class="arm">${mask(PARTS[arm.part], "var(--gold)", PARTS[arm.part])} <span class="nm">${esc(arm.name)}</span>
           <span class="muted"> R${arm.rarity}</span>${arm.count ? ` <span class="own">✓</span>` : ""}
           <div class="opt">${esc(typeName(e.type))}</div>
-          <div class="base" title="Skills the piece already has">${(arm.skills || []).map(s => `<span class="sk">${skillIcon(s.color, s.name)}${esc(s.name)} ${s.level}</span>`).join("")}</div></td>${rowCells(e.row, ws)}</tr>`;
+          <div class="base" title="Slots and skills the piece already has"><span class="bslots">${(arm.slots || []).map(l => slot(l, false)).join("")}</span>${(arm.skills || []).map(s => `<span class="sk">${skillIcon(s.color, s.name)}${esc(s.name)} ${s.level}</span>`).join("")}</div></td>${rowCells(e.row, ws)}</tr>`;
     }).join("") + `</tbody></table>` +
     (a.results.length > MAX_ALL_ROWS ? `<div class="empty">Showing the closest ${MAX_ALL_ROWS} of ${a.results.length.toLocaleString()} results.</div>` : "");
 }
@@ -1064,7 +1067,7 @@ function renderRankTable() {
         <td class="arm">${mask(PARTS[arm.part], "var(--gold)", PARTS[arm.part])} <span class="nm">${esc(arm.name)}</span>
           <span class="muted"> R${arm.rarity}</span>${arm.count ? ` <span class="own">✓</span>` : ""}
           <div class="opt">${esc(typeName(e.type))}</div>
-          <div class="base" title="Skills the piece already has">${(arm.skills || []).map(s => `<span class="sk">${skillIcon(s.color, s.name)}${esc(s.name)} ${s.level}</span>`).join("")}</div></td>
+          <div class="base" title="Slots and skills the piece already has"><span class="bslots">${(arm.slots || []).map(l => slot(l, false)).join("")}</span>${(arm.skills || []).map(s => `<span class="sk">${skillIcon(s.color, s.name)}${esc(s.name)} ${s.level}</span>`).join("")}</div></td>
         <td class="n">${e.n.toLocaleString()}</td>
         <td>${img(e.row.def < 0 ? "defense_down" : "defense", "Defense", e.row.def ? "" : "off")} ${signed(e.row.def)}</td>
         <td class="slots">${e.row.slots.map(x => slot(x.lv, x.up)).join("")}</td>
