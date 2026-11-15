@@ -18,7 +18,8 @@ LIST_DEFAULTS = {"ownedOnly": False, "rarity": 0, "part": -1}
 DEFAULT_SETTINGS = {"rolls": 200, "lang": "en", "hunter": None, "armor": None, "type": engine.TYPE_AUGMENT,
                     "filters": EMPTY_FILTERS, "rankFilters": EMPTY_FILTERS, "game_dir": None, "list": LIST_DEFAULTS,
                     "mode": "piece", "presets": [], "preset": "builtin:all", "rankBy": "score",
-                    "rankDepth": 200}
+                    "rankDepth": 200, "rankTypes": None, "rankMinScore": None,
+                    "rankSort": {"key": "rank", "dir": 1}}
 
 
 def _merge_skills(pairs):
@@ -239,10 +240,11 @@ class Api:
             return {"error": "No preset found in the text. Paste a preset exported by this app."}
         return {"preset": preset, "unknown": unknown}
 
-    def rank_start(self, armor_ids: list, preset: dict, depth: int = 200, filters: dict | None = None):
+    def rank_start(self, armor_ids: list, preset: dict, depth: int = 200, filters: dict | None = None,
+                   types: list | None = None):
         """Score the next ``depth`` rolls of every augment option on every listed piece; report the best
         roll of each piece and option (updated while the search runs). With ``filters`` (same format as
-        ``find_start``), only the rolls that pass them are ranked."""
+        ``find_start``), only the rolls that pass them are ranked; ``types`` limits the augment options."""
         self.find_cancel()
         if not self.data or not self.generators:
             return {"error": "Select a hunter first."}
@@ -254,17 +256,21 @@ class Api:
             return {"error": "Every weight of this preset is 0: give some skills a weight first."}
         filters = filters or {}
         depth = max(1, min(100_000, int(depth)))
+        wanted = [t for t in engine.TYPE_NAMES if types is None or t in {int(x) for x in types}]
+        if not wanted:
+            return {"error": "Pick at least one augment option."}
         if search.active(filters):
             problems = self._skill_problems([self.data["armors"][a] for a in ids], filters)
             if problems:
                 return {"error": " ".join(problems)}
             add_tables = search.adding_tables(self.tables)
             streams = [(aid, t) for aid in ids
-                       for t in search.reachable(self.data["armors"][aid], filters, self.tables, add_tables)]
+                       for t in search.reachable(self.data["armors"][aid], filters, self.tables, add_tables)
+                       if t in wanted]
             if not streams:
                 return {"error": "No listed armor piece can ever pass these filters."}
         else:
-            streams = [(aid, t) for aid in ids for t in engine.TYPE_NAMES]
+            streams = [(aid, t) for aid in ids for t in wanted]
         self._job = search.start(self.data, self.generators, streams, filters, depth + 1, depth,
                                  lambda aid, s, n: self._row(self.data["armors"][aid], n, s),
                                  rank={"preset": preset})

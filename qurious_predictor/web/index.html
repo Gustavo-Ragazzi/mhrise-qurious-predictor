@@ -264,9 +264,15 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
         <label class="toggle" title="Only pieces you have crafted"><input type="checkbox" id="rownedonly"><span></span>Crafted only</label>
       </div>
       <div class="frow">
+        <span class="flabel">Options</span>
+        <div class="chips" id="rtypes"></div>
+        <span class="flabel">Min score</span>
+        <input id="rminscore" type="number" step="1" placeholder="any" style="width:84px" title="Hide results with a lower score">
+      </div>
+      <div class="frow">
         <span class="flabel">Rolls per option</span>
         <input id="rankdepth" type="number" min="1" max="100000" step="50" style="width:92px">
-        <span class="flabel">Sort by</span>
+        <span class="flabel">Rank by</span>
         <div class="picker" id="rankby" style="width:250px"></div>
         <span class="spacer"></span>
         <span id="rprogress" class="muted"></span>
@@ -709,7 +715,7 @@ function showSearchUi() {
   $("searchall").textContent = S.all && !S.all.stale && !S.searching && S.all.results ? "Search again" : "Search";
   let p = "";
   if (S.searching && S.job && S.job.kind === "piece") p = `Scanned ${(S.pred.total || 0).toLocaleString()} rolls…`;
-  if (S.searching && S.job && S.job.kind === "all") p = !S.all.total ? "Starting search on every CPU core…" : `Every piece checked to roll #${S.all.depth.toLocaleString()} · ${S.all.total.toLocaleString()} rolls`;
+  if (S.searching && S.job && S.job.kind === "all") p = !S.all.total ? "Starting search on every CPU core…" : `Every piece checked up to ${S.all.depth.toLocaleString()} rolls · ${S.all.total.toLocaleString()} simulated`;
   $("progress").textContent = p;
   const ranking = S.searching && S.job && S.job.kind === "rank";
   $("rankstop").style.display = ranking ? "" : "none";
@@ -724,10 +730,10 @@ function renderHead() {
     const n = listedArmors().length, a = S.all;
     let note = `Finds, for every armor piece listed on the left and every augment option, the closest roll that passes the
       filters, using all CPU cores. Wanted skills must be added by the augment itself (pieces that already have
-      them are not listed at roll #1). Roll #n means n−1 augments of that same piece and option first (pieces with the same
+      them are not listed at 1 roll). <b>Rolls</b> = n means n−1 augments of that same piece and option first (pieces with the same
       augment cost share the sequence).`;
     if (a && a.stale) note += ` <b style="color:var(--gold)">Filters or list changed: press Search again.</b>`;
-    else if (a && a.done && !a.error) note += ` Every piece without a result was checked up to roll #${a.depth.toLocaleString()}.`;
+    else if (a && a.done && !a.error) note += ` Every piece without a result was checked up to ${a.depth.toLocaleString()} rolls.`;
     $("head").innerHTML = `<span class="big">All listed armor</span><span class="rar">${n} pieces</span>
       ${L().ownedOnly ? `<span class="rar">crafted only</span>` : ""}${L().rarity ? `<span class="rar">Rarity ${L().rarity}</span>` : ""}
       <div class="note">${note}</div>`;
@@ -744,7 +750,7 @@ function renderHead() {
     <span>${a.skills.map(s => `<span class="sk">${skillIcon(s.color, s.name)}<span>${esc(s.name)} Lv${s.level}</span></span>`).join("")}</span>
     <span class="rar">Rarity ${a.rarity}</span><span class="cost">Cost ${a.cost}</span>
     ${a.count ? `<span class="own">✓ crafted ×${a.count}</span>` : `<span class="muted">not crafted yet</span>`}
-    <div class="note">Roll #1 is the next "${esc(tp.name)}" on this piece. This sequence${seed !== "" ? ` (generator ${seed})` : ""} is shared by every
+    <div class="note"><b>Rolls</b> = 1 is the next "${esc(tp.name)}" on this piece, 2 the one after, and so on. This sequence${seed !== "" ? ` (generator ${seed})` : ""} is shared by every
       armor piece with cost ${a.cost} and the same augment option (${same} crafted in your box). Augmenting any of them
       moves it forward, so reload the save after each augment. Other options and costs are independent.</div>`;
 }
@@ -756,7 +762,7 @@ function renderTabs() {
     const tp = S.pred && S.pred.search && S.pred.types[t.id];
     if (filtering() && tp) {
       if (tp.impossible) badge = `<span class="badge" style="color:var(--dim)">never</span>`;
-      else badge = `<span class="badge" title="matches found / first match">${tp.rolls.length}${tp.ended ? "" : "…"}${tp.rolls.length ? " · #" + tp.rolls[0].n.toLocaleString() : ""}</span>`;
+      else badge = `<span class="badge" title="matches found · rolls until the first one">${tp.rolls.length}${tp.ended ? "" : "…"}${tp.rolls.length ? " · " + tp.rolls[0].n.toLocaleString() + " rolls" : ""}</span>`;
     }
     return `<span class="tab ${t.id === S.settings.type ? "on" : ""}" data-type="${t.id}">${esc(t.name)}${badge}</span>`;
   }).join("");
@@ -792,7 +798,7 @@ function renderTable() {
     return;
   }
   const ws = wantedIds();
-  $("table").innerHTML = `<table><thead><tr><th>#</th><th>Defense</th><th>Slots</th><th>Resistances</th><th>Skills</th></tr></thead><tbody>` +
+  $("table").innerHTML = `<table><thead><tr><th title="Augments of this piece and option until this result (1 = the next one)">Rolls</th><th>Defense</th><th>Slots</th><th>Resistances</th><th>Skills</th></tr></thead><tbody>` +
     rows.map(r => `<tr class="${filtering() ? "match" : ""}"><td class="n">${r.n.toLocaleString()}</td>${rowCells(r, ws)}</tr>`).join("")
     + `</tbody></table>`;
 }
@@ -813,7 +819,7 @@ function renderAllTable() {
   const ws = wantedIds(), byId = Object.fromEntries(S.armors.map(x => [x.id, x]));
   const typeName = id => S.types.find(t => t.id === id).name;
   const rows = a.results.slice(0, MAX_ALL_ROWS);
-  $("table").innerHTML = `<table><thead><tr><th>#</th><th>Armor · option</th><th>Defense</th><th>Slots</th><th>Resistances</th><th>Skills</th></tr></thead><tbody>` +
+  $("table").innerHTML = `<table><thead><tr><th title="Augments of this piece and option until this result (1 = the next one)">Rolls</th><th>Armor · option</th><th>Defense</th><th>Slots</th><th>Resistances</th><th>Skills</th></tr></thead><tbody>` +
     rows.map(e => {
       const arm = byId[e.armor] || { name: e.armor, part: 0, rarity: "?" };
       return `<tr class="match click" data-goto="${e.armor}:${e.type}" title="Open this piece">
@@ -925,6 +931,17 @@ function setupRanking() {
     renderPresetSkills();
   });
   $("rankrun").addEventListener("click", startRank);
+  $("rtypes").addEventListener("click", e => { const c = e.target.closest("[data-rtype]"); if (c) toggleRankType(+c.dataset.rtype); });
+  $("rminscore").value = S.settings.rankMinScore ?? "";
+  $("rminscore").addEventListener("input", () => {
+    S.settings.rankMinScore = minScore(); api().save_settings({ rankMinScore: S.settings.rankMinScore });
+    if (S.mode === "rank") renderRankTable();
+  });
+  $("table").addEventListener("click", e => {
+    const h = e.target.closest("[data-rsort]");
+    if (h) { e.stopPropagation(); setRankSort(h.dataset.rsort); }
+  });
+  renderRankTypes();
   $("rankstop").addEventListener("click", () => api().find_cancel());
   $("rankdepth").addEventListener("change", () => {
     S.settings.rankDepth = Math.max(1, Math.min(100000, parseInt($("rankdepth").value) || 200));
@@ -1021,7 +1038,7 @@ function rankStale() {
 async function startRank() {
   const ids = listedArmors().map(a => a.id), depth = parseInt($("rankdepth").value) || 200;
   await stopJob();
-  const r = await api().rank_start(ids, currentPreset(), depth, filtering() ? F() : null);
+  const r = await api().rank_start(ids, currentPreset(), depth, filtering() ? F() : null, rankTypes());
   if (r.error) { S.rank = { error: r.error, byKey: {} }; status(r.error); showMode(); return; }
   S.rank = { byKey: {}, pieces: ids.length, streams: r.streams.length, depth: r.depth, total: 0, done: false, stale: false,
     preset: currentPreset().name, weights: { ...currentPreset().weights }, filtered: filtering() };
@@ -1041,40 +1058,80 @@ function renderRankHead() {
     <div class="note">${note}</div>`;
 }
 
+const SHORT_TYPES = { 0: "Augment", 3: "Stability", 1: "Skills+", 2: "Slots+" };
+const rankTypes = () => S.settings.rankTypes || S.types.map(t => t.id);
+function renderRankTypes() {
+  const on = new Set(rankTypes());
+  $("rtypes").innerHTML = S.types.map(t => `<span class="chip ${on.has(t.id) ? "on" : ""}" data-rtype="${t.id}" title="${esc(t.name)}">${esc(SHORT_TYPES[t.id] || t.name)}</span>`).join("");
+}
+function toggleRankType(id) {
+  const on = new Set(rankTypes());
+  if (on.has(id)) { if (on.size === 1) return; on.delete(id); } else on.add(id);
+  S.settings.rankTypes = S.types.map(t => t.id).filter(t => on.has(t));
+  api().save_settings({ rankTypes: S.settings.rankTypes });
+  renderRankTypes(); rankStale();
+}
+const rankSort = () => S.settings.rankSort || { key: "rank", dir: 1 };
+function setRankSort(key) {
+  const cur = rankSort();
+  // Rank and Rolls read best ascending; Score and Gain descending. A second click reverses.
+  const first = key === "rank" || key === "n" ? 1 : -1;
+  S.settings.rankSort = { key, dir: cur.key === key ? -cur.dir : first };
+  api().save_settings({ rankSort: S.settings.rankSort });
+  renderRankTable();
+}
+const minScore = () => { const v = parseFloat(String($("rminscore").value).replace(",", ".")); return isFinite(v) ? v : null; };
+
 function renderRankTable() {
   const r = S.rank;
   if (!r) { $("table").innerHTML = `<div class="empty">Pick a preset on the left, then press <b>Rank</b>.</div>`; return; }
   if (r.error) { $("table").innerHTML = `<div class="empty" style="color:var(--down)">${esc(r.error)}</div>`; return; }
   const by = S.settings.rankBy === "gain" ? "gain" : "score";
-  const rows = Object.values(r.byKey).sort((a, b) => b[by] - a[by] || a.n - b.n).slice(0, MAX_ALL_ROWS);
+  // Rank = position by the "Rank by" value over every result; the min score and the column sort
+  // only hide and reorder rows, so a row keeps its rank.
+  const ranked = Object.values(r.byKey).sort((a, b) => b[by] - a[by] || a.n - b.n);
+  ranked.forEach((e, i) => { e.rank = i + 1; });
+  const min = minScore(), sort = rankSort();
+  const val = e => sort.key === "rank" ? e.rank : sort.key === "n" ? e.n : e[sort.key];
+  const shown = ranked.filter(e => min === null || e.score >= min)
+    .sort((a, b) => (val(a) - val(b)) * sort.dir || a.rank - b.rank);
+  const rows = shown.slice(0, MAX_ALL_ROWS);
   if (!rows.length) {
-    $("table").innerHTML = `<div class="empty">${!r.done ? "Ranking…" : r.filtered
-      ? `No roll passes the filters in the next ${r.depth.toLocaleString()} rolls of the listed pieces.` : "Nothing to rank."}</div>`;
+    const why = !r.done && !ranked.length ? "Ranking…"
+      : ranked.length ? `No result has a score of ${min} or more.`
+      : r.filtered ? `No roll passes the filters in the next ${r.depth.toLocaleString()} rolls of the listed pieces.`
+      : "Nothing to rank.";
+    $("table").innerHTML = `<div class="empty">${why}</div>`;
     return;
   }
   $("table").classList.add("all");
   const byId = Object.fromEntries(S.armors.map(x => [x.id, x]));
   const typeName = id => S.types.find(t => t.id === id).name;
   const fmt = v => (Math.round(v * 10) / 10).toLocaleString();
-  $("table").innerHTML = `<table><thead><tr><th>Rank</th><th style="text-align:right">Score</th><th style="text-align:right">Gain</th>
-    <th>Armor · option</th><th>#</th><th>Defense</th><th>Slots</th><th>Resistances</th><th>Skills</th></tr></thead><tbody>` +
-    rows.map((e, i) => {
+  const th = (key, label, title, align) => `<th class="click" data-rsort="${key}" title="${esc(title)}"${align ? ` style="text-align:${align}"` : ""}>${label}${sort.key === key ? (sort.dir > 0 ? " ▲" : " ▼") : ""}</th>`;
+  $("table").innerHTML = `<table><thead><tr>${th("rank", "Rank", `Position by ${by}; click to sort`)}`
+    + th("score", "Score", "The piece after the augment; click to sort", "right")
+    + th("gain", "Gain", "What the augment adds or removes; click to sort", "right")
+    + th("n", "Rolls", "Augments of this piece and option until this result (1 = the next one); click to sort")
+    + `<th>Armor · option</th><th>Defense</th><th>Slots</th><th>Resistances</th><th>Skills</th></tr></thead><tbody>` +
+    rows.map(e => {
       const arm = byId[e.armor] || { name: e.armor, part: 0, rarity: "?", skills: [] };
       const skills = e.row.skills.map(s => `<span class="sk ${r.weights[s.id] ? "wanted" : ""}" title="${r.weights[s.id] ? "weight " + r.weights[s.id] : "not in the preset"}">${skillIcon(s.color, s.name)}<span class="nm">${esc(s.name)}</span>${signed(s.v)}</span>`).join("");
       return `<tr class="click" data-goto="${e.armor}:${e.type}" title="Open this piece">
-        <td class="n">${i + 1}</td><td class="sc">${fmt(e.score)}</td>
+        <td class="n">${e.rank}</td><td class="sc">${fmt(e.score)}</td>
         <td class="gn"><span class="${e.gain > 0 ? "pos" : e.gain < 0 ? "neg" : "zero"}">${e.gain > 0 ? "+" : ""}${fmt(e.gain)}</span></td>
+        <td class="n">${e.n.toLocaleString()}</td>
         <td class="arm">${mask(PARTS[arm.part], "var(--gold)", PARTS[arm.part])} <span class="nm">${esc(arm.name)}</span>
           <span class="muted"> R${arm.rarity}</span>${arm.count ? ` <span class="own">✓</span>` : ""}
           <div class="opt">${esc(typeName(e.type))}</div>
           <div class="base" title="Slots and skills the piece already has"><span class="bslots">${(arm.slots || []).map(l => slot(l, false)).join("")}</span>${(arm.skills || []).map(s => `<span class="sk">${skillIcon(s.color, s.name)}${esc(s.name)} ${s.level}</span>`).join("")}</div></td>
-        <td class="n">${e.n.toLocaleString()}</td>
         <td>${img(e.row.def < 0 ? "defense_down" : "defense", "Defense", e.row.def ? "" : "off")} ${signed(e.row.def)}</td>
         <td class="slots">${e.row.slots.map(x => slot(x.lv, x.up)).join("")}</td>
         <td>${e.row.res.map((v, k) => `<span class="res">${img(ELEMENTS[k], ELEMENTS[k], v ? "" : "off")}${signed(v)}</span>`).join("")}</td>
         <td class="skills">${skills}</td></tr>`;
-    }).join("") + `</tbody></table>` +
-    (Object.keys(r.byKey).length > MAX_ALL_ROWS ? `<div class="empty">Showing the top ${MAX_ALL_ROWS} of ${Object.keys(r.byKey).length.toLocaleString()} piece/option results.</div>` : "");
+    }).join("") + `</tbody></table>`
+    + (shown.length > MAX_ALL_ROWS ? `<div class="empty">Showing ${MAX_ALL_ROWS} of ${shown.length.toLocaleString()} piece/option results.</div>` : "")
+    + (min !== null && shown.length < ranked.length ? `<div class="empty">${(ranked.length - shown.length).toLocaleString()} results below score ${min} hidden.</div>` : "");
 }
 
 window.addEventListener("pywebviewready", boot);

@@ -28,8 +28,8 @@ data and icons from your install (a few seconds) and caches them in
 
 1. Pick your hunter. The list on the left has every qurious-capable armor piece (master rank),
    grouped by rarity; filter by name or skill, part and rarity, or switch on **Crafted only**.
-2. **Selected piece**: click a piece and pick the augment option tab. Roll **#1** is what that option
-   gives on the next augment of this piece, #2 the one after, and so on (200 rolls by default; the
+2. **Selected piece**: click a piece and pick the augment option tab. The **Rolls** column counts augments: 1 is what
+   that option gives on the next augment of this piece, 2 the one after, and so on (200 rolls by default; the
    value is remembered).
 3. To look for something specific, add filters. A skill filter means "at least this level on the piece
    after the augment". **Add** requires one more skill (AND); **Or** accepts this skill instead of the
@@ -43,7 +43,8 @@ data and icons from your install (a few seconds) and caches them in
    every piece (filtered by part, rarity and "Crafted only") is simulated for the next N rolls and the
    best roll of each piece and option is listed, sorted by **Score** (the piece after the augment: its
    skills, including the ones it loses, plus its slots) or by **Gain** (what the augment adds or
-   removes). The Ranking tab has its own filters (for example *Blood Awakening ≥ Lv1*: only rolls
+   removes); filter by augment option and minimum score, and click Rank, Score, Gain or Rolls to sort.
+   The Ranking tab has its own filters (for example *Blood Awakening ≥ Lv1*: only rolls
    that keep or reach it are ranked). Presets can be created (every weight 0), cloned, renamed,
    deleted, and copied in or out as text with **Import** / **Export**.
 6. Each roll shows the defense change, the resulting slots (qurious slots in green), the five
