@@ -193,3 +193,16 @@ def test_searches_match_python(gd):
     # Same best roll per stream (the Python side compares rounded scores, so compare the final best).
     best = lambda ev: {k: (n, s) for k, n, _r, s, _g in ev}  # noqa: E731
     assert best(got) == best(want)
+
+
+@needs_game
+def test_filtered_ranking_matches_python(gd):
+    ids = list(gd["armors"])[::25]
+    streams = [(aid, t) for aid in ids for t in engine.TYPE_NAMES]
+    filters = {"skills": [[{"id": 1, "level": 2}, {"id": 8, "level": 1}]], "slots": [0, 0, 0], "minDef": None,
+               "noSkillLoss": True, "noNegRes": False}
+    preset = ranking.builtin_presets(gd)[1]
+    want, _ = _run(search.Search, gd, streams, filters, 401, 400, rank={"preset": preset})
+    got, _ = _run(search.NativeSearch, gd, streams, filters, 401, 400, rank={"preset": preset})
+    best = lambda ev: {k: (n, s) for k, n, _r, s, _g in ev}  # noqa: E731
+    assert best(got) == best(want) and best(got)

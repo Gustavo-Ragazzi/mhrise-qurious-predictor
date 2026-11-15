@@ -343,7 +343,9 @@ const status = t => $("status").textContent = t;
 /* skills = AND of OR groups: [[{id, level}, ...], ...]; level = minimum level on the piece after the augment. */
 const EMPTY_FILTERS = { skills: [], slots: [0, 0, 0], minDef: null, noSkillLoss: false, noNegRes: false };
 const LIST_DEFAULTS = { ownedOnly: false, rarity: 0, part: -1 };
-const F = () => S.settings.filters;
+// The Ranking tab has its own filters; the other two tabs share theirs.
+const FKEY = () => S.mode === "rank" ? "rankFilters" : "filters";
+const F = () => S.settings[FKEY()];
 const L = () => S.settings.list;
 const filtering = () => {
   const f = F();
@@ -399,7 +401,8 @@ function makePicker(el, opts) {
   return p;
 }
 
-const skillItem = s => ({ value: s.id, text: s.name, html: `${skillIcon(s.color, s.name)}<span>${esc(s.name)}</span>` });
+const skillItem = s => ({ value: s.id, text: s.name, title: s.qurious ? "" : "Qurious never adds this skill: only pieces that already have it can match",
+  html: `${skillIcon(s.color, s.name)}<span>${esc(s.name)}</span>${s.qurious ? "" : `<span class="hint">armor only</span>`}` });
 const slotItems = () => [{ value: 0, text: "any", html: `<span class="muted">any</span>` }]
   .concat([1, 2, 3, 4].map(l => ({ value: l, text: "Lv" + l, html: `${slot(l, false)}<span>Lv${l}</span>` })));
 let skillPick, levelPick, slotPicks;
@@ -456,8 +459,9 @@ function syncFilterUi() {
 }
 
 function setFilters(patch) {
-  S.settings.filters = { ...F(), ...patch };
-  api().save_settings({ filters: S.settings.filters });
+  const key = FKEY();
+  S.settings[key] = { ...F(), ...patch };
+  api().save_settings({ [key]: S.settings[key] });
   syncFilterUi();
   filtersChanged();
 }
@@ -481,8 +485,10 @@ async function boot() {
   $("loading").style.display = "none";
   if (r.error) { status(r.error); return; }
   Object.assign(S, { icons: r.icons, settings: r.settings, types: r.types });
-  S.settings.filters = { ...EMPTY_FILTERS, ...(S.settings.filters || {}) };
-  S.settings.filters.skills = groupsOf(S.settings.filters.skills);
+  for (const key of ["filters", "rankFilters"]) {
+    S.settings[key] = { ...EMPTY_FILTERS, ...(S.settings[key] || {}) };
+    S.settings[key].skills = groupsOf(S.settings[key].skills);
+  }
   S.settings.list = { ...LIST_DEFAULTS, ...(S.settings.list || {}) };
   S.mode = ["all", "rank"].includes(S.settings.mode) ? S.settings.mode : "piece";
   $("rolls").value = S.settings.rolls;
@@ -579,7 +585,7 @@ function renderModes() {
   $("tabs").style.display = S.mode === "piece" ? "" : "none";
   $("listcol").style.display = rank ? "none" : "";
   $("presetcol").style.display = rank ? "" : "none";
-  $("filterbar").style.display = rank ? "none" : "";
+  $("filterbar").style.display = "";
   $("rankbar").style.display = rank ? "" : "none";
 }
 
@@ -593,12 +599,13 @@ async function setMode(mode) {
 }
 
 function showMode() {
-  renderModes(); showSearchUi(); renderHead(); renderTabs(); renderTable();
+  renderModes(); syncFilterUi(); showSearchUi(); renderHead(); renderTabs(); renderTable();
 }
 
 function filtersChanged() {
   if (S.mode === "piece") { if (S.settings.armor) selectArmor(S.settings.armor); }
   else if (S.mode === "all") { if (S.all) S.all.stale = true; showSearchUi(); renderHead(); }
+  else rankStale();
 }
 
 /* ---- piece mode: either the next N rolls (no filter) or a search that runs until it finds matches ---- */
@@ -693,7 +700,7 @@ async function poll() {
 }
 
 function showSearchUi() {
-  $("stop").style.display = S.searching ? "" : "none";
+  $("stop").style.display = S.searching && S.job && S.job.kind !== "rank" ? "" : "none";
   $("clear").style.display = filtering() ? "" : "none";
   $("searchall").style.display = S.mode === "all" ? "" : "none";
   $("searchall").textContent = S.all && !S.all.stale && !S.searching && S.all.results ? "Search again" : "Search";
@@ -1011,10 +1018,10 @@ function rankStale() {
 async function startRank() {
   const ids = listedArmors().map(a => a.id), depth = parseInt($("rankdepth").value) || 200;
   await stopJob();
-  const r = await api().rank_start(ids, currentPreset(), depth);
+  const r = await api().rank_start(ids, currentPreset(), depth, filtering() ? F() : null);
   if (r.error) { S.rank = { error: r.error, byKey: {} }; status(r.error); showMode(); return; }
   S.rank = { byKey: {}, pieces: ids.length, streams: r.streams.length, depth: r.depth, total: 0, done: false, stale: false,
-    preset: currentPreset().name, weights: { ...currentPreset().weights } };
+    preset: currentPreset().name, weights: { ...currentPreset().weights }, filtered: filtering() };
   startPolling({ kind: "rank", since: 0, streams: r.streams });
   status(`Ranking the next ${r.depth} rolls of every augment option on ${ids.length} pieces…`);
   showMode();
@@ -1025,6 +1032,7 @@ function renderRankHead() {
   let note = `Scores the next rolls of every augment option on the listed pieces with the preset's weights and keeps the
     best roll of each piece and option. <b>Score</b> = the piece after the augment (its own skills, gains and losses, slots);
     <b>Gain</b> = how much the augment adds or removes. Click a row to open that piece.`;
+  if (filtering()) note += ` Only rolls that pass the filters below are ranked (skill levels count the piece's own skills).`;
   if (r && r.stale) note += ` <b style="color:var(--gold)">Preset or pieces changed: press Rank again.</b>`;
   $("head").innerHTML = `<span class="big">Ranking</span><span class="rar">${esc(p.name)}</span><span class="rar">${n} pieces</span>
     <div class="note">${note}</div>`;
@@ -1036,7 +1044,11 @@ function renderRankTable() {
   if (r.error) { $("table").innerHTML = `<div class="empty" style="color:var(--down)">${esc(r.error)}</div>`; return; }
   const by = S.settings.rankBy === "gain" ? "gain" : "score";
   const rows = Object.values(r.byKey).sort((a, b) => b[by] - a[by] || a.n - b.n).slice(0, MAX_ALL_ROWS);
-  if (!rows.length) { $("table").innerHTML = `<div class="empty">${r.done ? "Nothing to rank." : "Ranking…"}</div>`; return; }
+  if (!rows.length) {
+    $("table").innerHTML = `<div class="empty">${!r.done ? "Ranking…" : r.filtered
+      ? `No roll passes the filters in the next ${r.depth.toLocaleString()} rolls of the listed pieces.` : "Nothing to rank."}</div>`;
+    return;
+  }
   $("table").classList.add("all");
   const byId = Object.fromEntries(S.armors.map(x => [x.id, x]));
   const typeName = id => S.types.find(t => t.id === id).name;

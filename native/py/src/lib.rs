@@ -115,7 +115,8 @@ struct Stream {
 }
 
 /// A running search. Filter mode reports every roll that passes the filter (up to `max_matches` per
-/// stream); rank mode reports each stream's best-scoring roll whenever it improves.
+/// stream); rank mode reports each stream's best-scoring roll whenever it improves, among the rolls
+/// that pass the filter when one is given.
 #[pyclass(frozen)]
 struct Scan(Arc<Shared>);
 
@@ -161,7 +162,8 @@ impl Scan {
                 n: 0,
                 found: 0,
                 finished: false,
-                matcher: if preset.is_none() {
+                // Filter mode always matches; rank mode only scores the rolls that pass the filter, if any.
+                matcher: if preset.is_none() || filter.is_some() {
                     Some(core::Matcher::new(&skills, &slot_nums, filter.clone().unwrap_or_default()))
                 } else {
                     None
@@ -195,6 +197,13 @@ impl Scan {
                             core::create_result(&mut st.rng, &t, st.table, st.cost, &st.skills, st.buildup_type, &mut st.buf);
                             let s = core::summarize(&st.buf);
                             if let Some(sc) = &st.scorer {
+                                if st.matcher.as_ref().is_some_and(|m| !m.matches(&s)) {
+                                    if st.n >= limit {
+                                        st.finished = true;
+                                        break;
+                                    }
+                                    continue;
+                                }
                                 let (score, gain) = sc.score(&s);
                                 if score > st.best {
                                     st.best = score;
@@ -204,7 +213,7 @@ impl Scan {
                                 st.found += 1;
                                 local.push((st.idx, st.n, s.defense, s.slots, s.resistances, s.skills, None));
                             }
-                            if (st.matcher.is_some() && st.found >= max_matches) || st.n >= limit {
+                            if (st.scorer.is_none() && st.found >= max_matches) || st.n >= limit {
                                 st.finished = true;
                                 break;
                             }

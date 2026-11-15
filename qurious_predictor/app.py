@@ -16,8 +16,8 @@ WEB = Path(__file__).with_name("web") / "index.html"
 EMPTY_FILTERS = {"skills": [], "slots": [0, 0, 0], "minDef": None, "noSkillLoss": False, "noNegRes": False}
 LIST_DEFAULTS = {"ownedOnly": False, "rarity": 0, "part": -1}
 DEFAULT_SETTINGS = {"rolls": 200, "lang": "en", "hunter": None, "armor": None, "type": engine.TYPE_AUGMENT,
-                    "filters": EMPTY_FILTERS, "game_dir": None, "list": LIST_DEFAULTS,
-                    "mode": "piece", "presets": [], "preset": "builtin:meta", "rankBy": "score",
+                    "filters": EMPTY_FILTERS, "rankFilters": EMPTY_FILTERS, "game_dir": None, "list": LIST_DEFAULTS,
+                    "mode": "piece", "presets": [], "preset": "builtin:all", "rankBy": "score",
                     "rankDepth": 200}
 
 
@@ -102,9 +102,11 @@ class Api:
                 "max": self.data["max_levels"].get(str(sid), 0) + 1}  # _MaxLevel is 0-based
 
     def skills(self):
-        """Every skill that qurious crafting can add, for the skill filter."""
-        ids = sorted({s for s, _ in self.tables.skill_costs})
-        return sorted((self._skill(s) for s in ids), key=lambda s: s["name"].lower())
+        """Every skill, for the skill filter (filters also count the piece's own skills, so skills qurious
+        never adds, like Blood Awakening, can still be wanted); ``qurious`` tells which ones it adds."""
+        addable = {s for s, _ in self.tables.skill_costs}
+        return sorted((dict(self._skill(int(s)), qurious=int(s) in addable) for s in self.data["skills"]),
+                      key=lambda s: s["name"].lower())
 
     def load_hunter(self, key: str):
         with self._lock:
@@ -237,22 +239,35 @@ class Api:
             return {"error": "No preset found in the text. Paste a preset exported by this app."}
         return {"preset": preset, "unknown": unknown}
 
-    def rank_start(self, armor_ids: list, preset: dict, depth: int = 200):
+    def rank_start(self, armor_ids: list, preset: dict, depth: int = 200, filters: dict | None = None):
         """Score the next ``depth`` rolls of every augment option on every listed piece; report the best
-        roll of each piece and option (updated while the search runs)."""
+        roll of each piece and option (updated while the search runs). With ``filters`` (same format as
+        ``find_start``), only the rolls that pass them are ranked."""
         self.find_cancel()
         if not self.data or not self.generators:
             return {"error": "Select a hunter first."}
         ids = [str(a) for a in armor_ids if str(a) in self.data["armors"]]
         if not ids:
             return {"error": "No armor piece to rank."}
-        if not any(float(w) for w in preset.get("weights", {}).values()) and not any(preset.get("slots", []))                 and not preset.get("defense"):
+        weighted = any(float(w) for w in preset.get("weights", {}).values())
+        if not weighted and not any(preset.get("slots", [])) and not preset.get("defense"):
             return {"error": "Every weight of this preset is 0: give some skills a weight first."}
+        filters = filters or {}
         depth = max(1, min(100_000, int(depth)))
-        streams = [(aid, t) for aid in ids for t in engine.TYPE_NAMES]
-        self._job = search.start(self.data, self.generators, streams, {}, depth + 1, depth,
-                                  lambda aid, s, n: self._row(self.data["armors"][aid], n, s),
-                                  rank={"preset": preset})
+        if search.active(filters):
+            problems = self._skill_problems([self.data["armors"][a] for a in ids], filters)
+            if problems:
+                return {"error": " ".join(problems)}
+            add_tables = search.adding_tables(self.tables)
+            streams = [(aid, t) for aid in ids
+                       for t in search.reachable(self.data["armors"][aid], filters, self.tables, add_tables)]
+            if not streams:
+                return {"error": "No listed armor piece can ever pass these filters."}
+        else:
+            streams = [(aid, t) for aid in ids for t in engine.TYPE_NAMES]
+        self._job = search.start(self.data, self.generators, streams, filters, depth + 1, depth,
+                                 lambda aid, s, n: self._row(self.data["armors"][aid], n, s),
+                                 rank={"preset": preset})
         return {"started": True, "streams": [{"armor": aid, "type": t} for aid, t in streams], "depth": depth}
 
     def find_status(self, since: int = 0):

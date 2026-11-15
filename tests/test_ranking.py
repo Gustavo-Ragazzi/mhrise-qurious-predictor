@@ -43,3 +43,12 @@ def test_text_round_trip_and_names_in_any_language():
     assert back["weights"] == {"1": 10, "115": 13.5} and back["slots"] == [7, 8, 9, 12] and back["defense"] == 0.5
     jp, _ = ranking.import_text("skill 攻撃 = 3\nskill Nope = 1", DATA)
     assert jp["weights"] == {"1": 3}
+
+
+def test_builtin_presets_split_blademaster_and_gunner():
+    names = {pid: set(skills) for pid, _, skills in ranking.BUILTIN}
+    assert "Handicraft" in names["builtin:blade"] and "Handicraft" not in names["builtin:gunner"]
+    assert "Ammo Up" in names["builtin:gunner"] and "Ammo Up" not in names["builtin:blade"]
+    assert "Fire Attack" in names["builtin:blade"] and "Fire Attack" not in names["builtin:blade-raw"]
+    assert "Mail of Hellfire" in names["builtin:gunner-raw"]
+    assert names["builtin:all"] >= names["builtin:blade"] | names["builtin:gunner"]

@@ -43,16 +43,29 @@ _ELEMENT = [  # boost element only (left out of the raw preset)
     "Element Exploit", "Dragon Conversion", "Teostra Blessing",
 ]
 _WIREBUG = ["Wirebug Whisperer", "Wind Mantle", "Frenzied Bloodlust", "Redirection", "Shock Absorber"]
-_WEAPON = [
-    "Focus", "Rapid Morph", "Artillery", "Load Shells", "Guard", "Guard Up", "Spare Shot", "Normal/Rapid Up",
-    "Pierce Up", "Spread Up", "Ammo Up", "Recoil Down", "Reload Speed", "Steadiness", "Rapid Fire Up",
-    "Ballistics", "Special Ammo Boost", "Bow Charge Plus", "Horn Maestro", "Inspiration", "Charge Master",
-    "Tune-Up", "Bladescale Hone", "Master's Touch", "Razor Sharp", "Handicraft", "Protective Polish",
-    "Power Prolonger", "Partbreaker", "Constitution", "Stamina Surge",
+# Weapon skills useful to both classes (Bow counts as a gunner weapon).
+_WEAPON_ANY = [
+    "Focus", "Charge Master", "Bladescale Hone", "Partbreaker", "Constitution", "Stamina Surge",
 ]
+_WEAPON_BLADE = [  # Blademaster only (sharpness, guard, shelling, phials, horns...)
+    "Handicraft", "Razor Sharp", "Master's Touch", "Protective Polish", "Rapid Morph", "Artillery",
+    "Load Shells", "Guard", "Guard Up", "Horn Maestro", "Inspiration", "Power Prolonger",
+]
+_WEAPON_GUNNER = [  # Gunner only (ammo, arrows, bowgun handling)
+    "Spare Shot", "Normal/Rapid Up", "Pierce Up", "Spread Up", "Ammo Up", "Recoil Down", "Reload Speed",
+    "Steadiness", "Rapid Fire Up", "Ballistics", "Special Ammo Boost", "Bow Charge Plus", "Tune-Up",
+]
+_BLADE = _DAMAGE + _WIREBUG + _WEAPON_ANY + _WEAPON_BLADE
+_GUNNER = _DAMAGE + _WIREBUG + _WEAPON_ANY + _WEAPON_GUNNER
+# Armor often pairs a Blademaster skill with a Gunner one (Handicraft 3 + Ammo Up 3): rank with the
+# preset of the class you play, so the other class's skills weigh 0.
 BUILTIN = [
-    ("builtin:meta", "Speedrun meta (all weapons)", _DAMAGE + _ELEMENT + _WIREBUG + _WEAPON),
-    ("builtin:raw", "Speedrun meta, raw (no element skills)", _DAMAGE + _WIREBUG + _WEAPON),
+    ("builtin:all", "All skills (Blademaster + Gunner)", _DAMAGE + _ELEMENT + _WIREBUG + _WEAPON_ANY
+     + _WEAPON_BLADE + _WEAPON_GUNNER),
+    ("builtin:blade", "Blademaster", _BLADE + _ELEMENT),
+    ("builtin:blade-raw", "Blademaster, no element", _BLADE),
+    ("builtin:gunner", "Gunner", _GUNNER + _ELEMENT),
+    ("builtin:gunner-raw", "Gunner, no element", _GUNNER),
 ]
 
 

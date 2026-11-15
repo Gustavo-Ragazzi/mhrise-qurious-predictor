@@ -134,7 +134,7 @@ def _worker(wid, table_data, armors, states, streams, filters, max_matches, limi
         a = armors[aid]
         live.append({"key": key, "armor": a, "type": t, "rng": XorShift128(states[engine.seed_index(a["cost"], t)]),
                      "skills": [tuple(x) for x in a["skills"]], "n": 0, "found": 0,
-                     "ok": None if rank else matcher(a, filters),
+                     "ok": matcher(a, filters) if (not rank or active(filters)) else None,
                      "scorer": Scorer(a, rank["preset"], tables.max_levels) if rank else None, "best": None})
     last = 0.0
     while live and not stop.is_set():
@@ -144,6 +144,12 @@ def _worker(wid, table_data, armors, states, streams, filters, max_matches, limi
                 st["n"] += 1
                 s = engine.summarize(engine.create_result(rng, tables, a["table"], a["cost"], st["skills"], t))
                 if rank:
+                    if st["ok"] and not st["ok"](s):
+                        if st["n"] >= limit:
+                            live.remove(st)
+                            out.put(("end", st["key"], st["n"]))
+                            break
+                        continue
                     score, gain = st["scorer"].score(s)
                     if st["best"] is None or score > st["best"]:
                         st["best"] = score
@@ -308,7 +314,7 @@ class NativeSearch:
             p = rank["preset"]
             preset = ([(int(k), float(v)) for k, v in p.get("weights", {}).items()],
                       [float(x) for x in (list(p.get("slots", [])) + [0, 0, 0, 0])[:4]], float(p.get("defense") or 0))
-        else:
+        if not rank or active(filters):
             min_def = filters.get("minDef")
             flt = (skill_groups(filters), [int(x) for x in (list(filters.get("slots") or []) + [0, 0, 0])[:3]],
                    None if min_def is None else int(min_def), bool(filters.get("noSkillLoss")),
