@@ -5,7 +5,8 @@ Offline predictor for **Qurious Crafting** of armor (augments) in *Monster Hunte
 piece in the game (crafted or not) for each option of the game's menu: **Augment**,
 **Augment: Stability**, **Augment: Skills+** and **Augment: Slots+**. Filters search ahead until they
 find what you want (skills at a minimum level, with AND/OR, minimum slots, defense, no skill loss, no
-negative resistance), and one search can look through every armor piece at once.
+negative resistance), one search can look through every armor piece at once, and a **Ranking** tab
+scores every piece's next augments with weighted skill presets.
 
 The game does not need to be running and no mod is needed. The save is only read, never written.
 
@@ -38,8 +39,37 @@ data and icons from your install (a few seconds) and caches them in
 4. **Search all listed armor**: with filters set, press **Search** to find, for every piece listed on
    the left and every augment option, the closest roll that passes them, closest first. Here a wanted
    skill must be added by the augment itself. Click a result to open that piece.
-5. Each roll shows the defense change, the resulting slots (qurious slots in green), the five
+5. **Ranking**: pick a preset of skill weights on the left and press **Rank**. Every augment option of
+   every piece (filtered by part, rarity and "Crafted only") is simulated for the next N rolls and the
+   best roll of each piece and option is listed, sorted by **Score** (the piece after the augment: its
+   skills, including the ones it loses, plus its slots) or by **Gain** (what the augment adds or
+   removes). Presets can be created (every weight 0), cloned, renamed, deleted, and copied in or out
+   as text with **Import** / **Export**.
+6. Each roll shows the defense change, the resulting slots (qurious slots in green), the five
    resistances and the skills gained/lost.
+
+### Built-in presets
+
+* **Speedrun meta (all weapons)**: damage skills, element skills, weapon-specific skills (Focus, Rapid
+  Morph, Artillery, ammo skills, ...) and Wirebug skills (Wirebug Whisperer, Wind Mantle, Frenzied
+  Bloodlust), taken from common Sunbreak endgame builds of all 14 weapons.
+* **Speedrun meta, raw**: the same without skills that only boost element (element attack, Critical
+  Element, Element Exploit, Dragon Conversion, Teostra Blessing). Skills that boost raw and element
+  (Mail of Hellfire, Coalescence, Burst, Dereliction) stay.
+
+Their weights per skill level follow how hard the skill is to get, read from the game data:
+
+| Tier | Weight | Example |
+| --- | --- | --- |
+| Armor only (no decoration, talisman or qurious) | 15 | Blood Awakening |
+| Talisman, no decoration, not from qurious | 14 | Dereliction |
+| Qurious can add it, no decoration | 13.5 | Mail of Hellfire, Wind Mantle |
+| Decoration Lv4 | 13 | Bloodlust |
+| Decoration Lv3 | 11 | Blood Rite |
+| Decoration Lv2 | 10 | Weakness Exploit |
+| Decoration Lv1 | 6 | Reload Speed |
+
+Slots: a new Lv1 slot 7, Lv1→2 8, Lv2→3 9, Lv3→4 12 (so a Lv4 slot is worth 36).
 
 **The sequence is shared.** All armor pieces with the same augment cost (10, 12, … 20) and the same
 augment option use one sequence. Augmenting any of them moves it forward, so after augmenting:

@@ -65,7 +65,29 @@ main { flex: 1; display: grid; grid-template-columns: 440px minmax(0, 1fr); gap:
 .group span { color: var(--muted); text-transform: none; letter-spacing: 0; margin-left: 6px; }
 .cost { font-size: 12px; color: var(--gold2); border: 1px solid var(--line); border-radius: 3px; padding: 0 5px; }
 .rar { font-size: 12px; color: var(--gold); border: 1px solid var(--line2); border-radius: 3px; padding: 0 5px; white-space: nowrap; }
-.modes { display: flex; gap: 4px; padding: 8px 10px 0; border-bottom: 1px solid var(--line2); background: #15110c; }
+.modes { display: flex; gap: 4px; padding: 8px 14px 0; border-bottom: 1px solid var(--line2); background: #15110c; }
+.small { font-size: 12px; }
+.wts { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.wts label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--gold2); text-transform: uppercase; letter-spacing: .04em; }
+.wts input { width: 100%; height: 28px; padding: 0 6px; }
+.pskill { display: grid; grid-template-columns: 24px 1fr 74px 46px; align-items: center; gap: 6px; padding: 4px 10px;
+  border-bottom: 1px solid #2c251a; }
+.pskill:hover { background: var(--hover); }
+.pskill .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pskill .tier { font-size: 11px; color: var(--muted); }
+.pskill input { width: 100%; height: 26px; padding: 0 6px; text-align: right; }
+.pskill input.set { border-color: var(--gold); color: var(--gold); }
+.pskill .reset { all: unset; cursor: pointer; font-size: 11px; color: var(--gold2); text-align: center; }
+.pskill .reset:hover { color: var(--gold); }
+.pskill.ro input { opacity: .75; }
+.modal { position: fixed; inset: 0; background: #000b; display: flex; align-items: center; justify-content: center; z-index: 30; }
+.modal .box { width: min(720px, 92vw); display: flex; flex-direction: column; }
+.modal textarea { margin: 10px; height: 52vh; resize: vertical; background: #120f0b; border: 1px solid var(--line2); border-radius: 4px;
+  color: var(--text); font: 13px/1.4 Consolas, "Cascadia Mono", monospace; padding: 8px; }
+.modal .frow { padding: 0 10px 10px; }
+td.sc { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--gold); }
+td.gn { text-align: right; font-variant-numeric: tabular-nums; }
+th.click { cursor: pointer; }
 .mode { padding: 7px 16px; cursor: pointer; border: 1px solid var(--line); border-bottom: none; border-radius: 5px 5px 0 0;
   color: var(--muted); background: #18140f; font-weight: 600; letter-spacing: .03em; }
 .mode.on { color: var(--gold); background: linear-gradient(180deg, #4a3b22, #2a2216); border-color: var(--line2); }
@@ -187,8 +209,13 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
   <label for="lang">Names</label><select id="lang"></select>
   <button class="btn" id="gamedir">Game folder…</button>
 </header>
+<nav class="modes" id="modes">
+  <span class="mode" data-mode="piece">Selected piece</span>
+  <span class="mode" data-mode="all">Search all listed armor</span>
+  <span class="mode" data-mode="rank">Ranking</span>
+</nav>
 <main>
-  <section class="frame col">
+  <section class="frame col" id="listcol">
     <h2 id="listtitle">Armor</h2>
     <div class="filters">
       <input id="afilter" type="text" placeholder="Search armor or skill…">
@@ -198,14 +225,53 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
     </div>
     <div class="list" id="armors"></div>
   </section>
-  <section class="frame col">
-    <div class="modes" id="modes">
-      <span class="mode" data-mode="piece">Selected piece</span>
-      <span class="mode" data-mode="all">Search all listed armor</span>
+  <section class="frame col" id="presetcol" style="display:none">
+    <h2>Search presets</h2>
+    <div class="filters">
+      <div class="picker" id="presetpick" style="width:100%"></div>
+      <div class="frow">
+        <button class="btn" id="pnew" title="New preset, every weight 0">New</button>
+        <button class="btn" id="pclone" title="Copy this preset to edit it">Clone</button>
+        <button class="btn" id="pdelete">Delete</button>
+        <span class="spacer"></span>
+        <button class="btn" id="pimport" title="Paste a preset as text">Import</button>
+        <button class="btn" id="pexport" title="Copy this preset as text">Export</button>
+      </div>
+      <input id="presetname" type="text" placeholder="Preset name">
+      <div id="presetnote" class="muted small"></div>
+      <div class="wts">
+        <label>New slot<input type="number" step="0.5" id="sw0"></label>
+        <label>Slot Lv1→2<input type="number" step="0.5" id="sw1"></label>
+        <label>Slot Lv2→3<input type="number" step="0.5" id="sw2"></label>
+        <label>Slot Lv3→4<input type="number" step="0.5" id="sw3"></label>
+        <label>Defense / pt<input type="number" step="0.1" id="dw"></label>
+      </div>
+      <div class="frow"><input id="pskfilter" type="text" placeholder="Search skill…" style="flex:1">
+        <label class="toggle"><input type="checkbox" id="weightedonly"><span></span>Weighted only</label></div>
     </div>
+    <div class="list" id="pskills"></div>
+  </section>
+  <section class="frame col" id="rightcol">
     <div class="head" id="head"><span class="muted">Select an armor piece.</span></div>
     <div class="tabs" id="tabs"></div>
-    <div class="filterbar">
+    <div class="filterbar" id="rankbar" style="display:none">
+      <div class="frow">
+        <span class="flabel">Pieces</span>
+        <div class="chips" id="rparts"></div><div class="chips" id="rrarities"></div>
+        <label class="toggle" title="Only pieces you have crafted"><input type="checkbox" id="rownedonly"><span></span>Crafted only</label>
+      </div>
+      <div class="frow">
+        <span class="flabel">Rolls per option</span>
+        <input id="rankdepth" type="number" min="1" max="100000" step="50" style="width:92px">
+        <span class="flabel">Sort by</span>
+        <div class="picker" id="rankby" style="width:250px"></div>
+        <span class="spacer"></span>
+        <span id="rprogress" class="muted"></span>
+        <button class="btn gold" id="rankrun">Rank</button>
+        <button class="btn" id="rankstop" style="display:none">Stop</button>
+      </div>
+    </div>
+    <div class="filterbar" id="filterbar">
       <div class="frow">
         <span class="flabel">Skill</span>
         <div class="picker" id="skillpick" style="width:290px"></div>
@@ -235,6 +301,14 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
   </section>
 </main>
 <div id="status"></div>
+<div class="modal" id="modal" style="display:none">
+  <div class="frame box">
+    <h2 id="modaltitle"></h2>
+    <textarea id="modaltext" spellcheck="false"></textarea>
+    <div class="frow"><span id="modalnote" class="muted small"></span><span class="spacer"></span>
+      <button class="btn gold" id="modalok"></button><button class="btn" id="modalclose">Close</button></div>
+  </div>
+</div>
 <div class="loading" id="loading">Reading game data…</div>
 
 <script>
@@ -410,16 +484,19 @@ async function boot() {
   S.settings.filters = { ...EMPTY_FILTERS, ...(S.settings.filters || {}) };
   S.settings.filters.skills = groupsOf(S.settings.filters.skills);
   S.settings.list = { ...LIST_DEFAULTS, ...(S.settings.list || {}) };
-  S.mode = S.settings.mode === "all" ? "all" : "piece";
+  S.mode = ["all", "rank"].includes(S.settings.mode) ? S.settings.mode : "piece";
   $("rolls").value = S.settings.rolls;
-  $("ownedonly").checked = !!L().ownedOnly;
+  $("ownedonly").checked = $("rownedonly").checked = !!L().ownedOnly;
+  $("rankdepth").value = S.settings.rankDepth || 200;
   $("lang").innerHTML = r.langs.map(l => `<option ${l === S.settings.lang ? "selected" : ""}>${l}</option>`).join("");
   $("hunter").innerHTML = r.hunters.map(h =>
     `<option value="${h.key}">${esc(h.name)} — HR ${h.hr} / MR ${h.mr} (slot ${h.slot}${h.persona ? ", " + esc(h.persona) : ""})</option>`).join("");
   if (r.hunters.some(h => h.key === S.settings.hunter)) $("hunter").value = S.settings.hunter;
   if (!S.types.some(t => t.id === S.settings.type)) S.settings.type = S.types[0].id;
   setupFilters();
+  setupRanking();
   await loadSkills();
+  await loadPresets();
   renderParts(); renderModes(); syncFilterUi();
   if (r.hunters.length) await loadHunter(); else status("No MH Rise save found on this PC.");
 }
@@ -451,18 +528,19 @@ function saveList(patch) {
 }
 
 function renderParts() {
-  $("parts").innerHTML = `<span class="chip ${L().part < 0 ? "on" : ""}" data-part="-1">All</span>` +
+  $("parts").innerHTML = $("rparts").innerHTML = `<span class="chip ${L().part < 0 ? "on" : ""}" data-part="-1">All</span>` +
     PARTS.map((p, i) => `<span class="chip ${L().part === i ? "on" : ""}" data-part="${i}" title="${p}">${mask(p, "var(--gold)", p)}</span>`).join("");
 }
 
 function renderRarities() {
   const rars = [...new Set(S.armors.map(a => a.rarity))].sort((a, b) => b - a);
   if (L().rarity && !rars.includes(L().rarity)) saveList({ rarity: 0 });
-  $("rarities").innerHTML = [0, ...rars].map(r => `<span class="chip ${L().rarity === r ? "on" : ""}" data-rarity="${r}">${r ? "Rarity " + r : "All"}</span>`).join("");
+  $("rarities").innerHTML = $("rrarities").innerHTML = [0, ...rars].map(r => `<span class="chip ${L().rarity === r ? "on" : ""}" data-rarity="${r}">${r ? "Rarity " + r : "All"}</span>`).join("");
 }
 
 function listedArmors() {
-  const q = $("afilter").value.trim().toLowerCase(), l = L();
+  // The ranking tab shows part, rarity and "Crafted only" but not the text search, so it ignores it.
+  const q = S.mode === "rank" ? "" : $("afilter").value.trim().toLowerCase(), l = L();
   return S.armors.filter(a => (l.part < 0 || a.part === l.part) && (!l.rarity || a.rarity === l.rarity)
     && (!l.ownedOnly || a.count > 0)
     && (!q || a.name.toLowerCase().includes(q) || a.skills.some(s => s.name.toLowerCase().includes(q))));
@@ -496,8 +574,13 @@ function renderArmors() {
 
 /* ---- modes ----------------------------------------------------------------------------------------- */
 function renderModes() {
+  const rank = S.mode === "rank";
   document.querySelectorAll(".mode").forEach(m => m.classList.toggle("on", m.dataset.mode === S.mode));
   $("tabs").style.display = S.mode === "piece" ? "" : "none";
+  $("listcol").style.display = rank ? "none" : "";
+  $("presetcol").style.display = rank ? "" : "none";
+  $("filterbar").style.display = rank ? "none" : "";
+  $("rankbar").style.display = rank ? "" : "none";
 }
 
 async function setMode(mode) {
@@ -515,7 +598,7 @@ function showMode() {
 
 function filtersChanged() {
   if (S.mode === "piece") { if (S.settings.armor) selectArmor(S.settings.armor); }
-  else { if (S.all) S.all.stale = true; showSearchUi(); renderHead(); }
+  else if (S.mode === "all") { if (S.all) S.all.stale = true; showSearchUi(); renderHead(); }
 }
 
 /* ---- piece mode: either the next N rolls (no filter) or a search that runs until it finds matches ---- */
@@ -590,6 +673,9 @@ async function poll() {
       tp.scanned = st.scanned; tp.ended = st.ended;
     }
     S.pred.total = r.total;
+  } else if (job.kind === "rank") {
+    for (const e of r.events) S.rank.byKey[e.key] = e;  // each stream's best roll so far
+    Object.assign(S.rank, { total: r.total, done: r.done });
   } else {
     for (const e of r.events) S.all.results.push(e);
     if (r.events.length) S.all.results.sort((a, b) => a.n - b.n);
@@ -601,7 +687,8 @@ async function poll() {
     status(`Search ${r.cancelled ? "stopped" : "finished"}: ${r.total.toLocaleString()} rolls simulated.`);
   }
   showSearchUi(); renderTabs(); renderHead();
-  const empty = job.kind === "piece" ? !S.pred.types[S.settings.type].rolls.length : !S.all.results.length;
+  const empty = job.kind === "piece" ? !S.pred.types[S.settings.type].rolls.length
+    : job.kind === "rank" ? !Object.keys(S.rank.byKey).length : !S.all.results.length;
   if (r.events.length || r.done || empty) renderTable();
 }
 
@@ -614,9 +701,15 @@ function showSearchUi() {
   if (S.searching && S.job && S.job.kind === "piece") p = `Scanned ${(S.pred.total || 0).toLocaleString()} rolls…`;
   if (S.searching && S.job && S.job.kind === "all") p = !S.all.total ? "Starting search on every CPU core…" : `Every piece checked to roll #${S.all.depth.toLocaleString()} · ${S.all.total.toLocaleString()} rolls`;
   $("progress").textContent = p;
+  const ranking = S.searching && S.job && S.job.kind === "rank";
+  $("rankstop").style.display = ranking ? "" : "none";
+  $("rankrun").textContent = S.rank && !S.rank.stale && !ranking && !S.rank.error ? "Rank again" : "Rank";
+  $("rprogress").textContent = !ranking ? "" : !S.rank.total ? "Starting on every CPU core…"
+    : `${S.rank.total.toLocaleString()} of ${(S.rank.streams * S.rank.depth).toLocaleString()} rolls`;
 }
 
 function renderHead() {
+  if (S.mode === "rank") return renderRankHead();
   if (S.mode === "all") {
     const n = listedArmors().length, a = S.all;
     let note = `Finds, for every armor piece listed on the left and every augment option, the closest roll that passes the
@@ -670,6 +763,7 @@ const MAX_ALL_ROWS = 400;
 function renderTable() {
   $("table").classList.remove("all");
   if (S.mode === "all") return renderAllTable();
+  if (S.mode === "rank") return renderRankTable();
   if (S.error && filtering()) {
     $("table").innerHTML = `<div class="empty" style="color:var(--down)">${esc(S.error)}</div>`;
     return;
@@ -743,9 +837,14 @@ document.addEventListener("click", e => {
 function listChanged() {
   renderArmors();
   if (S.mode === "all") { if (S.all) S.all.stale = true; renderHead(); showSearchUi(); }
+  if (S.mode === "rank") rankStale();
 }
 $("afilter").addEventListener("input", listChanged);
-$("ownedonly").addEventListener("change", () => { saveList({ ownedOnly: $("ownedonly").checked }); listChanged(); });
+for (const id of ["ownedonly", "rownedonly"]) $(id).addEventListener("change", () => {
+  saveList({ ownedOnly: $(id).checked });
+  $("ownedonly").checked = $("rownedonly").checked = $(id).checked;
+  listChanged();
+});
 $("hunter").addEventListener("change", loadHunter);
 $("reload").addEventListener("click", loadHunter);
 $("rolls").addEventListener("change", () => {
@@ -757,6 +856,212 @@ $("lang").addEventListener("change", async () => {
   await loadSkills(); syncFilterUi(); await loadHunter();
 });
 $("gamedir").addEventListener("click", async () => { if (await api().choose_game_dir()) location.reload(); });
+
+/* ---- ranking tab: presets ------------------------------------------------------------------------- */
+let presetPick, rankByPick, saveTimer = null;
+const P = { builtin: [], user: [], skills: [], defaultSlots: [7, 8, 9, 12] };
+const allPresets = () => P.builtin.concat(P.user);
+const currentPreset = () => allPresets().find(p => p.id === S.settings.preset) || allPresets()[0];
+const RANK_BY = [
+  { value: "score", text: "Best piece after the augment", html: "Best piece after the augment" },
+  { value: "gain", text: "Best augment (gain)", html: "Best augment (gain over the piece)" },
+];
+
+function setupRanking() {
+  presetPick = makePicker($("presetpick"), { search: true, placeholder: "Choose a preset…",
+    onChange: v => { S.settings.preset = v; api().save_settings({ preset: v }); renderPreset(); rankStale(); } });
+  rankByPick = makePicker($("rankby"), { onChange: v => { S.settings.rankBy = v; api().save_settings({ rankBy: v }); renderRankTable(); } });
+  rankByPick.setItems(RANK_BY, S.settings.rankBy === "gain" ? "gain" : "score");
+  $("pnew").addEventListener("click", () => addPreset({ name: "New preset", weights: {}, slots: [0, 0, 0, 0], defense: 0 }));
+  $("pclone").addEventListener("click", () => {
+    const p = currentPreset();
+    addPreset({ name: p.name + " (copy)", weights: { ...p.weights }, slots: [...p.slots], defense: p.defense || 0 });
+  });
+  $("pdelete").addEventListener("click", () => {
+    const p = currentPreset();
+    if (p.builtin || !confirm(`Delete the preset "${p.name}"?`)) return;
+    P.user = P.user.filter(x => x.id !== p.id);
+    S.settings.preset = allPresets()[0].id; api().save_settings({ preset: S.settings.preset });
+    savePresets(); renderPresetPicker(); renderPreset(); rankStale();
+  });
+  $("pexport").addEventListener("click", async () => {
+    const text = await api().preset_export(currentPreset());
+    openModal("Export preset", text, "Copy", async () => { await copyText($("modaltext")); $("modalnote").textContent = "Copied to the clipboard."; },
+      "Copy this text to share the preset or keep a backup.");
+  });
+  $("pimport").addEventListener("click", () => openModal("Import preset", "", "Import", async () => {
+    const r = await api().preset_import($("modaltext").value);
+    if (r.error) { $("modalnote").textContent = r.error; return; }
+    addPreset(r.preset);
+    closeModal();
+    status(r.unknown.length ? `Preset imported; ${r.unknown.length} line(s) not recognised: ${r.unknown.slice(0, 3).join(" | ")}` : "Preset imported.");
+  }, "Paste a preset exported by this app (or edited by hand: \"skill Attack Boost = 10\")."));
+  $("presetname").addEventListener("input", () => editPreset(p => { p.name = $("presetname").value || "Unnamed preset"; }, false));
+  $("presetname").addEventListener("change", renderPresetPicker);
+  ["sw0", "sw1", "sw2", "sw3"].forEach((id, i) => $(id).addEventListener("input", () => editPreset(p => { p.slots[i] = num($(id).value); })));
+  $("dw").addEventListener("input", () => editPreset(p => { p.defense = num($("dw").value); }));
+  $("pskfilter").addEventListener("input", renderPresetSkills);
+  $("weightedonly").addEventListener("change", renderPresetSkills);
+  $("pskills").addEventListener("input", e => {
+    const inp = e.target.closest("input[data-skill]");
+    if (!inp) return;
+    editPreset(p => { setWeight(p, inp.dataset.skill, num(inp.value)); });
+    inp.classList.toggle("set", num(inp.value) !== 0);
+  });
+  $("pskills").addEventListener("click", e => {
+    const b = e.target.closest("[data-tierw]");
+    if (!b || currentPreset().builtin) return;
+    editPreset(p => { setWeight(p, b.dataset.tierw, +b.dataset.w); });
+    renderPresetSkills();
+  });
+  $("rankrun").addEventListener("click", startRank);
+  $("rankstop").addEventListener("click", () => api().find_cancel());
+  $("rankdepth").addEventListener("change", () => {
+    S.settings.rankDepth = Math.max(1, Math.min(100000, parseInt($("rankdepth").value) || 200));
+    $("rankdepth").value = S.settings.rankDepth; api().save_settings({ rankDepth: S.settings.rankDepth }); rankStale();
+  });
+  $("modalclose").addEventListener("click", closeModal);
+}
+
+const num = v => { const x = parseFloat(String(v).replace(",", ".")); return isFinite(x) ? x : 0; };
+function setWeight(p, sid, w) { if (w) p.weights[sid] = w; else delete p.weights[sid]; }
+
+async function loadPresets() {
+  Object.assign(P, await api().presets());
+  if (!allPresets().some(p => p.id === S.settings.preset)) S.settings.preset = allPresets()[0].id;
+  renderPresetPicker(); renderPreset();
+}
+
+function renderPresetPicker() {
+  presetPick.setItems(allPresets().map(p => ({ value: p.id, text: p.name,
+    html: `<span>${esc(p.name)}</span>${p.builtin ? `<span class="hint">built-in</span>` : ""}` })), S.settings.preset);
+}
+
+function renderPreset() {
+  const p = currentPreset(), ro = !!p.builtin;
+  $("presetname").value = p.name; $("presetname").disabled = ro;
+  ["sw0", "sw1", "sw2", "sw3"].forEach((id, i) => { $(id).value = p.slots[i]; $(id).disabled = ro; });
+  $("dw").value = p.defense || 0; $("dw").disabled = ro;
+  $("pdelete").disabled = ro; $("pdelete").style.opacity = ro ? .45 : 1;
+  const n = Object.values(p.weights).filter(w => w).length;
+  $("presetnote").innerHTML = (ro ? "Built-in preset (read-only): <b>Clone</b> it to change weights. " : "")
+    + `${n} weighted skills. Weights count per skill level on the piece after the augment; losing a skill loses its weight.`;
+  renderPresetSkills();
+}
+
+function renderPresetSkills() {
+  const p = currentPreset(), ro = !!p.builtin;
+  const q = $("pskfilter").value.trim().toLowerCase(), only = $("weightedonly").checked;
+  const list = P.skills.filter(s => (!q || s.name.toLowerCase().includes(q) || s.tierLabel.toLowerCase().includes(q))
+    && (!only || p.weights[s.id]))
+    .sort((a, b) => (p.weights[b.id] || 0) - (p.weights[a.id] || 0) || a.name.localeCompare(b.name));
+  $("pskills").innerHTML = list.map(s => {
+    const w = p.weights[s.id] || 0;
+    return `<div class="pskill ${ro ? "ro" : ""}" title="${esc(s.name)}: up to Lv${s.max}${s.qurious ? ", qurious can add it" : ", qurious never adds it"}">
+      ${skillIcon(s.color, s.name)}
+      <div style="min-width:0"><div class="nm">${esc(s.name)}</div><div class="tier">${esc(s.tierLabel)}</div></div>
+      <input type="number" step="0.5" data-skill="${s.id}" value="${w}" class="${w ? "set" : ""}" ${ro ? "disabled" : ""}>
+      ${ro ? "" : `<button class="reset" data-tierw="${s.id}" data-w="${s.tierWeight}" title="Use the default weight of this tier">= ${s.tierWeight}</button>`}
+    </div>`;
+  }).join("") || `<div class="empty">No skill matches.</div>`;
+}
+
+function addPreset(src) {
+  const p = { id: "user:" + Date.now().toString(36), builtin: false, name: src.name, weights: { ...src.weights },
+    slots: [...src.slots], defense: src.defense || 0 };
+  P.user.push(p);
+  S.settings.preset = p.id; api().save_settings({ preset: p.id });
+  savePresets(); renderPresetPicker(); renderPreset(); rankStale();
+}
+
+function editPreset(fn, stale = true) {
+  const p = currentPreset();
+  if (p.builtin) return;
+  fn(p);
+  savePresets();
+  if (stale) rankStale();
+}
+
+function savePresets() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => api().save_presets(P.user), 400);
+}
+
+/* ---- import / export dialog ---- */
+let modalAction = null;
+function openModal(title, text, okLabel, action, note) {
+  $("modaltitle").textContent = title; $("modaltext").value = text; $("modalok").textContent = okLabel;
+  $("modalnote").textContent = note || ""; modalAction = action;
+  $("modal").style.display = "";
+  setTimeout(() => { $("modaltext").focus(); if (text) $("modaltext").select(); }, 0);
+}
+function closeModal() { $("modal").style.display = "none"; modalAction = null; }
+$("modalok").addEventListener("click", () => modalAction && modalAction());
+async function copyText(area) {
+  try { await navigator.clipboard.writeText(area.value); return; } catch (e) { /* fall back below */ }
+  area.focus(); area.select(); document.execCommand("copy");
+}
+
+/* ---- ranking tab: run and show ---- */
+function rankStale() {
+  if (S.rank && !S.rank.error) S.rank.stale = true;
+  if (S.mode === "rank") { renderRankHead(); showSearchUi(); }
+}
+
+async function startRank() {
+  const ids = listedArmors().map(a => a.id), depth = parseInt($("rankdepth").value) || 200;
+  await stopJob();
+  const r = await api().rank_start(ids, currentPreset(), depth);
+  if (r.error) { S.rank = { error: r.error, byKey: {} }; status(r.error); showMode(); return; }
+  S.rank = { byKey: {}, pieces: ids.length, streams: r.streams.length, depth: r.depth, total: 0, done: false, stale: false,
+    preset: currentPreset().name, weights: { ...currentPreset().weights } };
+  startPolling({ kind: "rank", since: 0, streams: r.streams });
+  status(`Ranking the next ${r.depth} rolls of every augment option on ${ids.length} pieces…`);
+  showMode();
+}
+
+function renderRankHead() {
+  const n = listedArmors().length, p = currentPreset(), r = S.rank;
+  let note = `Scores the next rolls of every augment option on the listed pieces with the preset's weights and keeps the
+    best roll of each piece and option. <b>Score</b> = the piece after the augment (its own skills, gains and losses, slots);
+    <b>Gain</b> = how much the augment adds or removes. Click a row to open that piece.`;
+  if (r && r.stale) note += ` <b style="color:var(--gold)">Preset or pieces changed: press Rank again.</b>`;
+  $("head").innerHTML = `<span class="big">Ranking</span><span class="rar">${esc(p.name)}</span><span class="rar">${n} pieces</span>
+    <div class="note">${note}</div>`;
+}
+
+function renderRankTable() {
+  const r = S.rank;
+  if (!r) { $("table").innerHTML = `<div class="empty">Pick a preset on the left, then press <b>Rank</b>.</div>`; return; }
+  if (r.error) { $("table").innerHTML = `<div class="empty" style="color:var(--down)">${esc(r.error)}</div>`; return; }
+  const by = S.settings.rankBy === "gain" ? "gain" : "score";
+  const rows = Object.values(r.byKey).sort((a, b) => b[by] - a[by] || a.n - b.n).slice(0, MAX_ALL_ROWS);
+  if (!rows.length) { $("table").innerHTML = `<div class="empty">${r.done ? "Nothing to rank." : "Ranking…"}</div>`; return; }
+  $("table").classList.add("all");
+  const byId = Object.fromEntries(S.armors.map(x => [x.id, x]));
+  const typeName = id => S.types.find(t => t.id === id).name;
+  const fmt = v => (Math.round(v * 10) / 10).toLocaleString();
+  $("table").innerHTML = `<table><thead><tr><th>Rank</th><th style="text-align:right">Score</th><th style="text-align:right">Gain</th>
+    <th>Armor · option</th><th>#</th><th>Defense</th><th>Slots</th><th>Resistances</th><th>Skills</th></tr></thead><tbody>` +
+    rows.map((e, i) => {
+      const arm = byId[e.armor] || { name: e.armor, part: 0, rarity: "?", skills: [] };
+      const skills = e.row.skills.map(s => `<span class="sk ${r.weights[s.id] ? "wanted" : ""}" title="${r.weights[s.id] ? "weight " + r.weights[s.id] : "not in the preset"}">${skillIcon(s.color, s.name)}<span class="nm">${esc(s.name)}</span>${signed(s.v)}</span>`).join("");
+      return `<tr class="click" data-goto="${e.armor}:${e.type}" title="Open this piece">
+        <td class="n">${i + 1}</td><td class="sc">${fmt(e.score)}</td>
+        <td class="gn"><span class="${e.gain > 0 ? "pos" : e.gain < 0 ? "neg" : "zero"}">${e.gain > 0 ? "+" : ""}${fmt(e.gain)}</span></td>
+        <td class="arm">${mask(PARTS[arm.part], "var(--gold)", PARTS[arm.part])} <span class="nm">${esc(arm.name)}</span>
+          <span class="muted"> R${arm.rarity}</span>${arm.count ? ` <span class="own">✓</span>` : ""}
+          <div class="opt">${esc(typeName(e.type))}</div>
+          <div class="base" title="Skills the piece already has">${(arm.skills || []).map(s => `<span class="sk">${skillIcon(s.color, s.name)}${esc(s.name)} ${s.level}</span>`).join("")}</div></td>
+        <td class="n">${e.n.toLocaleString()}</td>
+        <td>${img(e.row.def < 0 ? "defense_down" : "defense", "Defense", e.row.def ? "" : "off")} ${signed(e.row.def)}</td>
+        <td class="slots">${e.row.slots.map(x => slot(x.lv, x.up)).join("")}</td>
+        <td>${e.row.res.map((v, k) => `<span class="res">${img(ELEMENTS[k], ELEMENTS[k], v ? "" : "off")}${signed(v)}</span>`).join("")}</td>
+        <td class="skills">${skills}</td></tr>`;
+    }).join("") + `</tbody></table>` +
+    (Object.keys(r.byKey).length > MAX_ALL_ROWS ? `<div class="empty">Showing the top ${MAX_ALL_ROWS} of ${Object.keys(r.byKey).length.toLocaleString()} piece/option results.</div>` : "");
+}
+
 window.addEventListener("pywebviewready", boot);
 </script>
 </body>

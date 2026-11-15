@@ -9,7 +9,7 @@ from pathlib import Path
 from mhrise_exporter import core, steam
 from mhrise_exporter.export import _expand_slots, apply_slot_bonus
 
-from . import engine, gamedata, icons, savedata, search
+from . import engine, gamedata, icons, ranking, savedata, search
 from .predict import next_rolls
 
 TITLE = "MH Rise Qurious Predictor"
@@ -18,7 +18,8 @@ EMPTY_FILTERS = {"skills": [], "slots": [0, 0, 0], "minDef": None, "noSkillLoss"
 LIST_DEFAULTS = {"ownedOnly": False, "rarity": 0, "part": -1}
 DEFAULT_SETTINGS = {"rolls": 200, "lang": "en", "hunter": None, "armor": None, "type": engine.TYPE_AUGMENT,
                     "filters": EMPTY_FILTERS, "game_dir": None, "list": LIST_DEFAULTS,
-                    "mode": "piece"}
+                    "mode": "piece", "presets": [], "preset": "builtin:meta", "rankBy": "score",
+                    "rankDepth": 200}
 
 
 def _merge_skills(pairs):
@@ -209,6 +210,51 @@ class Api:
         """First matching roll of every augment option on every listed piece (closest first)."""
         # Pieces that already have the skill would all match at roll #1: only augments that add it count.
         return self._start([str(a) for a in armor_ids], {**filters, "gainOnly": True}, 1, limit)
+
+    # ---- ranking ------------------------------------------------------------------------------------
+
+    def presets(self):
+        """Built-in presets (read-only), the user's presets and every skill with how hard it is to get."""
+        labels = {t: label for t, label, _ in ranking.TIERS}
+        skills = []
+        for sid in sorted(int(k) for k in self.data["skills"]):
+            t = ranking.tier(self.data, sid)
+            skills.append(dict(self._skill(sid), tier=t, tierLabel=labels[t], tierWeight=ranking.TIER_WEIGHT[t],
+                               qurious=any(s == sid for s, _ in self.tables.skill_costs)))
+        skills.sort(key=lambda x: x["name"].lower())
+        return {"builtin": ranking.builtin_presets(self.data), "user": self.settings.get("presets") or [],
+                "skills": skills, "defaultSlots": ranking.DEFAULT_SLOT_WEIGHTS}
+
+    def save_presets(self, presets: list):
+        self.save_settings({"presets": [p for p in presets if not p.get("builtin")]})
+        return True
+
+    def preset_export(self, preset: dict):
+        return ranking.export_text(preset, self.data)
+
+    def preset_import(self, text: str):
+        preset, unknown = ranking.import_text(text or "", self.data)
+        if not preset["weights"] and not any(preset["slots"]) and not preset["defense"]:
+            return {"error": "No preset found in the text. Paste a preset exported by this app."}
+        return {"preset": preset, "unknown": unknown}
+
+    def rank_start(self, armor_ids: list, preset: dict, depth: int = 200):
+        """Score the next ``depth`` rolls of every augment option on every listed piece; report the best
+        roll of each piece and option (updated while the search runs)."""
+        self.find_cancel()
+        if not self.data or not self.generators:
+            return {"error": "Select a hunter first."}
+        ids = [str(a) for a in armor_ids if str(a) in self.data["armors"]]
+        if not ids:
+            return {"error": "No armor piece to rank."}
+        if not any(float(w) for w in preset.get("weights", {}).values()) and not any(preset.get("slots", []))                 and not preset.get("defense"):
+            return {"error": "Every weight of this preset is 0: give some skills a weight first."}
+        depth = max(1, min(100_000, int(depth)))
+        streams = [(aid, t) for aid in ids for t in engine.TYPE_NAMES]
+        self._job = search.Search(self.data, self.generators, streams, {}, depth + 1, depth,
+                                  lambda aid, s, n: self._row(self.data["armors"][aid], n, s),
+                                  rank={"preset": preset})
+        return {"started": True, "streams": [{"armor": aid, "type": t} for aid, t in streams], "depth": depth}
 
     def find_status(self, since: int = 0):
         job = getattr(self, "_job", None)

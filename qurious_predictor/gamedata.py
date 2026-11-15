@@ -12,7 +12,7 @@ from mhrise_exporter.pak import open_game_paks
 
 from .engine import Buildup, Tables
 
-CACHE_VERSION = 4
+CACHE_VERSION = 5
 DIR = "data/Define/Player/Equip/CustomBuildup"
 
 # Extra RSZ layouts (v16), from the kvasszn/ree-save-editor type dump.
@@ -34,6 +34,14 @@ rsz.SPECS.update({
     "snow.data.PlEquipSkillBaseUserData.Param": (None, [
         ("_Id", "u8", False), ("_MaxLevel", "s32", False), ("_IconColor", "s32", False),
         ("_CategoryId_1", "u16", False), ("_CategoryId_2", "u16", False), ("_CategoryId_3", "u16", False),
+    ]),
+    # Talisman (melding) skill table; layout from wwylele/mhrice src/rsz/alchemy.rs.
+    "snow.data.AlchemyPlSkillTableUserData": (None, [("_Param", "obj", True)]),
+    "snow.data.AlchemyPlSkillTableUserData.Param": (None, [
+        ("_SortId", "s32", False), ("_SkillId", "u8", False), ("_Grade", "s32", False), ("_Patturn", "s32", False),
+        ("_PickRate", "u32", False), ("_GradePickRate", "u32", True), ("_Skill1RateList", "u32", True),
+        ("_MissRateList", "u32", True), ("_Skill2RateList", "u32", True), ("_Skill1MysteryWorth", "u32", True),
+        ("_Skill2MysteryWorth", "u32", True),
     ]),
 })
 rsz._BY_HASH.update({rsz.hash_utf8(name): name for name in rsz.SPECS})
@@ -68,6 +76,18 @@ def build(game_dir: Path, log=print) -> dict:
         max_levels = {str(p["_Id"]): p["_MaxLevel"] for p in skill_base}
         skill_colors = {str(p["_Id"]): p["_IconColor"] for p in skill_base}
 
+        log("Reading decorations and talisman skills...")
+        deco_levels = {}  # skill -> lowest decoration level that gives a point of it
+        for p in rsz.parse_user(pak.read_any(
+                "data/Define/Player/Equip/Decorations/DecorationsBaseData.user", ["2"]))[0]["_Param"]:
+            for sid in p["_SkillIdList"]:
+                if sid:
+                    deco_levels[str(sid)] = min(deco_levels.get(str(sid), 99), p["_DecorationLv"])
+        talisman_skills = sorted({
+            p["_SkillId"] for p in rsz.parse_user(pak.read_any(
+                "data/Define/Lobby/Facility/Alchemy/AlchemyPlSkillTable.user", ["2"]))[0]["_Param"]
+            if p["_SkillId"] and (p["_PickRate"] or any(p["_Skill1RateList"]) or any(p["_Skill2RateList"]))})
+
         log("Reading skill names...")
         msg = "data/Define/Player/Skill/PlEquipSkill/PlayerSkill_Name"
         sk, sk_mr = _msg_map(pak, msg), _msg_map(pak, msg + "_MR")
@@ -101,7 +121,8 @@ def build(game_dir: Path, log=print) -> dict:
     finally:
         pak.close()
     return {"version": CACHE_VERSION, "base": base, "armor_lots": armor_lots, "category_lots": category_lots,
-            "skill_costs": skill_costs, "skills": skills, "max_levels": max_levels, "skill_colors": skill_colors, "armors": armors}
+            "skill_costs": skill_costs, "skills": skills, "max_levels": max_levels, "skill_colors": skill_colors, "armors": armors,
+            "deco_levels": deco_levels, "talisman_skills": talisman_skills}
 
 
 def _fingerprint(game_dir: Path) -> str:

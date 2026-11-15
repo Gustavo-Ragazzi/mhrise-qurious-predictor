@@ -108,8 +108,12 @@ def matcher(armor: dict, filters: dict):
 
 # ---- worker process --------------------------------------------------------------------------------
 
-def _worker(wid, table_data, armors, states, streams, filters, max_matches, limit, out, stop):
+def _worker(wid, table_data, armors, states, streams, filters, max_matches, limit, out, stop, rank=None):
+    """Filter mode: report rolls that pass ``filters``. Rank mode (``rank`` = {"preset"}): score every roll
+    and report each stream's best one so far (the earliest on ties). Score and gain differ by a constant
+    per stream, so the best roll is the same for both."""
     from . import gamedata
+    from .ranking import Scorer
     from .rng import XorShift128
 
     tables = gamedata.tables(table_data)
@@ -117,7 +121,9 @@ def _worker(wid, table_data, armors, states, streams, filters, max_matches, limi
     for key, (aid, t) in streams:
         a = armors[aid]
         live.append({"key": key, "armor": a, "type": t, "rng": XorShift128(states[engine.seed_index(a["cost"], t)]),
-                     "skills": [tuple(x) for x in a["skills"]], "ok": matcher(a, filters), "n": 0, "found": 0})
+                     "skills": [tuple(x) for x in a["skills"]], "n": 0, "found": 0,
+                     "ok": None if rank else matcher(a, filters),
+                     "scorer": Scorer(a, rank["preset"], tables.max_levels) if rank else None, "best": None})
     last = 0.0
     while live and not stop.is_set():
         for st in list(live):
@@ -125,7 +131,12 @@ def _worker(wid, table_data, armors, states, streams, filters, max_matches, limi
             for _ in range(CHUNK):
                 st["n"] += 1
                 s = engine.summarize(engine.create_result(rng, tables, a["table"], a["cost"], st["skills"], t))
-                if st["ok"](s):
+                if rank:
+                    score, gain = st["scorer"].score(s)
+                    if st["best"] is None or score > st["best"]:
+                        st["best"] = score
+                        out.put(("match", st["key"], st["n"], s, (score, gain)))
+                elif st["ok"](s):
                     st["found"] += 1
                     out.put(("match", st["key"], st["n"], s))
                 if st["found"] >= max_matches or st["n"] >= limit:
@@ -145,7 +156,7 @@ class Search:
     """Runs streams over worker processes; results are read with ``snapshot(since)`` (thread-safe)."""
 
     def __init__(self, data: dict, generators, streams: list[tuple[str, int]], filters: dict,
-                 max_matches: int, limit: int, row):
+                 max_matches: int, limit: int, row, rank: dict | None = None):
         self.streams = streams
         self.row = row                # (armor id, Summary, n) -> dict for the page
         self.events = []              # {"key", "armor", "type", "n", "row"} in arrival order
@@ -168,7 +179,7 @@ class Search:
             part = keyed[w::n_workers]
             p = ctx.Process(target=_worker, daemon=True,
                             args=(w, table_data, {aid: armors[aid] for _, (aid, _t) in part}, states, part,
-                                  filters, max_matches, limit, self._out, self._stop))
+                                  filters, max_matches, limit, self._out, self._stop, rank))
             p.start()
             self._procs.append(p)
         threading.Thread(target=self._collect, daemon=True).start()
@@ -186,7 +197,10 @@ class Search:
                 if kind == "match":
                     aid, t = self.streams[a]
                     self.scanned[a] = max(self.scanned[a], b)
-                    self.events.append({"key": a, "armor": aid, "type": t, "n": b, "row": self.row(aid, rest[0], b)})
+                    ev = {"key": a, "armor": aid, "type": t, "n": b, "row": self.row(aid, rest[0], b)}
+                    if len(rest) > 1:
+                        ev["score"], ev["gain"] = rest[1]
+                    self.events.append(ev)
                 elif kind == "progress":
                     for k, n in b.items():
                         self.scanned[k] = max(self.scanned[k], n)
