@@ -15,8 +15,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install (builds the Rust engine with maturin)
         run: python -m pip install -e .[dev]
+      - name: Test (Rust)
+        run: cargo test --release --manifest-path native/Cargo.toml -p qurious-core
       - name: Test
         run: python -m pytest -q
       - name: Build standalone executable

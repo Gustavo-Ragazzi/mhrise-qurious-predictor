@@ -84,7 +84,9 @@ character save. This tool:
 1. decrypts the save (via [mhrise-exporter](https://github.com/Gustavo-Ragazzi/mhrise-exporter))
    and reads the 56 generator states;
 2. re-implements the generator (`via.Random`, a xorshift128 with shifts 15/4/21) and
-   `ArmorCustomBuildupData.createResult`, the game's augment roll;
+   `ArmorCustomBuildupData.createResult`, the game's augment roll. The reference version is Python
+   (`qurious_predictor/engine.py`); searches run on a Rust port of it (`native/core`, loaded through
+   PyO3) on every CPU core, several million rolls per second;
 3. reads the augment tables (weights, costs, values), skill data and GUI icons from your own install.
 
 The game executable is packed, so nothing was disassembled: the algorithm was reconstructed
@@ -106,14 +108,23 @@ confirmed in game yet.
 
 ## Run from source
 
+Needs Python 3.10+ and a [Rust toolchain](https://rustup.rs) (the install builds the engine with
+[maturin](https://www.maturin.rs)):
+
 ```bash
 python -m venv .venv
 .venv/Scripts/pip install -e .[dev]
 .venv/Scripts/python -m qurious_predictor
 ```
 
-Tests: `.venv/Scripts/python -m pytest`. The validation tests need the game and the recordings
-(`MHR_GAME_DIR`, `MHR_QURIOUS_DATA` = a folder with the probe outputs) and are skipped otherwise.
+After changing the Rust code, run `pip install -e .` again. Without the compiled engine the app falls
+back to the (slower) Python one; `QURIOUS_ENGINE=python` forces it.
+
+Tests: `.venv/Scripts/python -m pytest` and `cargo test --manifest-path native/Cargo.toml`. The Rust
+engine is compared roll by roll, generator state included, with the Python one on synthetic tables;
+with the game (`MHR_GAME_DIR`) also on every armor piece, and with the recordings
+(`MHR_QURIOUS_DATA` = a folder with the probe outputs) on the in-game traces. Tests that need the
+game or the recordings are skipped otherwise.
 
 Build the executable (also done by GitHub Actions on `v*` tags):
 
@@ -129,6 +140,8 @@ Build the executable (also done by GitHub Actions on `v*` tags):
   icon location also come from mhrice.
 * RSZ type layouts: [kvasszn/ree-save-editor](https://github.com/kvasszn/ree-save-editor).
 * [REFramework](https://github.com/praydog/REFramework), used for the research probes.
+* [PyO3](https://pyo3.rs), [maturin](https://www.maturin.rs) and [rayon](https://github.com/rayon-rs/rayon)
+  (MIT/Apache-2.0) for the Rust engine.
 * The "Qurious Preview and Export as csv" REFramework mod (Nexus Mods), used as ground truth.
 
 ## License

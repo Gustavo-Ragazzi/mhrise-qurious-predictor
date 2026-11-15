@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
 
 [project]
 name = "mhrise-qurious-predictor"
-version = "0.4.0"
+version = "0.5.0"
 description = "Offline predictor of the next Qurious armor augments for Monster Hunter Rise: Sunbreak (Steam saves)"
 readme = "README.md"
 license = { text = "MIT" }
@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7", "pyinstaller>=6"]
+dev = ["pytest>=7", "pyinstaller>=6", "maturin>=1.7,<2"]
 
 [project.urls]
 Homepage = "https://github.com/Gustavo-Ragazzi/mhrise-qurious-predictor"
@@ -23,8 +23,8 @@ Homepage = "https://github.com/Gustavo-Ragazzi/mhrise-qurious-predictor"
 [project.gui-scripts]
 mhrise-qurious-predictor = "qurious_predictor.app:main"
 
-[tool.setuptools]
-packages = ["qurious_predictor"]
-
-[tool.setuptools.package-data]
-qurious_predictor = ["web/*.html"]
+[tool.maturin]
+# The Rust engine (native/core) is built into qurious_predictor/_native via the PyO3 bindings.
+manifest-path = "native/py/Cargo.toml"
+module-name = "qurious_predictor._native"
+profile = "release"

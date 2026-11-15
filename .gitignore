@@ -5,3 +5,6 @@ __pycache__/
 build/
 dist/
 *.egg-info/
+native/target/
+qurious_predictor/_native*.pyd
+qurious_predictor/_native*.so

@@ -10,7 +10,6 @@ from mhrise_exporter import core, steam
 from mhrise_exporter.export import _expand_slots, apply_slot_bonus
 
 from . import engine, gamedata, icons, ranking, savedata, search
-from .predict import next_rolls
 
 TITLE = "MH Rise Qurious Predictor"
 WEB = Path(__file__).with_name("web") / "index.html"
@@ -155,8 +154,8 @@ class Api:
             self.save_settings({"armor": str(armor_id), "rolls": count})
             out = {}
             for t in engine.TYPE_NAMES:
-                seed, rolls = next_rolls(self.generators, self.tables, a, t, count)
-                out[t] = {"seed": seed, "rolls": [self._row(a, r.n, r.summary) for r in rolls]}
+                seed, rolls = search.rolls(self.data, self.generators, a, t, count)
+                out[t] = {"seed": seed, "rolls": [self._row(a, n, s) for n, s in enumerate(rolls, 1)]}
             return {"types": out, "sameCost": self._same_cost(a)}
 
     # ---- search (worker processes, polled by the page) -----------------------------------------------
@@ -195,7 +194,7 @@ class Api:
                 return {"error": "Qurious crafting never adds skills to this piece." if never_adds
                         else "No augment option can ever pass these skill filters on this piece."}
             return {"error": "No listed armor piece can ever pass these filters."}
-        self._job = search.Search(self.data, self.generators, streams, filters, max_matches, limit,
+        self._job = search.start(self.data, self.generators, streams, filters, max_matches, limit,
                                   lambda aid, s, n: self._row(self.data["armors"][aid], n, s))
         return {"started": True, "streams": [{"armor": aid, "type": t} for aid, t in streams]}
 
@@ -251,7 +250,7 @@ class Api:
             return {"error": "Every weight of this preset is 0: give some skills a weight first."}
         depth = max(1, min(100_000, int(depth)))
         streams = [(aid, t) for aid in ids for t in engine.TYPE_NAMES]
-        self._job = search.Search(self.data, self.generators, streams, {}, depth + 1, depth,
+        self._job = search.start(self.data, self.generators, streams, {}, depth + 1, depth,
                                   lambda aid, s, n: self._row(self.data["armors"][aid], n, s),
                                   rank={"preset": preset})
         return {"started": True, "streams": [{"armor": aid, "type": t} for aid, t in streams], "depth": depth}

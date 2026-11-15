@@ -43,6 +43,10 @@ def main():
     import mhrise_exporter
     exporter_src = Path(mhrise_exporter.__file__).resolve().parent.parent
     run(py, "-m", "pip", "install", "--quiet", "pyinstaller")
+    try:  # the Rust engine is built by `pip install -e .` (maturin); refuse to ship without it
+        import qurious_predictor._native  # noqa: F401
+    except ImportError:
+        sys.exit("qurious_predictor._native is missing: run `pip install -e .` (needs a Rust toolchain) first.")
     shutil.rmtree(WORK, ignore_errors=True)
     launcher = WORK / "launcher.py"
     WORK.mkdir(parents=True, exist_ok=True)
@@ -52,6 +56,7 @@ def main():
         "--name", NAME, "--distpath", DIST, "--workpath", WORK / "work", "--specpath", WORK,
         "--paths", ROOT, "--paths", exporter_src, "--add-data", f"{web};qurious_predictor/web",
         "--collect-submodules", "qurious_predictor", "--collect-submodules", "mhrise_exporter",
+        "--hidden-import", "qurious_predictor._native",
         launcher)
     exe = DIST / f"{NAME}.exe"
     archive = DIST / f"{NAME}-{version()}-windows.zip"

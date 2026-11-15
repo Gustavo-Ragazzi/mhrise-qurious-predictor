@@ -1,0 +1,15 @@
+[package]
+name = "qurious-native"
+description = "Python bindings (PyO3) of qurious-core: parallel augment search for MH Rise Qurious Predictor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+qurious-core = { path = "../core" }
+pyo3 = { version = "0.23", features = ["extension-module", "abi3-py310"] }
+rayon = "1.10"

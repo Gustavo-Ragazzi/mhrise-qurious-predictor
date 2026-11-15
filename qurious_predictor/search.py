@@ -1,9 +1,16 @@
-"""Filter matching and the parallel roll search (one worker process per CPU core).
+"""Filter matching and the parallel roll search.
 
 A search is a set of *streams*: (armor piece, augment option). Each stream replays that option's
 generator from the save state for that piece, roll after roll, and reports the rolls that pass the
-filters. Streams are spread over worker processes and advanced in small chunks, so every stream
+filters (or, when ranking, its best-scoring roll). Streams advance in small chunks, so every stream
 moves forward at about the same pace and the closest matches show up first.
+
+Two implementations with the same interface (``snapshot(since)``, ``cancel()``, ``done``):
+
+* ``NativeSearch``: the Rust engine (``_native``, built from native/) on a thread pool. Used whenever
+  the extension is available.
+* ``Search``: the pure Python reference, one worker process per CPU core. Fallback, and the
+  reference the Rust port is tested against. ``QURIOUS_ENGINE=python`` forces it.
 """
 
 from __future__ import annotations
@@ -17,6 +24,11 @@ import time
 from mhrise_exporter.export import _expand_slots, apply_slot_bonus
 
 from . import engine
+
+try:
+    from . import _native
+except ImportError:  # running from source without building the extension
+    _native = None
 
 CHUNK = 25            # rolls per stream before moving on to the next stream
 REPORT_EVERY = 0.25   # seconds between progress messages
@@ -229,3 +241,109 @@ class Search:
                 "depth": min(running) if running else max(self.scanned.values(), default=0),
                 "streams": {k: {"scanned": n, "ended": k in self.ended} for k, n in self.scanned.items()},
             }
+
+
+# ---- Rust engine -------------------------------------------------------------------------------------
+
+def native_available() -> bool:
+    return _native is not None and os.environ.get("QURIOUS_ENGINE", "").lower() != "python"
+
+
+_TABLES_CACHE: dict = {}
+
+
+def native_tables(data: dict):
+    """The tables as a ``_native.Tables`` (built once per game data)."""
+    key = (id(data), data.get("fingerprint"))
+    if key not in _TABLES_CACHE:
+        _TABLES_CACHE.clear()
+        _TABLES_CACHE[key] = _native.Tables(
+            [(b["table"], b["id"], b["category"], b["cost"], list(b["values"]), list(b["lots"])) for b in data["base"]],
+            [tuple(x) for x in data["armor_lots"]],
+            {int(k): list(v) for k, v in data["category_lots"].items()},
+            [tuple(x) for x in data["skill_costs"]],
+            {int(k): v for k, v in data["max_levels"].items()},
+        )
+    return _TABLES_CACHE[key]
+
+
+def summary_of(t) -> engine.Summary:
+    """``_native`` summary tuple -> engine.Summary."""
+    defense, slots, res, skills = t
+    return engine.Summary(defense=defense, slots=slots,
+                          resistances={e: v for e, v in zip(engine.ELEMENTS, res) if v},
+                          skills=[tuple(x) for x in skills])
+
+
+def rolls(data: dict, generators, armor: dict, buildup_type: int, count: int) -> tuple[int, list[engine.Summary]]:
+    """(generator index, the next ``count`` augments) for one piece and option."""
+    seed = engine.seed_index(armor["cost"], buildup_type)
+    if native_available():
+        out = _native.rolls(native_tables(data), generators[seed].state(), armor["table"], armor["cost"],
+                            [tuple(x) for x in armor["skills"]], buildup_type, count)
+        return seed, [summary_of(t) for t in out]
+    from .predict import next_rolls
+    from . import gamedata
+    seed, rs = next_rolls(generators, gamedata.tables(data), armor, buildup_type, count)
+    return seed, [r.summary for r in rs]
+
+
+class NativeSearch:
+    """``Search`` on the Rust engine: same constructor and snapshot format."""
+
+    def __init__(self, data: dict, generators, streams: list[tuple[str, int]], filters: dict,
+                 max_matches: int, limit: int, row, rank: dict | None = None):
+        self.streams = streams
+        self.row = row
+        self.events = []
+        self.cancelled = False
+        self._lock = threading.Lock()
+        args = []
+        for aid, t in streams:
+            a = data["armors"][aid]
+            args.append((a["table"], a["cost"], [tuple(x) for x in a["skills"]], list(a["slots"]), t,
+                         generators[engine.seed_index(a["cost"], t)].state()))
+        flt = preset = None
+        if rank:
+            p = rank["preset"]
+            preset = ([(int(k), float(v)) for k, v in p.get("weights", {}).items()],
+                      [float(x) for x in (list(p.get("slots", [])) + [0, 0, 0, 0])[:4]], float(p.get("defense") or 0))
+        else:
+            min_def = filters.get("minDef")
+            flt = (skill_groups(filters), [int(x) for x in (list(filters.get("slots") or []) + [0, 0, 0])[:3]],
+                   None if min_def is None else int(min_def), bool(filters.get("noSkillLoss")),
+                   bool(filters.get("noNegRes")), bool(filters.get("gainOnly")))
+        self._scan = _native.Scan(native_tables(data), args, flt, preset, int(max_matches), int(limit), 0)
+
+    @property
+    def done(self) -> bool:
+        return self._scan.done
+
+    def cancel(self):
+        self.cancelled = True
+        self._scan.cancel()
+
+    def snapshot(self, since: int = 0) -> dict:
+        with self._lock:
+            new, scanned, ended, done = self._scan.poll(len(self.events))
+            for k, n, defense, slots, res, skills, score in new:
+                aid, t = self.streams[k]
+                ev = {"key": k, "armor": aid, "type": t, "n": n,
+                      "row": self.row(aid, summary_of((defense, slots, res, skills)), n)}
+                if score is not None:
+                    ev["score"], ev["gain"] = round(score[0], 3), round(score[1], 3)
+                self.events.append(ev)
+            running = [n for k, n in enumerate(scanned) if not ended[k]]
+            return {
+                "done": done,
+                "cancelled": self.cancelled,
+                "events": self.events[since:],
+                "total": sum(scanned),
+                "depth": min(running) if running else max(scanned, default=0),
+                "streams": {k: {"scanned": n, "ended": ended[k]} for k, n in enumerate(scanned)},
+            }
+
+
+def start(*args, **kwargs):
+    """A search on the Rust engine when available, else on Python worker processes."""
+    return (NativeSearch if native_available() else Search)(*args, **kwargs)

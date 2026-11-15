@@ -1,0 +1,8 @@
+[package]
+name = "qurious-core"
+description = "MH Rise qurious crafting (armor augment) simulation: via.Random and createResult"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
