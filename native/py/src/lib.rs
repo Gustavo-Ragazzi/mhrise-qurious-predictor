@@ -258,6 +258,120 @@ impl Scan {
     }
 }
 
+// ---- talisman melding ---------------------------------------------------------------------------------
+
+use core::melding as meld;
+
+/// (skills as (id, level), slot levels, missed, unsure, best (skill 1 level, skill 2 level, slot levels))
+type TalTuple = (Vec<(i32, i32)>, [i32; 3], bool, bool, [i32; 3]);
+type MeldRow = (i32, i32, i32, u32, Vec<u32>, Vec<u32>, Vec<u32>, Vec<u32>);
+type GradeLists = (Vec<u32>, Vec<u32>, Vec<u32>);
+/// (scanned, matches, first match, [(n, talisman, score, perfection, rank)])
+type MeldScanTuple = (u64, u64, Option<u64>, Vec<(u64, TalTuple, f64, f64, u64)>);
+
+fn tal_tuple(t: &meld::Talisman) -> TalTuple {
+    (t.skills.clone(), t.slots, t.missed, t.unsure, t.best)
+}
+
+/// The melding tables (gamedata["melding"]), built once.
+#[pyclass(frozen)]
+struct MeldTables(Arc<meld::MeldTables>);
+
+#[pymethods]
+impl MeldTables {
+    /// skills = [(method, skill, grade, pick rate, grade pick rates, skill 1 rates, miss rates, skill 2 rates)],
+    /// grades = {method: (p1, p, p2)}, second = {grade: [chance per method]},
+    /// slots = [[(grade 1, grade 2, [8 tables])] per slot], mystery = [(pick rate, slot levels)].
+    #[new]
+    fn new(
+        skills: Vec<MeldRow>,
+        grades: HashMap<i32, GradeLists>,
+        second: HashMap<i32, Vec<u32>>,
+        slots: Vec<Vec<meld::SlotParams>>,
+        mystery: Vec<(u32, Vec<i32>)>,
+    ) -> Self {
+        let mut rows: HashMap<i32, Vec<meld::Row>> = meld::ORDER.iter().map(|&m| (m, Vec::new())).collect();
+        for (m, skill, grade, pick_rate, gp, skill1, miss, skill2) in skills {
+            if skill == 0 {
+                continue;
+            }
+            if let Some(v) = rows.get_mut(&m) {
+                let grade_pick = [gp.first().copied().unwrap_or(0), gp.get(1).copied().unwrap_or(0)];
+                v.push(meld::Row { skill, grade, pick_rate, grade_pick, skill1, miss, skill2 });
+            }
+        }
+        let grades = grades.into_iter().map(|(k, (a, b, c))| (k, [a, b, c])).collect();
+        MeldTables(Arc::new(meld::MeldTables { rows, grades, second, slots, mystery }))
+    }
+}
+
+fn melder<'a>(t: &'a meld::MeldTables, method: i32, target: Option<i32>, previous: (Option<i32>, Option<i32>)) -> PyResult<meld::Melder<'a>> {
+    meld::Melder::new(t, method, target, [previous.0, previous.1]).map_err(pyo3::exceptions::PyValueError::new_err)
+}
+
+/// The next `count` talismans of a method from a generator state (tests compare them with Python).
+#[pyfunction]
+#[pyo3(signature = (tables, method, target, state, count, previous=(None, None)))]
+fn meld_rolls(
+    tables: &MeldTables,
+    method: i32,
+    target: Option<i32>,
+    state: [u32; 4],
+    count: usize,
+    previous: (Option<i32>, Option<i32>),
+) -> PyResult<Vec<TalTuple>> {
+    let mut m = melder(&tables.0, method, target, previous)?;
+    let mut rng = core::Rng::new(state);
+    Ok((0..count).map(|_| tal_tuple(&m.talisman(&mut rng))).collect())
+}
+
+/// Simulates `count` talismans, filters (wanted = [(skill, min level)], min_slots), scores (weights per
+/// skill level, slot values by level 0-4, max levels) and returns (scanned, matches, first match,
+/// rows) with the `limit` best matches for `sort` ("n", "rank", "score", "perfection") and `dir`
+/// (1 ascending, -1 descending): rows = [(n, talisman, score, perfection, rank)].
+#[pyfunction]
+#[pyo3(signature = (tables, method, target, state, count, wanted, min_slots, weights, slot_values, max_levels, sort, dir, limit))]
+#[allow(clippy::too_many_arguments)]
+fn meld_scan(
+    py: Python<'_>,
+    tables: &MeldTables,
+    method: i32,
+    target: Option<i32>,
+    state: [u32; 4],
+    count: u64,
+    wanted: Vec<(i32, i32)>,
+    min_slots: [i32; 3],
+    weights: Vec<(i32, f64)>,
+    slot_values: [f64; 5],
+    max_levels: HashMap<i32, i32>,
+    sort: &str,
+    dir: i32,
+    limit: usize,
+) -> PyResult<MeldScanTuple> {
+    let sort = match sort {
+        "n" => meld::SortKey::N,
+        "rank" => meld::SortKey::Rank,
+        "score" => meld::SortKey::Score,
+        "perfection" => meld::SortKey::Perfection,
+        other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown sort {other}"))),
+    };
+    let tables = tables.0.clone();
+    let filter = meld::Filter { skills: wanted, slots: min_slots };
+    let scorer = meld::Scorer::new(&weights, &max_levels, slot_values);
+    let r = py.allow_threads(move || -> Result<meld::ScanResult, String> {
+        let mut m = meld::Melder::new(&tables, method, target, [None, None])?;
+        let mut rng = core::Rng::new(state);
+        Ok(meld::scan(&mut m, &mut rng, count, &filter, &scorer, sort, dir, limit, &|| false))
+    })
+    .map_err(pyo3::exceptions::PyValueError::new_err)?;
+    let rows = r
+        .rows
+        .iter()
+        .map(|f| (f.n, tal_tuple(&f.talisman), f.score as f64 / 100.0, f.perfection, f.rank))
+        .collect();
+    Ok((r.scanned, r.matches, r.first_match, rows))
+}
+
 impl Drop for Scan {
     fn drop(&mut self) {
         self.0.cancel.store(true, Ordering::Relaxed);
@@ -270,6 +384,9 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Scan>()?;
     m.add_function(wrap_pyfunction!(create_result, m)?)?;
     m.add_function(wrap_pyfunction!(rolls, m)?)?;
+    m.add_class::<MeldTables>()?;
+    m.add_function(wrap_pyfunction!(meld_rolls, m)?)?;
+    m.add_function(wrap_pyfunction!(meld_scan, m)?)?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }

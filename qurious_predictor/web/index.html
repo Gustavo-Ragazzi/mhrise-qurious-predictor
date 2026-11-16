@@ -296,7 +296,7 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
         <span class="flabel" id="taltargetlabel">Pick</span>
         <div class="picker" id="taltarget" style="width:290px"></div>
         <span class="flabel">Talismans</span>
-        <input id="talcount" type="number" min="1" max="5000" step="100" style="width:92px">
+        <input id="talcount" type="number" min="1" max="100000000" step="1000" style="width:120px" title="Up to 100,000,000 (a few seconds per 20 million)">
         <span class="flabel">Score with</span>
         <div class="picker" id="talpreset" style="width:250px" title="Skill weights of a Ranking preset"></div>
       </div>
@@ -1181,7 +1181,8 @@ function renderRankTable() {
 /* ---- talismans tab: melding pot ------------------------------------------------------------------- */
 // Filter: up to two wanted skills (a talisman has at most two; null = any skill) and minimum slots.
 const TAL_DEFAULT_FILTER = { s1: { id: null, level: 1 }, s2: { id: null, level: 1 }, slots: [0, 0, 0] };
-const TAL_MAX_ROWS = 1000;
+const TAL_MAX_ROWS = 1000;      // rows the backend returns: the best matches for the sort
+const TAL_MAX_COUNT = 100000000;
 let talMethodPick, talTargetPick, talPresetPick, talSkillPicks, talLevelPicks, talSlotPicks;
 const TF = () => S.settings.talFilter;
 const talMethod = () => (S.talMethods || []).find(m => m.id === S.settings.talMethod) || (S.talMethods || [])[0];
@@ -1219,7 +1220,7 @@ async function setupTalismans() {
     const first = key === "n" || key === "rank" ? 1 : -1;  // Talisman and Rank read best ascending
     S.settings.talSort = { key, dir: cur.key === key ? -cur.dir : first };
     api().save_settings({ talSort: S.settings.talSort });
-    renderTalTable();
+    runTal();
   });
   syncTalUi();
 }
@@ -1245,36 +1246,31 @@ function syncTalUi() {
   $("talclear").style.display = talFiltering() ? "" : "none";
 }
 
+let talTimer = null;
 function setTalFilter(patch) {
   S.settings.talFilter = { ...TF(), ...patch };
   api().save_settings({ talFilter: S.settings.talFilter });
   $("talclear").style.display = talFiltering() ? "" : "none";
-  renderTalHead(); renderTalTable();
+  clearTimeout(talTimer);
+  talTimer = setTimeout(runTal, 150);
 }
 
 const talFiltering = () => { const f = TF(); return f.s1.id !== null || f.s2.id !== null || f.slots.some(x => x); };
-function talMatch(t) {
-  const f = TF();
-  // The two wanted skills must be two different skills of the talisman, in either position.
-  const want = [f.s1, f.s2].filter(w => w.id !== null);
-  const used = new Set();
-  for (const w of want) {
-    const k = t.skills.findIndex((s, i) => !used.has(i) && s.id === w.id && s.level >= (w.level || 1));
-    if (k < 0) return false;
-    used.add(k);
-  }
-  const need = [...f.slots].sort((a, b) => b - a);
-  return need.every((lv, i) => t.slots[i] >= lv);
-}
-
+let talSeq = 0;
 async function runTal() {
   const m = talMethod();
   if (!m) return;
-  const n = Math.max(1, Math.min(5000, parseInt($("talcount").value) || 1000));
-  status("Simulating talismans…");
-  const r = await api().talisman_predict(m.id, talTarget(m), n, talPreset());
-  S.tal = r.error ? { error: r.error } : { rows: r.talismans };
-  status(r.error || `Next ${n} talismans of ${m.name}, as the save is now.`);
+  const n = Math.max(1, Math.min(TAL_MAX_COUNT, parseInt($("talcount").value) || 1000));
+  $("talcount").value = n;
+  const seq = ++talSeq, t0 = performance.now();
+  status(`Simulating ${n.toLocaleString()} talismans…`);
+  if (S.tal) S.tal.busy = true;
+  renderTalHead();
+  const r = await api().talisman_predict(m.id, talTarget(m), n, talPreset(), TF(), talSort());
+  if (seq !== talSeq) return;  // a newer request replaced this one
+  S.tal = r.error ? { error: r.error } : r;
+  const secs = ((performance.now() - t0) / 1000).toFixed(1);
+  status(r.error || `${r.scanned.toLocaleString()} talismans of ${m.name} simulated in ${secs} s (${r.engine} engine), as the save is now.`);
   renderTalHead(); renderTalTable();
 }
 
@@ -1285,7 +1281,8 @@ function renderTalHead() {
   let note = `<b>Talisman</b> 1 is the next talisman this method makes, 2 the one after, and so on, however many
     talismans each meld gives or which materials you use: every method has its own sequence in the save, and only
     melding with that method moves it. Reload the save after melding. <b>Score</b>: skills and slots weighted by the
-    preset (like the Ranking tab); <b>Rank</b>: its place by score among these talismans. <b>Perfection</b>: skill and
+    preset (like the Ranking tab); <b>Rank</b>: its place by score among all the simulated talismans (equal scores
+    share a rank). <b>Perfection</b>: skill and
     slot levels against the best talisman with the same skills (100% = god charm).`;
   if (t && t.pickRate < 100) note += ` The skill you pick sticks ${t.pickRate}% of the time; otherwise a random skill takes its place (marked <i>missed</i>).`;
   if (m.id === 11) note += ` Cyclus replaces a second skill equal to the picked one in a way the save cannot tell (marked <i>?</i>).`;
@@ -1293,10 +1290,10 @@ function renderTalHead() {
   for (const w of [f.s1, f.s2]) {
     if (w.id !== null && !m.possible.includes(w.id)) note += ` <b style="color:var(--down)">${esc((S.skills.find(s => s.id === w.id) || {}).name || "")} never comes out of this method.</b>`;
   }
-  if (S.tal && S.tal.rows && talFiltering()) {
-    const hits = S.tal.rows.filter(talMatch);
-    note += hits.length ? ` <b style="color:var(--up)">${hits.length} of the next ${S.tal.rows.length} talismans match; the first is talisman ${hits[0].n}.</b>`
-      : ` <b style="color:var(--down)">None of the next ${S.tal.rows.length} talismans matches: raise the number of talismans.</b>`;
+  if (S.tal && S.tal.busy) note += ` <b style="color:var(--gold)">Simulating…</b>`;
+  else if (S.tal && S.tal.talismans && talFiltering()) {
+    note += S.tal.matches ? ` <b style="color:var(--up)">${S.tal.matches.toLocaleString()} of the next ${S.tal.scanned.toLocaleString()} talismans match; the first is talisman ${S.tal.first.toLocaleString()}.</b>`
+      : ` <b style="color:var(--down)">None of the next ${S.tal.scanned.toLocaleString()} talismans matches: raise the number of talismans.</b>`;
   }
   $("head").innerHTML = `<span class="big">${esc(m.name)}</span>
     ${t ? `<span class="sk">${skillIcon(t.color, t.name)}<span>${esc(t.name)}</span></span><span class="rar">${t.pickRate}% · grade ${t.grade}</span>` : `<span class="rar">random skills</span>`}
@@ -1321,18 +1318,15 @@ function renderTalTable() {
   const r = S.tal;
   if (!r) { $("table").innerHTML = `<div class="empty">Simulating…</div>`; return; }
   if (r.error) { $("table").innerHTML = `<div class="empty" style="color:var(--down)">${esc(r.error)}</div>`; return; }
-  const filtering = talFiltering(), f = TF();
-  let rows = filtering ? r.rows.filter(talMatch) : r.rows.slice();
-  if (!rows.length) { $("table").innerHTML = `<div class="empty">None of the next ${r.rows.length} talismans matches.</div>`; return; }
+  const f = TF(), rows = r.talismans;   // already filtered and sorted by the engine
+  if (!rows.length) { $("table").innerHTML = `<div class="empty">None of the next ${r.scanned.toLocaleString()} talismans matches.</div>`; return; }
   const sort = talSort();
-  rows.sort((a, b) => ((sort.key === "n" ? a.n - b.n : sort.key === "rank" ? a.rank - b.rank
-    : sort.key === "score" ? a.score - b.score : a.perfection - b.perfection) * sort.dir) || a.n - b.n);
   const wanted = new Set([f.s1.id, f.s2.id].filter(x => x !== null));
   const cell = s => s ? `<span class="sk ${wanted.has(s.id) ? "wanted" : ""}">${skillIcon(s.color, s.name)}<span class="nm">${esc(s.name)}</span> <b style="color:var(--gold)">Lv${s.level}</b></span>` : `<span class="muted">—</span>`;
   const th = (key, label, title, align) => `<th class="click" data-tsort="${key}" title="${esc(title)}"${align ? ` style="text-align:${align}"` : ""}>${label}${sort.key === key ? (sort.dir > 0 ? " ▲" : " ▼") : ""}</th>`;
-  const shown = rows.slice(0, TAL_MAX_ROWS);
+  const shown = rows;
   $("table").innerHTML = `<table><thead><tr>${th("n", "Talisman", "Talismans this method makes until this one (1 = the next one); click to sort")}`
-    + th("rank", "Rank", "Place by score among these talismans; click to sort")
+    + th("rank", "Rank", "Place by score among all the simulated talismans; click to sort")
     + th("score", "Score", "Skills and slots weighted by the preset; click to sort", "right")
     + th("perfection", "Perfection", "Skill and slot levels against the best talisman with the same skills; click to sort")
     + `<th>Skill 1</th><th>Skill 2</th><th>Slots</th><th>Note</th></tr></thead><tbody>` +
@@ -1341,7 +1335,7 @@ function renderTalTable() {
       <td>${cell(t.skills[0])}</td><td>${t.unsure ? `<span class="muted" title="Replaced in a way the save cannot predict">? (replaced)</span>` : cell(t.skills[1])}</td>
       <td class="slots">${t.slots.map(l => slot(l, false)).join("")}</td>
       <td class="muted">${t.missed ? "missed: random skill 1" : ""}</td></tr>`).join("") + `</tbody></table>`
-    + (rows.length > TAL_MAX_ROWS ? `<div class="empty">Showing ${TAL_MAX_ROWS} of ${rows.length.toLocaleString()} talismans; sort or filter to see others.</div>` : "");
+    + (r.matches > rows.length ? `<div class="empty">Showing the first ${rows.length.toLocaleString()} of ${r.matches.toLocaleString()} talismans for this sort; sort or filter to see others.</div>` : "");
 }
 
 window.addEventListener("pywebviewready", boot);

@@ -305,46 +305,52 @@ class Api:
                         "possible": sorted(self.melding.possible(m))})
         return out
 
-    def talisman_predict(self, method: int, target: int | None, count: int, preset: dict | None = None):
-        """The next ``count`` talismans the method will make, as the save is now. Each one gets a score
-        (its skills and slots weighted by ``preset``, like the Ranking tab), its rank by that score among
-        the ``count`` talismans, and how close it is to the best talisman with the same skills."""
+    MAX_TALISMANS = 100_000_000
+    TALISMAN_ROWS = 1000
+
+    def talisman_predict(self, method: int, target: int | None, count: int, preset: dict | None = None,
+                         filters: dict | None = None, sort: dict | None = None):
+        """Simulate the next ``count`` talismans of a method, as the save is now, and return the
+        ``TALISMAN_ROWS`` best of those that pass ``filters`` for ``sort``. Each one has a score (skills
+        and slots weighted by ``preset``, like the Ranking tab), its rank by score among all ``count``
+        talismans (equal scores share a rank) and how close it is to the best talisman with the same
+        skills (perfection)."""
         with self._lock:
             if not self.generators:
                 return {"error": "Select a hunter first."}
             method = int(method)
-            count = max(1, min(5000, int(count)))
+            count = max(1, min(self.MAX_TALISMANS, int(count)))
+            filters = filters or {}
+            wanted = [(int(w["id"]), int(w.get("level") or 1)) for w in (filters.get("s1"), filters.get("s2"))
+                      if w and w.get("id") is not None]
+            min_slots = [int(x or 0) for x in (filters.get("slots") or [0, 0, 0])][:3]
+            sort = sort or {"key": "n", "dir": 1}
             try:
-                rows = melding.predict(self.melding, self.generators, method,
-                                       None if target is None else int(target), count)
+                r = melding.scan(self.data["melding"], self.generators, method,
+                                 None if target is None else int(target), count, wanted, min_slots,
+                                 self._talisman_scorer(preset), sort.get("key", "n"), int(sort.get("dir", 1)),
+                                 self.TALISMAN_ROWS)
             except ValueError as e:
                 return {"error": str(e)}
             targets = dict(self.settings.get("talTargets") or {})
             if target is not None:
                 targets[str(method)] = int(target)
             self.save_settings({"talMethod": method, "talCount": count, "talTargets": targets})
-            score = self._talisman_scorer(preset)
-            out = [{
-                "n": t.n, "missed": t.missed, "unsure": t.unsure, "slots": t.slots,
-                "skills": [dict(self._skill(sid), level=lv) for sid, lv in t.skills],
-                "score": score(t), "perfection": round(t.perfection, 4), "best": list(t.best),
-            } for t in rows]
-            for rank, row in enumerate(sorted(out, key=lambda r: (-r["score"], r["n"])), 1):
-                row["rank"] = rank
-            return {"talismans": out}
+            return {"scanned": r.scanned, "matches": r.matches, "first": r.first_match,
+                    "engine": "rust" if melding.use_native() else "python", "talismans": [{
+                        "n": f.n, "missed": f.talisman.missed, "unsure": f.talisman.unsure,
+                        "slots": list(f.talisman.slots), "best": list(f.talisman.best),
+                        "skills": [dict(self._skill(sid), level=lv) for sid, lv in f.talisman.skills],
+                        "score": f.score, "perfection": round(f.perfection, 4), "rank": f.rank,
+                    } for f in r.rows]}
 
-    def _talisman_scorer(self, preset: dict | None):
+    def _talisman_scorer(self, preset: dict | None) -> melding.Scorer:
         if not preset:
             preset = ranking.builtin_presets(self.data)[0]   # all skills
         weights = {int(k): float(v) for k, v in preset.get("weights", {}).items() if float(v)}
         steps = [float(x) for x in preset.get("slots", ranking.DEFAULT_SLOT_WEIGHTS)]
         slot_value = [0.0, steps[0], steps[0] + steps[1], steps[0] + steps[1] + steps[2], sum(steps)]
-        max_lv = {int(k): v + 1 for k, v in self.data["max_levels"].items()}
-
-        def score(t) -> float:
-            total = sum(weights.get(sid, 0.0) * min(lv, max_lv.get(sid, 99)) for sid, lv in t.skills)
-            return round(total + sum(slot_value[min(lv, 4)] for lv in t.slots), 2)
-        return score
+        return melding.Scorer(weights, slot_value, {int(k): v + 1 for k, v in self.data["max_levels"].items()})
 
     def _same_cost(self, a: dict) -> int:
         return sum(1 for aid in self.owned if self.data["armors"][aid]["cost"] == a["cost"])

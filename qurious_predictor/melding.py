@@ -27,6 +27,8 @@ Every weighted lot is ``v = u % total`` and picks the first entry whose running 
 
 from __future__ import annotations
 
+import heapq
+import os
 from dataclasses import dataclass, field
 
 from .rng import XorShift128
@@ -216,6 +218,7 @@ class Melder:
             out.missed = self.target is not None
             lv = None if row is None else lot(row.miss if self.target is not None else row.skill1, u_level)
         if row is None or lv is None:
+            out.slots = [0, 0, 0]
             return out
         out.skills.append((row.skill, lv + 1))
         u = rng.next_u32()
@@ -259,3 +262,127 @@ def predict(tables: Tables, generators: list, method: int, target_skill: int | N
     melder = Melder(tables, method, target_skill)
     rng = generators[generator_index(method, melder.target)].copy()
     return [melder.talisman(rng, n) for n in range(1, count + 1)]
+
+
+# ---- scan: many talismans, filtered, scored, only the rows the app shows ------------------------------
+# The Rust engine (native/core/src/melding.rs) does the same, millions of times faster; this is the
+# reference it is tested against, used when the extension is missing or QURIOUS_ENGINE=python.
+
+try:
+    from . import _native
+except ImportError:  # pragma: no cover - built by `pip install -e .`
+    _native = None
+
+SORTS = ("n", "rank", "score", "perfection")
+
+
+@dataclass
+class Scorer:
+    weights: dict          # skill id -> weight per level
+    slot_values: list      # value of a slot by level 0-4
+    max_levels: dict       # skill id -> max level (1-based)
+
+    def score(self, t: Talisman) -> int:
+        """Score x 100, rounded."""
+        total = sum(self.weights.get(sid, 0.0) * min(lv, self.max_levels.get(sid, 99)) for sid, lv in t.skills)
+        total += sum(self.slot_values[min(max(lv, 0), 4)] for lv in t.slots)
+        return round(total * 100)
+
+
+def matches(t: Talisman, wanted: list, min_slots: list) -> bool:
+    """``wanted`` = [(skill, min level)]: two different skills of the talisman, in either position."""
+    used = set()
+    for sid, lv in wanted:
+        k = next((i for i, (s, l) in enumerate(t.skills) if i not in used and s == sid and l >= max(lv, 1)), None)
+        if k is None:
+            return False
+        used.add(k)
+    return all(h >= n for n, h in zip(sorted(min_slots, reverse=True), t.slots))
+
+
+@dataclass
+class Found:
+    n: int
+    talisman: Talisman
+    score: float
+    perfection: float
+    rank: int          # 1 + scanned talismans with a higher score (equal scores share a rank)
+
+
+@dataclass
+class ScanResult:
+    scanned: int
+    matches: int
+    first_match: int | None
+    rows: list
+
+
+def use_native() -> bool:
+    return _native is not None and os.environ.get("QURIOUS_ENGINE", "").lower() != "python"
+
+
+_NATIVE_TABLES = {}
+
+
+def native_tables(melding: dict):
+    key = id(melding)
+    if key not in _NATIVE_TABLES:
+        _NATIVE_TABLES.clear()
+        _NATIVE_TABLES[key] = (melding, _native.MeldTables(
+            [tuple(x) for x in melding["skills"]],
+            {int(k): tuple(v) for k, v in melding["grades"].items()},
+            {int(k): v for k, v in melding["second"].items()},
+            [[(a, b, t) for a, b, t in block] for block in melding["slots"]],
+            [(w, lv) for w, lv in melding["mystery_slots"]]))
+    return _NATIVE_TABLES[key][1]
+
+
+def scan(melding: dict, generators: list, method: int, target_skill: int | None, count: int, wanted: list,
+         min_slots: list, scorer: Scorer, sort: str = "n", direction: int = 1, limit: int = 1000) -> ScanResult:
+    """Simulate ``count`` talismans; keep the ``limit`` best matches for ``sort`` (ties by number)."""
+    if sort not in SORTS:
+        raise ValueError(f"unknown sort {sort}")
+    tables = Tables(melding)
+    melder = Melder(tables, method, target_skill)       # validates the method and the picked skill
+    state = generators[generator_index(method, melder.target)].state()
+    wanted = [(int(s), int(lv)) for s, lv in wanted]
+    min_slots = [int(x) for x in min_slots]
+    if use_native():
+        sv = [float(x) for x in scorer.slot_values]
+        scanned, n_match, first, rows = _native.meld_scan(
+            native_tables(melding), method, target_skill, list(state), int(count), wanted, min_slots,
+            [(int(k), float(v)) for k, v in scorer.weights.items()], sv,
+            {int(k): int(v) for k, v in scorer.max_levels.items()}, sort, int(direction), int(limit))
+        found = []
+        for n, (skills, slots, missed, unsure, best), score, perf, rank in rows:
+            t = Talisman(n, [tuple(x) for x in skills], list(slots), missed, unsure, tuple(best))
+            found.append(Found(n, t, score, perf, rank))
+        return ScanResult(scanned, n_match, first, found)
+    rng = XorShift128(state)
+    hist = {}
+    heap = []          # (-key, -n, Found): the heap top is the worst kept row
+    n_match, first = 0, None
+    for n in range(1, count + 1):
+        t = melder.talisman(rng, n)
+        sc = scorer.score(t)
+        hist[sc] = hist.get(sc, 0) + 1
+        if not matches(t, wanted, min_slots):
+            continue
+        n_match += 1
+        first = first or n
+        if not limit:
+            continue
+        key = direction * {"n": n, "rank": -sc, "score": sc, "perfection": t.perfection}[sort]
+        item = (-key, -n, Found(n, t, sc / 100, t.perfection, 0))
+        if len(heap) < limit:
+            heapq.heappush(heap, item)
+        elif item[:2] > heap[0][:2]:
+            heapq.heapreplace(heap, item)
+    above, acc = {}, 0
+    for sc in sorted(hist, reverse=True):
+        above[sc] = acc
+        acc += hist[sc]
+    rows = [f for _, _, f in sorted(heap, key=lambda x: (-x[0], -x[1]))]
+    for f in rows:
+        f.rank = 1 + above[round(f.score * 100)]
+    return ScanResult(count, n_match, first, rows)
