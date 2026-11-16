@@ -1,0 +1,217 @@
+"""Talisman melding (Melding Pot) simulation for every method.
+
+Reconstructed with REFramework probes (tools/probes/talisman_trace.lua) and checked against the game:
+every talisman of 9 methods matched, and Qurious Melding: Cyclus matched except where the game falls back
+to a generator that is not in the save (see ``Talisman.unsure``).
+
+One talisman, in the game's order (snow.data.alchemy.ReserveFunc / LotFunc), drawing from the method's own
+FacilityDataManager._RandomManual generator:
+
+1. updateRandomSkillTableDataList -- a random "table" of two skills:
+   slot 0: grade lot, then a skill of that grade. Random methods: skill 1. Methods where the player picks
+           skill 1: the skill used when that pick misses.
+   slot 1: grade lot, then a skill of that grade for the second skill (never the same as slot 0, nor the
+           picked skill).
+   Picks are uniform (u % count) over the rows that have rates for that use; the two "Qurious" methods
+   weight them by GradePickRate. A grade lot is drawn even when its list is all zero.
+2. lotFirstSkill -- one draw (the pick succeeds if u % 100 < PickRate; unused by random methods), one draw
+   for the level (Skill1RateList, or MissRateList when the pick missed).
+3. lotSecondSkill -- present if u % 100 < SecondSkillLotRate[grade of skill 1][method]; one more draw for
+   its level (Skill2RateList).
+4. Slots -- Qurious methods: one draw over MysterySlotNumTable. Others: one draw per slot from SlotNumTable
+   (block = slot index, row = the two skill grades, table = the method), stopping at an empty slot, after a
+   level-4 slot, or at three slots.
+
+Every weighted lot is ``v = u % total`` and picks the first entry whose running sum reaches v (inclusive).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+from .rng import XorShift128
+
+# Method (AlchemyPatturnData.PatturnTypes) -> English in-game name.
+METHODS = {
+    0: "Melding—Reflecting Pool", 1: "Melding—Haze", 2: "Melding—Moonbow", 3: "Melding—Wisp of Mystery",
+    4: "Melding—Rebirth", 7: "Melding—Anima", 8: "Melding—Reincarnation", 9: "Melding—Aurora",
+    10: "Qurious Melding—Vigor", 11: "Qurious Melding—Cyclus",
+}
+ORDER = [0, 1, 2, 3, 4, 7, 8, 9, 10, 11]          # AlchemyPatturnData.convertAlchemyTypeToIndex
+TARGETED = {0, 1, 2, 9, 11}                        # the player picks skill 1
+QURIOUS = {10, 11}                                 # weighted picks, mystery slot table
+GENERATOR = {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 7: 11, 8: 12, 9: 13, 10: 23}   # _RandomManual index
+CYCLUS_GENERATOR = 25                              # + grade of the picked skill (C..S)
+SLOT_TABLE = {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 7: 5, 8: 7, 9: 6}
+NO_GRADE = 4                                       # SlotNumTable row for "no second skill"
+
+
+def lot(weights, u: int):
+    total = sum(weights)
+    if total == 0:
+        return None
+    v = u % total
+    acc = 0
+    for i, w in enumerate(weights):
+        acc += w
+        if w and v <= acc:
+            return i
+    return None
+
+
+@dataclass(frozen=True)
+class Row:
+    skill: int
+    grade: int
+    pick_rate: int
+    grade_pick: tuple
+    skill1: tuple
+    miss: tuple
+    skill2: tuple
+
+
+@dataclass
+class Talisman:
+    n: int
+    skills: list = field(default_factory=list)     # [(skill id, level)]
+    slots: list = field(default_factory=list)      # 3 slot levels, highest first
+    missed: bool = False                           # the picked skill missed (skill 1 is a random one)
+    unsure: bool = False                           # second skill decided outside the save (Cyclus)
+
+
+class Tables:
+    def __init__(self, melding: dict):
+        self.rows = {p: [] for p in METHODS}
+        for p, sid, grade, pick, gp, s1, miss, s2 in melding["skills"]:
+            if p in self.rows and sid:
+                self.rows[p].append(Row(sid, grade, pick, tuple(gp), tuple(s1), tuple(miss), tuple(s2)))
+        self.grades = {int(k): v for k, v in melding["grades"].items()}
+        self.second = {int(k): v for k, v in melding["second"].items()}
+        self.slots = melding["slots"]
+        self.mystery = melding["mystery_slots"]
+
+    def targets(self, method: int) -> list[Row]:
+        """Skills the player can pick for skill 1 (empty for random methods)."""
+        if method not in TARGETED:
+            return []
+        return [r for r in self.rows[method] if r.pick_rate > 0]
+
+
+    def possible(self, method: int) -> set[int]:
+        """Skills the method can ever put on a talisman."""
+        rows = self.rows[method]
+        if method in QURIOUS:
+            return {r.skill for r in rows if any(r.grade_pick) or r.pick_rate}
+        return {r.skill for r in rows if r.pick_rate or any(r.skill1) or any(r.miss) or any(r.skill2)}
+
+
+def generator_index(method: int, target: Row | None) -> int:
+    if method == 11:
+        if target is None:
+            raise ValueError("Qurious Melding—Cyclus needs the picked skill")
+        return CYCLUS_GENERATOR + target.grade
+    return GENERATOR[method]
+
+
+class Melder:
+    def __init__(self, tables: Tables, method: int, target_skill: int | None = None, previous=(None, None)):
+        if method not in METHODS:
+            raise ValueError(f"unknown melding method {method}")
+        self.t = tables
+        self.method = method
+        self.rows = tables.rows[method]
+        self.target = None
+        if method in TARGETED:
+            matches = [r for r in tables.targets(method) if r.skill == target_skill]
+            if not matches:
+                raise ValueError("pick a skill for this melding method")
+            self.target = matches[0]
+        # ReserveInfo.RandomSkillTableList. It lives only in memory and persists between talismans made
+        # in the same queue slot (``previous``: its skill ids); after loading the save it is empty.
+        by_id = {r.skill: r for r in self.rows}
+        self.table = [None if sid is None else by_id.get(sid, Row(sid, -1, 0, (0, 0), (), (), ()))
+                      for sid in previous]
+
+    def _pick(self, u: int, cands: list, col: int):
+        if self.method in QURIOUS:
+            i = lot([r.grade_pick[col] for r in cands], u)
+            return None if i is None else cands[i]
+        return cands[u % len(cands)]
+
+    def _update(self, rng: XorShift128) -> bool:
+        m = self.method
+        p1, p, p2 = self.t.grades[m]
+        unsure = False
+        # slot 0
+        grade = lot(p if m in TARGETED else p1, rng.next_u32())
+        if grade is not None:
+            if m in QURIOUS:
+                cands = [r for r in self.rows if r.grade == grade and r.grade_pick[0]]
+            elif m in TARGETED:
+                cands = [r for r in self.rows if r.grade == grade and any(r.miss)]
+            else:
+                cands = [r for r in self.rows if r.grade == grade and any(r.skill1)]
+            if cands:
+                self.table[0] = self._pick(rng.next_u32(), cands, 0)
+        # slot 1
+        grade = lot(p2, rng.next_u32())
+        if grade is not None:
+            excl = {r.skill for r in (self.table[0], None if m in QURIOUS else self.target) if r is not None}
+            if m in QURIOUS:
+                cands = [r for r in self.rows if r.grade == grade and r.grade_pick[1] and r.skill not in excl]
+            else:
+                cands = [r for r in self.rows if r.grade == grade and any(r.skill2) and r.skill not in excl]
+            if cands:
+                pick = self._pick(rng.next_u32(), cands, 1)
+                if m in QURIOUS and self.target is not None and pick is not None and pick.skill == self.target.skill:
+                    # Cyclus removes a second skill equal to the picked one and replaces it using a
+                    # generator that is not saved: which skill it becomes cannot be predicted.
+                    unsure = True
+                self.table[1] = pick
+        return unsure
+
+    def talisman(self, rng: XorShift128, n: int = 0) -> Talisman:
+        m = self.method
+        out = Talisman(n)
+        out.unsure = self._update(rng)
+        u_pick, u_level = rng.next_u32(), rng.next_u32()
+        if self.target is not None and u_pick % 100 < self.target.pick_rate:
+            row, lv = self.target, lot(self.target.skill1, u_level)
+        else:
+            row = self.table[0]
+            out.missed = self.target is not None
+            lv = None if row is None else lot(row.miss if self.target is not None else row.skill1, u_level)
+        if row is None or lv is None:
+            return out
+        out.skills.append((row.skill, lv + 1))
+        u = rng.next_u32()
+        second = self.table[1]
+        if second is not None and u % 100 < self.t.second[row.grade][ORDER.index(m)]:
+            lv2 = lot(second.skill2, rng.next_u32())
+            if lv2 is not None:
+                out.skills.append((second.skill, lv2 + 1))
+        else:
+            out.unsure = False
+        grades = (row.grade, second.grade if len(out.skills) > 1 else NO_GRADE)
+        if m in QURIOUS:
+            out.slots = list(self.t.mystery[lot([w for w, _ in self.t.mystery], rng.next_u32())][1])
+        else:
+            slots = []
+            for k in range(3):
+                params = next(q for q in self.t.slots[k] if (q[0], q[1]) == grades)
+                level = lot(params[2][SLOT_TABLE[m]], rng.next_u32())
+                if not level:
+                    break
+                slots.append(level)
+                if level == 4:
+                    break
+            out.slots = sorted(slots, reverse=True)
+        out.slots = (sorted(out.slots, reverse=True) + [0, 0, 0])[:3]
+        return out
+
+
+def predict(tables: Tables, generators: list, method: int, target_skill: int | None, count: int) -> list[Talisman]:
+    """The next ``count`` talismans ``method`` will make, from the generator states in the save."""
+    melder = Melder(tables, method, target_skill)
+    rng = generators[generator_index(method, melder.target)].copy()
+    return [melder.talisman(rng, n) for n in range(1, count + 1)]

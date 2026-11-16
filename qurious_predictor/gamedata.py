@@ -12,7 +12,7 @@ from mhrise_exporter.pak import open_game_paks
 
 from .engine import Buildup, Tables
 
-CACHE_VERSION = 5
+CACHE_VERSION = 6
 DIR = "data/Define/Player/Equip/CustomBuildup"
 
 # Extra RSZ layouts (v16), from the kvasszn/ree-save-editor type dump.
@@ -42,6 +42,27 @@ rsz.SPECS.update({
         ("_PickRate", "u32", False), ("_GradePickRate", "u32", True), ("_Skill1RateList", "u32", True),
         ("_MissRateList", "u32", True), ("_Skill2RateList", "u32", True), ("_Skill1MysteryWorth", "u32", True),
         ("_Skill2MysteryWorth", "u32", True),
+    ]),
+    # The other melding tables; v16 layouts from the alphazolam/RE_RSZ type dump (mhrice predates v16
+    # for AlchemyPatturn and SlotNumTable).
+    "snow.data.alchemy.SkillGradeLotRateTableUserData": (None, [("_Param", "obj", True)]),
+    "snow.data.alchemy.SkillGradeLotRateTableUserData.Param": (None, [
+        ("_PatturnType", "s32", False), ("_Probability1List", "u32", True), ("_ProbabilityList", "u32", True),
+        ("_Probability2List", "u32", True),
+    ]),
+    "snow.data.alchemy.SecondSkillLotRateTableUserData": (None, [("_Param", "obj", True)]),
+    "snow.data.alchemy.SecondSkillLotRateTableUserData.Param": (None, [
+        ("_Skill1Grade", "s32", False), ("_ProbabilityList", "u32", True),
+    ]),
+    "snow.data.alchemy.SlotNumTableUserData": (None, [("_Param", "obj", True)]),
+    "snow.data.alchemy.SlotNumTableUserData.SlotParam": (None, [("_SlotParam", "obj", True)]),
+    "snow.data.alchemy.SlotNumTableUserData.SkillParam": (None, [
+        ("_Skill1Grade", "s32", False), ("_Skill2Grade", "s32", False),
+        *[(f"_Table{i}ProbabilityList", "u32", True) for i in range(8)],
+    ]),
+    "snow.data.alchemy.MysterySlotNumTableUserData": (None, [("_MysterySkillParam", "obj", True)]),
+    "snow.data.alchemy.MysterySlotNumTableUserData.MysterySkillParam": (None, [
+        ("_PickRate", "u32", False), ("_SlotLv", "u32", True), ("_MysteryWorth", "u32", False),
     ]),
 })
 rsz._BY_HASH.update({rsz.hash_utf8(name): name for name in rsz.SPECS})
@@ -83,10 +104,25 @@ def build(game_dir: Path, log=print) -> dict:
             for sid in p["_SkillIdList"]:
                 if sid:
                     deco_levels[str(sid)] = min(deco_levels.get(str(sid), 99), p["_DecorationLv"])
-        talisman_skills = sorted({
-            p["_SkillId"] for p in rsz.parse_user(pak.read_any(
-                "data/Define/Lobby/Facility/Alchemy/AlchemyPlSkillTable.user", ["2"]))[0]["_Param"]
-            if p["_SkillId"] and (p["_PickRate"] or any(p["_Skill1RateList"]) or any(p["_Skill2RateList"]))})
+        def alchemy(name):
+            return rsz.parse_user(pak.read_any(f"data/Define/Lobby/Facility/Alchemy/{name}.user", ["2"]))[0]
+
+        skill_table = alchemy("AlchemyPlSkillTable")["_Param"]
+        talisman_skills = sorted({p["_SkillId"] for p in skill_table
+                                  if p["_SkillId"] and (p["_PickRate"] or any(p["_Skill1RateList"]) or any(p["_Skill2RateList"]))})
+        log("Reading melding tables...")
+        melding = {
+            # per method (pattern), in table order: skill, grade, pick rate, grade pick rates, level tables
+            "skills": [[p["_Patturn"], p["_SkillId"], p["_Grade"], p["_PickRate"], list(p["_GradePickRate"]),
+                        list(p["_Skill1RateList"]), list(p["_MissRateList"]), list(p["_Skill2RateList"])]
+                       for p in skill_table],
+            "grades": {str(p["_PatturnType"]): [p["_Probability1List"], p["_ProbabilityList"], p["_Probability2List"]]
+                       for p in alchemy("SkillGradeLotRateTable")["_Param"]},
+            "second": {str(p["_Skill1Grade"]): p["_ProbabilityList"] for p in alchemy("SecondSkillLotRateTable")["_Param"]},
+            "slots": [[[q["_Skill1Grade"], q["_Skill2Grade"], [q[f"_Table{i}ProbabilityList"] for i in range(8)]]
+                       for q in block["_SlotParam"]] for block in alchemy("SlotNumTable")["_Param"]],
+            "mystery_slots": [[q["_PickRate"], q["_SlotLv"]] for q in alchemy("MysterySlotNumTable")["_MysterySkillParam"]],
+        }
 
         log("Reading skill names...")
         msg = "data/Define/Player/Skill/PlEquipSkill/PlayerSkill_Name"
@@ -122,7 +158,7 @@ def build(game_dir: Path, log=print) -> dict:
         pak.close()
     return {"version": CACHE_VERSION, "base": base, "armor_lots": armor_lots, "category_lots": category_lots,
             "skill_costs": skill_costs, "skills": skills, "max_levels": max_levels, "skill_colors": skill_colors, "armors": armors,
-            "deco_levels": deco_levels, "talisman_skills": talisman_skills}
+            "deco_levels": deco_levels, "talisman_skills": talisman_skills, "melding": melding}
 
 
 def _fingerprint(game_dir: Path) -> str:

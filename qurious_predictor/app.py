@@ -9,7 +9,7 @@ from pathlib import Path
 from mhrise_exporter import core, steam
 from mhrise_exporter.export import _expand_slots, apply_slot_bonus
 
-from . import engine, gamedata, icons, ranking, savedata, search
+from . import engine, gamedata, icons, melding, ranking, savedata, search
 
 TITLE = "MH Rise Qurious Predictor"
 WEB = Path(__file__).with_name("web") / "index.html"
@@ -19,7 +19,8 @@ DEFAULT_SETTINGS = {"rolls": 200, "lang": "en", "hunter": None, "armor": None, "
                     "filters": EMPTY_FILTERS, "rankFilters": EMPTY_FILTERS, "game_dir": None, "list": LIST_DEFAULTS,
                     "mode": "piece", "presets": [], "preset": "builtin:all", "rankBy": "score",
                     "rankDepth": 200, "rankTypes": None, "rankMinScore": None,
-                    "rankSort": {"key": "rank", "dir": 1}}
+                    "rankSort": {"key": "rank", "dir": 1},
+                    "talMethod": 10, "talTargets": {}, "talCount": 100, "talFilter": None}
 
 
 def _merge_skills(pairs):
@@ -56,6 +57,7 @@ class Api:
                 return {"error": "Monster Hunter Rise was not found. Choose the game folder."}
             self.data = gamedata.load(Path(game_dir), self.cache_dir, log=lambda m: None)
             self.tables = gamedata.tables(self.data)
+            self.melding = melding.Tables(self.data["melding"])
             icon_map = icons.load(Path(game_dir), self.cache_dir, self.data.get("fingerprint", ""))
             self.hunters = []
             for acc in steam.find_accounts():
@@ -287,6 +289,41 @@ class Api:
         if job and not job.done:
             job.cancel()
         return True
+
+    # ---- talismans (melding pot) ---------------------------------------------------------------------
+
+    def talisman_methods(self):
+        """Every melding method; for the ones where the player picks skill 1, the skills it offers."""
+        grades = "CBAS"
+        out = []
+        for m, name in melding.METHODS.items():
+            targets = [dict(self._skill(r.skill), pickRate=r.pick_rate, grade=grades[r.grade])
+                       for r in self.melding.targets(m)]
+            targets.sort(key=lambda x: x["name"].lower())
+            out.append({"id": m, "name": name, "targeted": m in melding.TARGETED, "targets": targets,
+                        "possible": sorted(self.melding.possible(m))})
+        return out
+
+    def talisman_predict(self, method: int, target: int | None, count: int):
+        """The next ``count`` talismans the method will make, as the save is now."""
+        with self._lock:
+            if not self.generators:
+                return {"error": "Select a hunter first."}
+            method = int(method)
+            count = max(1, min(5000, int(count)))
+            try:
+                rows = melding.predict(self.melding, self.generators, method,
+                                       None if target is None else int(target), count)
+            except ValueError as e:
+                return {"error": str(e)}
+            targets = dict(self.settings.get("talTargets") or {})
+            if target is not None:
+                targets[str(method)] = int(target)
+            self.save_settings({"talMethod": method, "talCount": count, "talTargets": targets})
+            return {"talismans": [{
+                "n": t.n, "missed": t.missed, "unsure": t.unsure, "slots": t.slots,
+                "skills": [dict(self._skill(sid), level=lv) for sid, lv in t.skills],
+            } for t in rows]}
 
     def _same_cost(self, a: dict) -> int:
         return sum(1 for aid in self.owned if self.data["armors"][aid]["cost"] == a["cost"])

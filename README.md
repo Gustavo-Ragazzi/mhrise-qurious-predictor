@@ -6,7 +6,8 @@ piece in the game (crafted or not) for each option of the game's menu: **Augment
 **Augment: Stability**, **Augment: Skills+** and **Augment: Slots+**. Filters search ahead until they
 find what you want (skills at a minimum level, with AND/OR, minimum slots, defense, no skill loss, no
 negative resistance), one search can look through every armor piece at once, and a **Ranking** tab
-scores every piece's next augments with weighted skill presets.
+scores every piece's next augments with weighted skill presets. A **Talismans** tab predicts the
+next talismans of every Melding Pot method.
 
 The game does not need to be running and no mod is needed. The save is only read, never written.
 
@@ -49,6 +50,18 @@ data and icons from your install (a few seconds) and caches them in
    deleted, and copied in or out as text with **Import** / **Export**.
 6. Each roll shows the defense change, the resulting slots (qurious slots in green), the five
    resistances and the skills gained/lost.
+7. **Talismans**: pick a melding method (and, for Reflecting Pool, Haze, Moonbow, Aurora and Qurious
+   Cyclus, the skill you would pick) to list the next talismans it makes: skills, levels and slots.
+   **Look for** a skill at a minimum level and/or minimum slots to see how many talismans away the
+   next match is. Each method has its own sequence in the save, advanced once per talisman, whatever
+   the materials or the number of talismans per meld; only that method moves it. Notes:
+   * when the picked skill misses (its pick rate is below 100%), skill 1 is a random skill: marked
+     *missed*;
+   * Qurious Cyclus replaces a second skill equal to the picked one using a generator that is not in
+     the save, so that second skill is shown as *?*;
+   * the game keeps the last random skills of each queue slot in memory only: melding other methods in
+     the same session before Aurora or Cyclus can, rarely, change their second skill. Right after
+     loading the save the prediction is exact.
 
 ### Built-in presets
 
@@ -96,6 +109,11 @@ character save. This tool:
    PyO3) on every CPU core, several million rolls per second;
 3. reads the augment tables (weights, costs, values), skill data and GUI icons from your own install.
 
+Talismans work the same way: every Melding Pot method has its own generator in the save
+(`RandomSeedManual.MakaAlchemy*`; Qurious Cyclus has one per grade of the picked skill), and
+`qurious_predictor/melding.py` re-implements the game's melding lottery (`snow.data.alchemy.ReserveFunc`
+and `LotFunc`) on the melding tables read from your install.
+
 The game executable is packed, so nothing was disassembled: the algorithm was reconstructed
 black-box, by calling the game's own functions through REFramework from known generator states.
 See [docs/RESEARCH.md](docs/RESEARCH.md) and the scripts in [tools/probes](tools/probes).
@@ -109,7 +127,13 @@ Validated against recordings from the game (`tests/test_validation.py`):
 * 3 × 458 consecutive rolls exported by the "Qurious Preview and Export as csv" mod: 1,374/1,374 identical;
 * 5 real augments done in game: 5/5 identical.
 
-Known gap: every recording used armor with augment cost 10. The generator used for costs 12–20
+Talismans (`tests/test_melding.py`, recordings in `tests/data/melding_samples.json`): the game's own
+melding lottery run with `tools/probes/talisman_trace.lua` from known generator states (about 5,500
+talismans checked during the research, 1,960 kept as test data) plus 6 talismans from real Qurious
+Vigor melds: every talisman identical for all 10 methods, except Qurious Cyclus when its second skill
+falls back to an unsaved generator (about 1 in 100, flagged by the app).
+
+Known gap (armor): every recording used armor with augment cost 10. The generator used for costs 12–20
 follows the game's enum layout (`CustomBuildup_01_01` … `CustomBuildup_06_04`) but has not been
 confirmed in game yet.
 
@@ -145,7 +169,8 @@ Build the executable (also done by GitHub Actions on `v*` tags):
   [jinghaihan/mhrise-save-converter](https://github.com/jinghaihan/mhrise-save-converter) (MIT) and
   [wwylele/mhrice](https://github.com/wwylele/mhrice) (MIT/Apache-2.0); icon formats and the skill
   icon location also come from mhrice.
-* RSZ type layouts: [kvasszn/ree-save-editor](https://github.com/kvasszn/ree-save-editor).
+* RSZ type layouts: [kvasszn/ree-save-editor](https://github.com/kvasszn/ree-save-editor) and
+  [alphazolam/RE_RSZ](https://github.com/alphazolam/RE_RSZ) (melding tables of the final game version).
 * [REFramework](https://github.com/praydog/REFramework), used for the research probes.
 * [PyO3](https://pyo3.rs), [maturin](https://www.maturin.rs) and [rayon](https://github.com/rayon-rs/rayon)
   (MIT/Apache-2.0) for the Rust engine.
