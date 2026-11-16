@@ -4,8 +4,8 @@ build-backend = "maturin"
 
 [project]
 name = "mhrise-qurious-predictor"
-version = "0.7.0"
-description = "Offline predictor of the next Qurious armor augments for Monster Hunter Rise: Sunbreak (Steam saves)"
+version = "0.8.0"
+description = "Offline predictor of the next Qurious armor augments and melded talismans for Monster Hunter Rise: Sunbreak (Steam saves)"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
