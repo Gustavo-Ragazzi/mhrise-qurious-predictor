@@ -52,9 +52,18 @@ data and icons from your install (a few seconds) and caches them in
    resistances and the skills gained/lost.
 7. **Talismans**: pick a melding method (and, for Reflecting Pool, Haze, Moonbow, Aurora and Qurious
    Cyclus, the skill you would pick) to list the next talismans it makes: skills, levels and slots.
-   **Look for** a skill at a minimum level and/or minimum slots to see how many talismans away the
-   next match is. Each method has its own sequence in the save, advanced once per talisman, whatever
-   the materials or the number of talismans per meld; only that method moves it. Notes:
+   Filter by **Skill 1** and **Skill 2** (each "any skill" or a skill at a minimum level, in either
+   position, like the two skills a talisman can have) and minimum slots: only the matching talismans
+   are listed. Each talisman has:
+   * **Score**: its skills and slots weighted by a Ranking preset (**Score with**; skill rarity tiers
+     and slot values as in the Ranking tab), and **Rank**, its place by score among the listed ones;
+   * **Perfection**: its skill levels plus slot levels against the best talisman this method can make
+     with the same skills (100% = **GOD**, a god charm); the three small bars under it are skill 1,
+     skill 2 and slots.
+
+   Click Talisman, Rank, Score or Perfection to sort. Each method has its own sequence in the save,
+   advanced once per talisman, whatever the materials or the number of talismans per meld; only that
+   method moves it. Notes:
    * when the picked skill misses (its pick rate is below 100%), skill 1 is a random skill: marked
      *missed*;
    * Qurious Cyclus replaces a second skill equal to the picked one using a generator that is not in

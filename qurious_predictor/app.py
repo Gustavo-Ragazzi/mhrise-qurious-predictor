@@ -20,7 +20,8 @@ DEFAULT_SETTINGS = {"rolls": 200, "lang": "en", "hunter": None, "armor": None, "
                     "mode": "piece", "presets": [], "preset": "builtin:all", "rankBy": "score",
                     "rankDepth": 200, "rankTypes": None, "rankMinScore": None,
                     "rankSort": {"key": "rank", "dir": 1},
-                    "talMethod": 10, "talTargets": {}, "talCount": 100, "talFilter": None}
+                    "talMethod": 10, "talTargets": {}, "talCount": 1000, "talFilter": None,
+                    "talPreset": "builtin:all", "talSort": {"key": "n", "dir": 1}}
 
 
 def _merge_skills(pairs):
@@ -304,8 +305,10 @@ class Api:
                         "possible": sorted(self.melding.possible(m))})
         return out
 
-    def talisman_predict(self, method: int, target: int | None, count: int):
-        """The next ``count`` talismans the method will make, as the save is now."""
+    def talisman_predict(self, method: int, target: int | None, count: int, preset: dict | None = None):
+        """The next ``count`` talismans the method will make, as the save is now. Each one gets a score
+        (its skills and slots weighted by ``preset``, like the Ranking tab), its rank by that score among
+        the ``count`` talismans, and how close it is to the best talisman with the same skills."""
         with self._lock:
             if not self.generators:
                 return {"error": "Select a hunter first."}
@@ -320,10 +323,28 @@ class Api:
             if target is not None:
                 targets[str(method)] = int(target)
             self.save_settings({"talMethod": method, "talCount": count, "talTargets": targets})
-            return {"talismans": [{
+            score = self._talisman_scorer(preset)
+            out = [{
                 "n": t.n, "missed": t.missed, "unsure": t.unsure, "slots": t.slots,
                 "skills": [dict(self._skill(sid), level=lv) for sid, lv in t.skills],
-            } for t in rows]}
+                "score": score(t), "perfection": round(t.perfection, 4), "best": list(t.best),
+            } for t in rows]
+            for rank, row in enumerate(sorted(out, key=lambda r: (-r["score"], r["n"])), 1):
+                row["rank"] = rank
+            return {"talismans": out}
+
+    def _talisman_scorer(self, preset: dict | None):
+        if not preset:
+            preset = ranking.builtin_presets(self.data)[0]   # all skills
+        weights = {int(k): float(v) for k, v in preset.get("weights", {}).items() if float(v)}
+        steps = [float(x) for x in preset.get("slots", ranking.DEFAULT_SLOT_WEIGHTS)]
+        slot_value = [0.0, steps[0], steps[0] + steps[1], steps[0] + steps[1] + steps[2], sum(steps)]
+        max_lv = {int(k): v + 1 for k, v in self.data["max_levels"].items()}
+
+        def score(t) -> float:
+            total = sum(weights.get(sid, 0.0) * min(lv, max_lv.get(sid, 99)) for sid, lv in t.skills)
+            return round(total + sum(slot_value[min(lv, 4)] for lv in t.slots), 2)
+        return score
 
     def _same_cost(self, a: dict) -> int:
         return sum(1 for aid in self.owned if self.data["armors"][aid]["cost"] == a["cost"])

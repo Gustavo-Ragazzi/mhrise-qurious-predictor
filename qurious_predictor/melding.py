@@ -77,6 +77,21 @@ class Talisman:
     slots: list = field(default_factory=list)      # 3 slot levels, highest first
     missed: bool = False                           # the picked skill missed (skill 1 is a random one)
     unsure: bool = False                           # second skill decided outside the save (Cyclus)
+    # The most this talisman could have had with the same skills: (skill 1 level, skill 2 level, total of
+    # the slot levels). A missing second skill counts as the best second skill level the method gives.
+    best: tuple = (0, 0, 0)
+
+    @property
+    def perfection(self) -> float:
+        """Skill levels plus slot levels, as a share of ``best`` (1.0 = the best possible talisman)."""
+        have = sum(lv for _, lv in self.skills) + sum(self.slots)
+        top = sum(self.best)
+        return have / top if top else 0.0
+
+
+def top_level(rates) -> int:
+    """Highest level a rate list can give (0 if none)."""
+    return max((i + 1 for i, w in enumerate(rates) if w), default=0)
 
 
 class Tables:
@@ -89,6 +104,25 @@ class Tables:
         self.second = {int(k): v for k, v in melding["second"].items()}
         self.slots = melding["slots"]
         self.mystery = melding["mystery_slots"]
+
+    def best_slots(self, method: int, g1: int, g2: int) -> int:
+        """Largest total of slot levels the method can give a talisman with these skill grades."""
+        if method in QURIOUS:
+            return max(sum(lv) for w, lv in self.mystery if w)
+
+        def best(k: int) -> int:
+            if k == 3:
+                return 0
+            params = next(q for q in self.slots[k] if (q[0], q[1]) == (g1, g2))
+            options = [lv for lv, w in enumerate(params[2][SLOT_TABLE[method]]) if w and lv]
+            return max((lv + (0 if lv == 4 else best(k + 1)) for lv in options), default=0)
+        return best(0)
+
+    def best_second_level(self, method: int) -> int:
+        rows = self.rows[method]
+        if method in QURIOUS:
+            return max((top_level(r.skill2) for r in rows if r.grade_pick[1]), default=0)
+        return max((top_level(r.skill2) for r in rows), default=0)
 
     def targets(self, method: int) -> list[Row]:
         """Skills the player can pick for skill 1 (empty for random methods)."""
@@ -207,6 +241,16 @@ class Melder:
                     break
             out.slots = sorted(slots, reverse=True)
         out.slots = (sorted(out.slots, reverse=True) + [0, 0, 0])[:3]
+        max1 = top_level(row.miss if out.missed else row.skill1)
+        if len(out.skills) > 1:
+            out.best = (max1, top_level(second.skill2), self.t.best_slots(m, *grades))
+        elif self.t.second[row.grade][ORDER.index(m)] > 0:
+            # no second skill this time, though there could have been one
+            p2 = self.t.grades[m][2]
+            g2s = [g for g, w in enumerate(p2) if w] or [NO_GRADE]
+            out.best = (max1, self.t.best_second_level(m), max(self.t.best_slots(m, row.grade, g) for g in g2s))
+        else:
+            out.best = (max1, 0, self.t.best_slots(m, row.grade, NO_GRADE))
         return out
 
 

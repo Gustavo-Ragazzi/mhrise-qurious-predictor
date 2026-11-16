@@ -63,3 +63,17 @@ def test_targets(tables):
     assert all(r.pick_rate > 0 for r in tables.targets(9))   # Aurora: pick a skill
     with pytest.raises(ValueError):
         melding.Melder(tables, 9)                           # a picked skill is required
+
+
+@pytest.mark.skipif(not GAME, reason="needs MHR_GAME_DIR")
+def test_perfection(tables):
+    rng = XorShift128((0xcf7d5e57, 0x1c1f0ad9, 0xb8fd8293, 0xa716b9f8))
+    m = melding.Melder(tables, 10)
+    rows = [m.talisman(rng, n) for n in range(1, 2001)]
+    for t in rows:
+        assert 0 < t.perfection <= 1
+        lv = [lv for _, lv in t.skills] + [0]
+        assert lv[0] <= t.best[0] and lv[1] <= t.best[1] and sum(t.slots) <= t.best[2]
+    assert any(t.perfection == 1 for t in rows)
+    # Qurious slots come from the mystery table: the best is 3-3-1 (7 slot levels)
+    assert {t.best[2] for t in rows} == {7}

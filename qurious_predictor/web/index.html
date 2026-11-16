@@ -200,6 +200,14 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
   background: var(--muted); transition: .15s; }
 .toggle input:checked + span { background: #3d5a2a; border-color: var(--up); }
 .toggle input:checked + span::after { left: 16px; background: var(--up); }
+.perf { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; width: 132px; }
+.pbar { width: 84px; height: 9px; background: #0d0b08; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+.pbar span { display: block; height: 100%; }
+.pct { font-size: 12px; font-variant-numeric: tabular-nums; min-width: 34px; }
+.god { font-size: 11px; font-weight: 800; letter-spacing: .08em; color: #1a1208; padding: 0 5px; border-radius: 3px;
+  background: linear-gradient(180deg, #ffe9a8, #d9a63c); box-shadow: 0 0 6px #e8c47c99; }
+.psegs { display: flex; gap: 3px; width: 84px; }
+.pseg { flex: 1; height: 5px; border-radius: 2px; background: linear-gradient(90deg, var(--gold) var(--f), #3a3022 var(--f)); }
 </style>
 </head>
 <body>
@@ -285,20 +293,25 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
       <div class="frow">
         <span class="flabel">Method</span>
         <div class="picker" id="talmethod" style="width:310px"></div>
-        <span class="flabel" id="taltargetlabel">Skill</span>
-        <div class="picker" id="taltarget" style="width:300px"></div>
+        <span class="flabel" id="taltargetlabel">Pick</span>
+        <div class="picker" id="taltarget" style="width:290px"></div>
         <span class="flabel">Talismans</span>
-        <input id="talcount" type="number" min="1" max="5000" step="50" style="width:92px">
+        <input id="talcount" type="number" min="1" max="5000" step="100" style="width:92px">
+        <span class="flabel">Score with</span>
+        <div class="picker" id="talpreset" style="width:250px" title="Skill weights of a Ranking preset"></div>
       </div>
       <div class="frow">
-        <span class="flabel">Look for</span>
-        <div class="picker" id="talskill" style="width:290px"></div>
-        <div class="picker" id="tallevel" style="width:78px"></div>
+        <span class="flabel">Skill 1</span>
+        <div class="picker" id="tals1" style="width:250px"></div>
+        <div class="picker" id="tals1lv" style="width:78px"></div>
+        <span class="flabel">Skill 2</span>
+        <div class="picker" id="tals2" style="width:250px"></div>
+        <div class="picker" id="tals2lv" style="width:78px"></div>
         <span class="flabel">Slots at least</span>
         <div class="picker slotpick" id="talslot0"></div>
         <div class="picker slotpick" id="talslot1"></div>
         <div class="picker slotpick" id="talslot2"></div>
-        <label class="toggle"><input type="checkbox" id="talonly"><span></span>Only matching</label>
+        <button class="btn" id="talclear" style="display:none">Clear filters</button>
       </div>
     </div>
     <div class="filterbar" id="filterbar">
@@ -631,7 +644,7 @@ async function setMode(mode) {
   renderModes(); renderArmors(); updateLevels();
   if (mode === "piece" && S.settings.armor && S.armors.some(a => a.id === S.settings.armor)) return selectArmor(S.settings.armor);
   showMode();
-  if (mode === "talisman") runTal();
+  if (mode === "talisman") { syncTalUi(); runTal(); }
 }
 
 function showMode() {
@@ -1166,30 +1179,48 @@ function renderRankTable() {
 }
 
 /* ---- talismans tab: melding pot ------------------------------------------------------------------- */
-const TAL_DEFAULT_FILTER = { skill: null, level: 1, slots: [0, 0, 0], only: false };
-let talMethodPick, talTargetPick, talSkillPick, talLevelPick, talSlotPicks;
-const TF = () => S.settings.talFilter || TAL_DEFAULT_FILTER;
+// Filter: up to two wanted skills (a talisman has at most two; null = any skill) and minimum slots.
+const TAL_DEFAULT_FILTER = { s1: { id: null, level: 1 }, s2: { id: null, level: 1 }, slots: [0, 0, 0] };
+const TAL_MAX_ROWS = 1000;
+let talMethodPick, talTargetPick, talPresetPick, talSkillPicks, talLevelPicks, talSlotPicks;
+const TF = () => S.settings.talFilter;
 const talMethod = () => (S.talMethods || []).find(m => m.id === S.settings.talMethod) || (S.talMethods || [])[0];
 const talTarget = m => {
   if (!m || !m.targeted) return null;
   const t = (S.settings.talTargets || {})[m.id];
   return m.targets.some(x => x.id === t) ? t : m.targets[0].id;
 };
+const talPreset = () => allPresets().find(p => p.id === S.settings.talPreset) || allPresets()[0];
+const talSort = () => S.settings.talSort || { key: "n", dir: 1 };
 
 async function setupTalismans() {
   S.talMethods = await api().talisman_methods();
-  S.settings.talFilter = { ...TAL_DEFAULT_FILTER, ...(S.settings.talFilter || {}) };
+  const f = S.settings.talFilter || {};
+  S.settings.talFilter = { s1: { ...TAL_DEFAULT_FILTER.s1, ...(f.s1 || {}) }, s2: { ...TAL_DEFAULT_FILTER.s2, ...(f.s2 || {}) },
+    slots: Array.isArray(f.slots) ? f.slots : [0, 0, 0] };
   talMethodPick = makePicker($("talmethod"), { onChange: v => { S.settings.talMethod = v; syncTalUi(); runTal(); } });
   talTargetPick = makePicker($("taltarget"), { search: true, placeholder: "Pick a skill…", onChange: v => {
     S.settings.talTargets = { ...(S.settings.talTargets || {}), [talMethod().id]: v }; runTal(); } });
-  talSkillPick = makePicker($("talskill"), { search: true, placeholder: "any skill", onChange: v => {
-    setTalFilter({ skill: v, level: 1 }); syncTalUi(); } });
-  talLevelPick = makePicker($("tallevel"), { onChange: v => setTalFilter({ level: v }) });
+  talPresetPick = makePicker($("talpreset"), { search: true, onChange: v => {
+    S.settings.talPreset = v; api().save_settings({ talPreset: v }); runTal(); } });
+  talSkillPicks = ["s1", "s2"].map(k => makePicker($("tal" + k), { search: true, placeholder: "any skill", onChange: v => {
+    setTalFilter({ [k]: { id: v, level: 1 } }); syncTalUi(); } }));
+  talLevelPicks = ["s1", "s2"].map(k => makePicker($("tal" + k + "lv"), { onChange: v => setTalFilter({ [k]: { ...TF()[k], level: v } }) }));
   talSlotPicks = [0, 1, 2].map(i => makePicker($("talslot" + i), {
     onChange: v => { const s = [...TF().slots]; s[i] = v; setTalFilter({ slots: s }); } }));
-  $("talcount").value = S.settings.talCount || 100;
+  $("talcount").value = S.settings.talCount || 1000;
   $("talcount").addEventListener("change", runTal);
-  $("talonly").addEventListener("change", () => setTalFilter({ only: $("talonly").checked }));
+  $("talclear").addEventListener("click", () => { setTalFilter(JSON.parse(JSON.stringify(TAL_DEFAULT_FILTER))); syncTalUi(); });
+  $("table").addEventListener("click", e => {
+    const h = e.target.closest("[data-tsort]");
+    if (!h) return;
+    e.stopPropagation();
+    const key = h.dataset.tsort, cur = talSort();
+    const first = key === "n" || key === "rank" ? 1 : -1;  // Talisman and Rank read best ascending
+    S.settings.talSort = { key, dir: cur.key === key ? -cur.dir : first };
+    api().save_settings({ talSort: S.settings.talSort });
+    renderTalTable();
+  });
   syncTalUi();
 }
 
@@ -1200,27 +1231,38 @@ function syncTalUi() {
   $("taltarget").style.display = $("taltargetlabel").style.display = m.targeted ? "" : "none";
   if (m.targeted) talTargetPick.setItems(m.targets.map(t => ({ value: t.id, text: t.name,
     html: `${skillIcon(t.color, t.name)}<span>${esc(t.name)}</span><span class="hint">${t.pickRate}% · grade ${t.grade}</span>` })), talTarget(m));
+  talPresetPick.setItems(allPresets().map(p => ({ value: p.id, text: p.name, html: `<span>${esc(p.name)}</span>` })), talPreset().id);
   const f = TF();
-  talSkillPick.setItems([{ value: null, text: "any skill", html: `<span class="muted">any skill</span>` }]
-    .concat(S.skills.map(s => ({ value: s.id, text: s.name, html: `${skillIcon(s.color, s.name)}<span>${esc(s.name)}</span>`
-      + (m.possible.includes(s.id) ? "" : `<span class="hint">never with this method</span>`) }))), f.skill);
-  const sk = S.skills.find(s => s.id === f.skill);
-  talLevelPick.setItems([...Array(sk ? sk.max : 1).keys()].map(i => ({ value: i + 1, text: "Lv" + (i + 1), html: `<span>≥ Lv ${i + 1}</span>` })), f.level || 1);
-  $("tallevel").style.display = sk ? "" : "none";
+  ["s1", "s2"].forEach((k, i) => {
+    talSkillPicks[i].setItems([{ value: null, text: "any skill", html: `<span class="muted">any skill</span>` }]
+      .concat(S.skills.map(s => ({ value: s.id, text: s.name, html: `${skillIcon(s.color, s.name)}<span>${esc(s.name)}</span>`
+        + (m.possible.includes(s.id) ? "" : `<span class="hint">never with this method</span>`) }))), f[k].id);
+    const sk = S.skills.find(s => s.id === f[k].id);
+    talLevelPicks[i].setItems([...Array(sk ? sk.max : 1).keys()].map(j => ({ value: j + 1, text: "Lv" + (j + 1), html: `<span>≥ Lv ${j + 1}</span>` })), f[k].level || 1);
+    $("tal" + k + "lv").style.display = sk ? "" : "none";
+  });
   talSlotPicks.forEach((p, i) => p.setItems(slotItems(), f.slots[i] || 0));
-  $("talonly").checked = !!f.only;
+  $("talclear").style.display = talFiltering() ? "" : "none";
 }
 
 function setTalFilter(patch) {
   S.settings.talFilter = { ...TF(), ...patch };
   api().save_settings({ talFilter: S.settings.talFilter });
+  $("talclear").style.display = talFiltering() ? "" : "none";
   renderTalHead(); renderTalTable();
 }
 
-const talFiltering = () => { const f = TF(); return f.skill !== null || f.slots.some(x => x); };
+const talFiltering = () => { const f = TF(); return f.s1.id !== null || f.s2.id !== null || f.slots.some(x => x); };
 function talMatch(t) {
   const f = TF();
-  if (f.skill !== null && !t.skills.some(s => s.id === f.skill && s.level >= (f.level || 1))) return false;
+  // The two wanted skills must be two different skills of the talisman, in either position.
+  const want = [f.s1, f.s2].filter(w => w.id !== null);
+  const used = new Set();
+  for (const w of want) {
+    const k = t.skills.findIndex((s, i) => !used.has(i) && s.id === w.id && s.level >= (w.level || 1));
+    if (k < 0) return false;
+    used.add(k);
+  }
   const need = [...f.slots].sort((a, b) => b - a);
   return need.every((lv, i) => t.slots[i] >= lv);
 }
@@ -1228,10 +1270,10 @@ function talMatch(t) {
 async function runTal() {
   const m = talMethod();
   if (!m) return;
-  const n = Math.max(1, Math.min(5000, parseInt($("talcount").value) || 100));
+  const n = Math.max(1, Math.min(5000, parseInt($("talcount").value) || 1000));
   status("Simulating talismans…");
-  const r = await api().talisman_predict(m.id, talTarget(m), n);
-  S.tal = r.error ? { error: r.error } : { rows: r.talismans, method: m.id, target: talTarget(m) };
+  const r = await api().talisman_predict(m.id, talTarget(m), n, talPreset());
+  S.tal = r.error ? { error: r.error } : { rows: r.talismans };
   status(r.error || `Next ${n} talismans of ${m.name}, as the save is now.`);
   renderTalHead(); renderTalTable();
 }
@@ -1242,34 +1284,64 @@ function renderTalHead() {
   const t = m.targeted ? m.targets.find(x => x.id === talTarget(m)) : null;
   let note = `<b>Talisman</b> 1 is the next talisman this method makes, 2 the one after, and so on, however many
     talismans each meld gives or which materials you use: every method has its own sequence in the save, and only
-    melding with that method moves it. Reload the save after melding.`;
+    melding with that method moves it. Reload the save after melding. <b>Score</b>: skills and slots weighted by the
+    preset (like the Ranking tab); <b>Rank</b>: its place by score among these talismans. <b>Perfection</b>: skill and
+    slot levels against the best talisman with the same skills (100% = god charm).`;
   if (t && t.pickRate < 100) note += ` The skill you pick sticks ${t.pickRate}% of the time; otherwise a random skill takes its place (marked <i>missed</i>).`;
-  const f = TF();
-  if (f.skill !== null && !m.possible.includes(f.skill)) note += ` <b style="color:var(--down)">${esc((S.skills.find(s => s.id === f.skill) || {}).name || "")} never comes out of this method.</b>`;
   if (m.id === 11) note += ` Cyclus replaces a second skill equal to the picked one in a way the save cannot tell (marked <i>?</i>).`;
+  const f = TF();
+  for (const w of [f.s1, f.s2]) {
+    if (w.id !== null && !m.possible.includes(w.id)) note += ` <b style="color:var(--down)">${esc((S.skills.find(s => s.id === w.id) || {}).name || "")} never comes out of this method.</b>`;
+  }
   if (S.tal && S.tal.rows && talFiltering()) {
     const hits = S.tal.rows.filter(talMatch);
-    note += hits.length ? ` <b style="color:var(--up)">${hits.length} of ${S.tal.rows.length} match; the first is talisman ${hits[0].n}.</b>`
-      : ` <b style="color:var(--down)">None of the next ${S.tal.rows.length} talismans matches.</b>`;
+    note += hits.length ? ` <b style="color:var(--up)">${hits.length} of the next ${S.tal.rows.length} talismans match; the first is talisman ${hits[0].n}.</b>`
+      : ` <b style="color:var(--down)">None of the next ${S.tal.rows.length} talismans matches: raise the number of talismans.</b>`;
   }
   $("head").innerHTML = `<span class="big">${esc(m.name)}</span>
     ${t ? `<span class="sk">${skillIcon(t.color, t.name)}<span>${esc(t.name)}</span></span><span class="rar">${t.pickRate}% · grade ${t.grade}</span>` : `<span class="rar">random skills</span>`}
     <div class="note">${note}</div>`;
 }
 
+function perfCell(t) {
+  const p = Math.round(t.perfection * 100);
+  const [b1, b2, bs] = t.best;
+  const l1 = t.skills[0] ? t.skills[0].level : 0, l2 = t.skills[1] ? t.skills[1].level : 0;
+  const sl = t.slots.reduce((a, b) => a + b, 0);
+  const hue = Math.round(120 * t.perfection);  // red → yellow → green
+  const tip = `Skill 1 Lv${l1} of ${b1} · Skill 2 Lv${l2} of ${b2} · slot levels ${sl} of ${bs}`;
+  const seg = (v, max) => max ? `<span class="pseg" style="--f:${Math.round(100 * v / max)}%"></span>` : "";
+  return `<div class="perf" title="${tip}">
+    <div class="pbar"><span style="width:${p}%;background:hsl(${hue} 70% 45%)"></span></div>
+    ${p >= 100 ? `<span class="god">GOD</span>` : `<span class="pct">${p}%</span>`}
+    <div class="psegs">${seg(l1, b1)}${seg(l2, b2)}${seg(sl, bs)}</div></div>`;
+}
+
 function renderTalTable() {
   const r = S.tal;
   if (!r) { $("table").innerHTML = `<div class="empty">Simulating…</div>`; return; }
   if (r.error) { $("table").innerHTML = `<div class="empty" style="color:var(--down)">${esc(r.error)}</div>`; return; }
-  const f = TF(), filtering = talFiltering();
-  const rows = filtering && f.only ? r.rows.filter(talMatch) : r.rows;
+  const filtering = talFiltering(), f = TF();
+  let rows = filtering ? r.rows.filter(talMatch) : r.rows.slice();
   if (!rows.length) { $("table").innerHTML = `<div class="empty">None of the next ${r.rows.length} talismans matches.</div>`; return; }
-  const cell = s => s ? `<span class="sk ${filtering && s.id === f.skill && s.level >= f.level ? "wanted" : ""}">${skillIcon(s.color, s.name)}<span class="nm">${esc(s.name)}</span> <b style="color:var(--gold)">Lv${s.level}</b></span>` : `<span class="muted">—</span>`;
-  $("table").innerHTML = `<table><thead><tr><th title="Talismans this method makes until this one (1 = the next one)">Talisman</th><th>Skill 1</th><th>Skill 2</th><th>Slots</th><th>Note</th></tr></thead><tbody>` +
-    rows.map(t => `<tr class="${filtering && talMatch(t) ? "match" : ""}"><td class="n">${t.n.toLocaleString()}</td>
+  const sort = talSort();
+  rows.sort((a, b) => ((sort.key === "n" ? a.n - b.n : sort.key === "rank" ? a.rank - b.rank
+    : sort.key === "score" ? a.score - b.score : a.perfection - b.perfection) * sort.dir) || a.n - b.n);
+  const wanted = new Set([f.s1.id, f.s2.id].filter(x => x !== null));
+  const cell = s => s ? `<span class="sk ${wanted.has(s.id) ? "wanted" : ""}">${skillIcon(s.color, s.name)}<span class="nm">${esc(s.name)}</span> <b style="color:var(--gold)">Lv${s.level}</b></span>` : `<span class="muted">—</span>`;
+  const th = (key, label, title, align) => `<th class="click" data-tsort="${key}" title="${esc(title)}"${align ? ` style="text-align:${align}"` : ""}>${label}${sort.key === key ? (sort.dir > 0 ? " ▲" : " ▼") : ""}</th>`;
+  const shown = rows.slice(0, TAL_MAX_ROWS);
+  $("table").innerHTML = `<table><thead><tr>${th("n", "Talisman", "Talismans this method makes until this one (1 = the next one); click to sort")}`
+    + th("rank", "Rank", "Place by score among these talismans; click to sort")
+    + th("score", "Score", "Skills and slots weighted by the preset; click to sort", "right")
+    + th("perfection", "Perfection", "Skill and slot levels against the best talisman with the same skills; click to sort")
+    + `<th>Skill 1</th><th>Skill 2</th><th>Slots</th><th>Note</th></tr></thead><tbody>` +
+    shown.map(t => `<tr><td class="n">${t.n.toLocaleString()}</td><td class="n">${t.rank.toLocaleString()}</td>
+      <td class="sc">${t.score.toLocaleString()}</td><td>${perfCell(t)}</td>
       <td>${cell(t.skills[0])}</td><td>${t.unsure ? `<span class="muted" title="Replaced in a way the save cannot predict">? (replaced)</span>` : cell(t.skills[1])}</td>
       <td class="slots">${t.slots.map(l => slot(l, false)).join("")}</td>
-      <td class="muted">${t.missed ? "missed: random skill 1" : ""}</td></tr>`).join("") + `</tbody></table>`;
+      <td class="muted">${t.missed ? "missed: random skill 1" : ""}</td></tr>`).join("") + `</tbody></table>`
+    + (rows.length > TAL_MAX_ROWS ? `<div class="empty">Showing ${TAL_MAX_ROWS} of ${rows.length.toLocaleString()} talismans; sort or filter to see others.</div>` : "");
 }
 
 window.addEventListener("pywebviewready", boot);
