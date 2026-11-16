@@ -21,7 +21,8 @@ DEFAULT_SETTINGS = {"rolls": 200, "lang": "en", "hunter": None, "armor": None, "
                     "rankDepth": 200, "rankTypes": None, "rankMinScore": None,
                     "rankSort": {"key": "rank", "dir": 1},
                     "talMethod": 10, "talTargets": {}, "talCount": 1000, "talFilter": None,
-                    "talPreset": "builtin:all", "talSort": {"key": "n", "dir": 1}}
+                    "talPreset": "builtin:all", "talSort": {"key": "n", "dir": 1},
+                    "invView": "armor", "invPreset": "builtin:all", "invSort": {}, "invPart": -1, "invAugOnly": False}
 
 
 def _merge_skills(pairs):
@@ -47,6 +48,7 @@ class Api:
         self.generators = None
         self.owned = {}
         self.hunters = []
+        self.box = ([], [])
 
     # ---- setup ------------------------------------------------------------------------------------
 
@@ -122,6 +124,7 @@ class Api:
                 save = core.load_slot(acc.save_dir, acc.steamid64, h.slot)
                 self.generators = savedata.manual_generators(save)
                 owned = savedata.owned_armor(save)
+                self.box = savedata.box_items(save, self.data)
             except Exception as e:
                 return {"error": f"Cannot read the save: {e}"}
             self.save_settings({"hunter": key})
@@ -304,6 +307,64 @@ class Api:
             out.append({"id": m, "name": name, "targeted": m in melding.TARGETED, "targets": targets,
                         "possible": sorted(self.melding.possible(m))})
         return out
+
+    # ---- inventory ------------------------------------------------------------------------------------
+
+    def inventory(self, preset: dict | None = None):
+        """Every armor piece (with its qurious augments) and talisman in the box, scored with ``preset``
+        like the Ranking tab. Ranks: 1 = best score (equal scores share a rank); armor also by part.
+        Talismans also get their perfection against the best talisman any method makes with the same
+        skills."""
+        if not self.data:
+            return {"error": "Game data not loaded."}
+        armors, talismans = self.box
+        scorer = self._talisman_scorer(preset)
+        max_lv = scorer.max_levels
+
+        def ranks(rows, key):
+            first = {}
+            for i, sc in enumerate(sorted((r["score"] for r in rows if key(r)), reverse=True), 1):
+                first.setdefault(sc, i)
+            return first
+
+        arm_rows = []
+        for i, it in enumerate(armors):
+            a = self.data["all_armors"][str(it.armor_id)]
+            levels = {sid: lv for sid, lv in a["skills"]}
+            for sid, v in it.skills:
+                levels[sid] = levels.get(sid, 0) + v
+            base_slots = _expand_slots(a["slots"])
+            slots = apply_slot_bonus(base_slots, it.slot_points) if it.slot_points else sorted(base_slots, reverse=True)
+            slots = (slots + [0, 0, 0])[:3]
+            old = (sorted(base_slots, reverse=True) + [0, 0, 0])[:3]
+            final = [(sid, min(lv, max_lv.get(sid, 99))) for sid, lv in levels.items() if lv > 0]
+            changes = dict(_merge_skills(it.skills))
+            arm_rows.append({
+                "key": i, "id": str(it.armor_id), "name": self._name(a["names"]), "part": a["part"],
+                "rarity": a["rare"] + 1, "augmented": it.augmented, "def": it.defense, "res": it.resistances,
+                "slots": [{"lv": lv, "up": lv > ob} for lv, ob in zip(slots, old)],
+                "skills": [dict(self._skill(sid), level=lv, delta=changes.get(sid, 0)) for sid, lv in final]
+                          + [dict(self._skill(sid), level=0, delta=v) for sid, v in changes.items() if levels.get(sid, 0) <= 0],
+                "score": scorer.score(melding.Talisman(0, final, slots)) / 100,
+            })
+        overall = ranks(arm_rows, lambda r: True)
+        by_part = {p: ranks(arm_rows, lambda r, p=p: r["part"] == p) for p in range(5)}
+        for r in arm_rows:
+            r["rank"], r["partRank"] = overall[r["score"]], by_part[r["part"]][r["score"]]
+
+        tal_rows = []
+        for i, it in enumerate(talismans):
+            t = melding.Talisman(0, list(it.skills), list(it.slots))
+            t.best, method = self.melding.best_for(it.skills)
+            tal_rows.append({
+                "key": i, "slots": t.slots, "score": scorer.score(t) / 100, "best": list(t.best),
+                "perfection": round(min(t.perfection, 1.0), 4), "method": melding.METHODS.get(method, ""),
+                "skills": [dict(self._skill(sid), level=lv) for sid, lv in it.skills],
+            })
+        tr = ranks(tal_rows, lambda r: True)
+        for r in tal_rows:
+            r["rank"] = tr[r["score"]]
+        return {"armors": arm_rows, "talismans": tal_rows}
 
     MAX_TALISMANS = 100_000_000
     TALISMAN_ROWS = 1000

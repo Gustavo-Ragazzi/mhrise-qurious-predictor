@@ -126,6 +126,38 @@ class Tables:
             return max((top_level(r.skill2) for r in rows if r.grade_pick[1]), default=0)
         return max((top_level(r.skill2) for r in rows), default=0)
 
+    def best_for(self, skills: list) -> tuple[tuple, int | None]:
+        """For a talisman already made: (best skill 1 level, best skill 2 level, best slot levels) of the
+        method that can make the best talisman with the same skills (in the same order), and that method.
+        ((0, 0, 0), None) if no method gives these skills."""
+        best, best_m = (0, 0, 0), None
+        for m in METHODS:
+            rows = {r.skill: r for r in self.rows[m]}
+            r1 = rows.get(skills[0][0])
+            if r1 is None:
+                continue
+            if m in QURIOUS:
+                ok1 = bool(r1.grade_pick[0] or r1.pick_rate)
+            else:
+                ok1 = bool(r1.pick_rate or any(r1.skill1) or any(r1.miss))
+            top1 = max(top_level(r1.skill1), top_level(r1.miss))
+            if not ok1 or not top1:
+                continue
+            chance = self.second[r1.grade][ORDER.index(m)]
+            if len(skills) > 1:
+                r2 = rows.get(skills[1][0])
+                if r2 is None or not chance or not (r2.grade_pick[1] if m in QURIOUS else any(r2.skill2)):
+                    continue
+                cand = (top1, top_level(r2.skill2), self.best_slots(m, r1.grade, r2.grade))
+            elif chance:
+                g2s = [g for g, w in enumerate(self.grades[m][2]) if w] or [NO_GRADE]
+                cand = (top1, self.best_second_level(m), max(self.best_slots(m, r1.grade, g) for g in g2s))
+            else:
+                cand = (top1, 0, self.best_slots(m, r1.grade, NO_GRADE))
+            if sum(cand) > sum(best):
+                best, best_m = cand, m
+        return best, best_m
+
     def targets(self, method: int) -> list[Row]:
         """Skills the player can pick for skill 1 (empty for random methods)."""
         if method not in TARGETED:

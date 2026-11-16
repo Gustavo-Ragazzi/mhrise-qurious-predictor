@@ -146,3 +146,18 @@ def test_native_scan_matches_python(tables, melding_data, monkeypatch):
                 assert (fast.scanned, fast.matches, fast.first_match) == (ref.scanned, ref.matches, ref.first_match)
                 key = lambda f: (f.n, f.talisman.skills, f.talisman.slots, f.score, round(f.perfection, 9), f.rank)
                 assert [key(f) for f in fast.rows] == [key(f) for f in ref.rows], (m, wanted, slots, sort, d)
+
+
+@pytest.mark.skipif(not GAME, reason="needs MHR_GAME_DIR")
+def test_best_for_owned_talismans(tables):
+    # Whatever a method made, best_for finds a method whose best talisman with those skills is at least as good.
+    for m, target in [(10, None), (4, None), (2, tables.targets(2)[0].skill), (11, tables.targets(11)[0].skill)]:
+        melder = melding.Melder(tables, m, target)
+        rng = XorShift128((0xDEADBEEF, 0x12345678 + m, 0x0BADF00D, 0x55AA55AA))
+        for n in range(1, 1001):
+            t = melder.talisman(rng, n)
+            if not t.skills:
+                continue
+            best, method = tables.best_for(t.skills)
+            assert method is not None
+            assert sum(lv for _, lv in t.skills) + sum(t.slots) <= sum(best)

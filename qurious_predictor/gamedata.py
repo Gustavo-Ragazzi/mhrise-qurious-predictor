@@ -12,7 +12,7 @@ from mhrise_exporter.pak import open_game_paks
 
 from .engine import Buildup, Tables
 
-CACHE_VERSION = 6
+CACHE_VERSION = 7
 DIR = "data/Define/Player/Equip/CustomBuildup"
 
 # Extra RSZ layouts (v16), from the kvasszn/ree-save-editor type dump.
@@ -139,11 +139,21 @@ def build(game_dir: Path, log=print) -> dict:
         for part in PARTS:
             for suffix in ("", "_MR"):
                 armor_msgs.update(_msg_map(pak, f"data/Define/Player/Armor/{part}/A_{part}_Name{suffix}"))
-        armors = {}
+        armors, all_armors = {}, {}
         for p in rsz.parse_user(pak.read_any("data/Define/Player/Armor/ArmorBaseData.user", ["2"]))[0]["_Param"]:
             aid = p["_Id"]
             kind = (aid >> 20) & 0xF
-            if not p["_IsValid"] or not 1 <= kind <= 5 or not p["_CustomTableNo"]:
+            if not p["_IsValid"] or not 1 <= kind <= 5:
+                continue
+            # every armor piece, for the inventory tab
+            all_armors[str(aid)] = {
+                "names": _names(armor_msgs.get(f"A_{PARTS[kind - 1]}_{aid & 0xFFFF:03}_Name")),
+                "skills": [[s, lv] for s, lv in zip(p["_SkillList"], p["_SkillLvList"]) if s],
+                "slots": p["_DecorationsNumList"],
+                "part": kind - 1,
+                "rare": p["_Rare"],
+            }
+            if not p["_CustomTableNo"]:
                 continue
             armors[str(aid)] = {
                 "names": _names(armor_msgs.get(f"A_{PARTS[kind - 1]}_{aid & 0xFFFF:03}_Name")),
@@ -158,6 +168,7 @@ def build(game_dir: Path, log=print) -> dict:
         pak.close()
     return {"version": CACHE_VERSION, "base": base, "armor_lots": armor_lots, "category_lots": category_lots,
             "skill_costs": skill_costs, "skills": skills, "max_levels": max_levels, "skill_colors": skill_colors, "armors": armors,
+            "all_armors": all_armors,
             "deco_levels": deco_levels, "talisman_skills": talisman_skills, "melding": melding}
 
 

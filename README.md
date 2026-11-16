@@ -7,7 +7,8 @@ piece in the game (crafted or not) for each option of the game's menu: **Augment
 find what you want (skills at a minimum level, with AND/OR, minimum slots, defense, no skill loss, no
 negative resistance), one search can look through every armor piece at once, and a **Ranking** tab
 scores every piece's next augments with weighted skill presets. A **Talismans** tab predicts the
-next talismans of every Melding Pot method.
+next talismans of every Melding Pot method, and an **Inventory** tab ranks the armor and talismans
+you own.
 
 The game does not need to be running and no mod is needed. The save is only read, never written.
 
@@ -73,6 +74,13 @@ data and icons from your install (a few seconds) and caches them in
    * the game keeps the last random skills of each queue slot in memory only: melding other methods in
      the same session before Aurora or Cyclus can, rarely, change their second skill. Right after
      loading the save the prediction is exact.
+
+8. **Inventory**: every armor piece in your box (low, high and master rank, with its qurious augments
+   applied: defense, resistances, slots and skill changes) and every talisman, scored with a Ranking
+   preset (**Score with**). Armor gets a **Rank** among all your armor and a **Part rank** among your
+   pieces of the same part; talismans get a **Rank** and a **Perfection** against the best talisman
+   any melding method can make with the same skills (**Best from** names that method). Filter by
+   part, name or skill, or **Qurious only**, and click the column titles to sort.
 
 ### Built-in presets
 

@@ -225,6 +225,7 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
   <span class="mode" data-mode="all">Search all listed armor</span>
   <span class="mode" data-mode="rank">Ranking</span>
   <span class="mode" data-mode="talisman">Talismans</span>
+  <span class="mode" data-mode="inventory">Inventory</span>
 </nav>
 <main>
   <section class="frame col" id="listcol">
@@ -312,6 +313,17 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
         <div class="picker slotpick" id="talslot1"></div>
         <div class="picker slotpick" id="talslot2"></div>
         <button class="btn" id="talclear" style="display:none">Clear filters</button>
+      </div>
+    </div>
+    <div class="filterbar" id="invbar" style="display:none">
+      <div class="frow">
+        <div class="chips" id="invviews"></div>
+        <div class="chips" id="invparts"></div>
+        <input id="invfilter" type="text" placeholder="Search armor or skill…" style="width:240px">
+        <label class="toggle" id="invaugwrap"><input type="checkbox" id="invaug"><span></span>Qurious only</label>
+        <span class="spacer"></span>
+        <span class="flabel">Score with</span>
+        <div class="picker" id="invpreset" style="width:250px" title="Skill weights of a Ranking preset"></div>
       </div>
     </div>
     <div class="filterbar" id="filterbar">
@@ -533,7 +545,7 @@ async function boot() {
     S.settings[key].skills = groupsOf(S.settings[key].skills);
   }
   S.settings.list = { ...LIST_DEFAULTS, ...(S.settings.list || {}) };
-  S.mode = ["all", "rank", "talisman"].includes(S.settings.mode) ? S.settings.mode : "piece";
+  S.mode = ["all", "rank", "talisman", "inventory"].includes(S.settings.mode) ? S.settings.mode : "piece";
   $("rolls").value = S.settings.rolls;
   $("ownedonly").checked = $("rownedonly").checked = !!L().ownedOnly;
   $("rankdepth").value = S.settings.rankDepth || 200;
@@ -547,6 +559,7 @@ async function boot() {
   await loadSkills();
   await loadPresets();
   await setupTalismans();
+  setupInventory();
   renderParts(); renderModes(); syncFilterUi();
   if (r.hunters.length) await loadHunter(); else status("No MH Rise save found on this PC.");
 }
@@ -569,6 +582,7 @@ async function loadHunter() {
   status(`${S.armors.length} qurious-capable armor pieces in the game, ${owned} crafted. Predictions follow the save as it is now: after augmenting, save in game and press Reload save.`);
   if (S.mode === "all") return showMode();
   if (S.mode === "talisman") { showMode(); return runTal(); }
+  if (S.mode === "inventory") { showMode(); return loadInventory(); }
   const keep = S.armors.find(a => a.id === S.settings.armor);
   if (keep) await selectArmor(keep.id); else { S.pred = null; showMode(); }
 }
@@ -625,14 +639,15 @@ function renderArmors() {
 
 /* ---- modes ----------------------------------------------------------------------------------------- */
 function renderModes() {
-  const rank = S.mode === "rank", tal = S.mode === "talisman";
+  const rank = S.mode === "rank", tal = S.mode === "talisman" || S.mode === "inventory";
   document.querySelectorAll(".mode").forEach(m => m.classList.toggle("on", m.dataset.mode === S.mode));
   $("tabs").style.display = S.mode === "piece" ? "" : "none";
   $("listcol").style.display = rank || tal ? "none" : "";
   $("presetcol").style.display = rank ? "" : "none";
   $("filterbar").style.display = tal ? "none" : "";
   $("rankbar").style.display = rank ? "" : "none";
-  $("talbar").style.display = tal ? "" : "none";
+  $("talbar").style.display = S.mode === "talisman" ? "" : "none";
+  $("invbar").style.display = S.mode === "inventory" ? "" : "none";
   document.querySelector("main").style.gridTemplateColumns = tal ? "minmax(0, 1fr)" : "";
   $("rolls").style.display = document.querySelector('label[for="rolls"]').style.display = tal ? "none" : "";
 }
@@ -645,6 +660,7 @@ async function setMode(mode) {
   if (mode === "piece" && S.settings.armor && S.armors.some(a => a.id === S.settings.armor)) return selectArmor(S.settings.armor);
   showMode();
   if (mode === "talisman") { syncTalUi(); runTal(); }
+  if (mode === "inventory") { syncInvUi(); loadInventory(); }
 }
 
 function showMode() {
@@ -765,6 +781,7 @@ function showSearchUi() {
 }
 
 function renderHead() {
+  if (S.mode === "inventory") return renderInvHead();
   if (S.mode === "talisman") return renderTalHead();
   if (S.mode === "rank") return renderRankHead();
   if (S.mode === "all") {
@@ -819,6 +836,7 @@ const MAX_ALL_ROWS = 400;
 
 function renderTable() {
   $("table").classList.remove("all");
+  if (S.mode === "inventory") return renderInvTable();
   if (S.mode === "talisman") return renderTalTable();
   if (S.mode === "all") return renderAllTable();
   if (S.mode === "rank") return renderRankTable();
@@ -1336,6 +1354,120 @@ function renderTalTable() {
       <td class="slots">${t.slots.map(l => slot(l, false)).join("")}</td>
       <td class="muted">${t.missed ? "missed: random skill 1" : ""}</td></tr>`).join("") + `</tbody></table>`
     + (r.matches > rows.length ? `<div class="empty">Showing the first ${rows.length.toLocaleString()} of ${r.matches.toLocaleString()} talismans for this sort; sort or filter to see others.</div>` : "");
+}
+
+/* ---- inventory tab: the armor and talismans in the box, ranked --------------------------------------- */
+let invPresetPick;
+const invView = () => S.settings.invView === "talismans" ? "talismans" : "armor";
+const invPreset = () => allPresets().find(p => p.id === S.settings.invPreset) || allPresets()[0];
+const invSort = () => (S.settings.invSort || {})[invView()] || { key: "rank", dir: 1 };
+
+function setupInventory() {
+  invPresetPick = makePicker($("invpreset"), { search: true, onChange: v => {
+    S.settings.invPreset = v; api().save_settings({ invPreset: v }); loadInventory(); } });
+  $("invfilter").addEventListener("input", renderInvTable);
+  $("invaug").checked = !!S.settings.invAugOnly;
+  $("invaug").addEventListener("change", () => { S.settings.invAugOnly = $("invaug").checked; api().save_settings({ invAugOnly: S.settings.invAugOnly }); renderInvTable(); });
+  $("invviews").addEventListener("click", e => {
+    const v = e.target.closest("[data-invview]");
+    if (!v) return;
+    S.settings.invView = v.dataset.invview; api().save_settings({ invView: S.settings.invView });
+    syncInvUi(); renderInvHead(); renderInvTable();
+  });
+  $("invparts").addEventListener("click", e => {
+    const c = e.target.closest("[data-invpart]");
+    if (!c) return;
+    S.settings.invPart = +c.dataset.invpart; api().save_settings({ invPart: S.settings.invPart });
+    syncInvUi(); renderInvTable();
+  });
+  $("table").addEventListener("click", e => {
+    const h = e.target.closest("[data-isort]");
+    if (!h) return;
+    e.stopPropagation();
+    const key = h.dataset.isort, cur = invSort();
+    const first = ["rank", "partRank", "name"].includes(key) ? 1 : -1;
+    S.settings.invSort = { ...(S.settings.invSort || {}), [invView()]: { key, dir: cur.key === key ? -cur.dir : first } };
+    api().save_settings({ invSort: S.settings.invSort });
+    renderInvTable();
+  });
+  syncInvUi();
+}
+
+function syncInvUi() {
+  const view = invView(), part = S.settings.invPart ?? -1;
+  $("invviews").innerHTML = [["armor", "Armor"], ["talismans", "Talismans"]].map(([v, l]) =>
+    `<span class="chip ${view === v ? "on" : ""}" data-invview="${v}">${l}</span>`).join("");
+  $("invparts").innerHTML = `<span class="chip ${part < 0 ? "on" : ""}" data-invpart="-1">All</span>` +
+    PARTS.map((p, i) => `<span class="chip ${part === i ? "on" : ""}" data-invpart="${i}" title="${p}">${mask(p, "var(--gold)", p)}</span>`).join("");
+  $("invparts").style.display = $("invaugwrap").style.display = view === "armor" ? "" : "none";
+  invPresetPick.setItems(allPresets().map(p => ({ value: p.id, text: p.name, html: `<span>${esc(p.name)}</span>` })), invPreset().id);
+}
+
+async function loadInventory() {
+  status("Reading the box…");
+  const r = await api().inventory(invPreset());
+  S.inv = r;
+  status(r.error || `${r.armors.length} armor pieces and ${r.talismans.length} talismans in the box, as the save is now.`);
+  renderInvHead(); renderInvTable();
+}
+
+function renderInvHead() {
+  const r = S.inv;
+  const n = r && !r.error ? (invView() === "armor" ? `${r.armors.length} armor pieces (${r.armors.filter(a => a.augmented).length} with qurious)` : `${r.talismans.length} talismans`) : "";
+  const note = invView() === "armor"
+    ? `Every armor piece in your box, with its qurious augments applied (changes in green / red). <b>Score</b>: its skills
+       and slots weighted by the preset, like the Ranking tab (defense is not counted); <b>Rank</b>: its place among all
+       your armor, <b>Part rank</b> among your pieces of the same part (equal scores share a rank).`
+    : `Every talisman in your box. <b>Score</b>: skills and slots weighted by the preset; <b>Rank</b>: its place among your
+       talismans; <b>Perfection</b>: skill and slot levels against the best talisman any melding method can make with the
+       same skills (<b>Best from</b>; 100% = god charm).`;
+  $("head").innerHTML = `<span class="big">Inventory</span>${n ? `<span class="rar">${n}</span>` : ""}<div class="note">${note}</div>`;
+}
+
+function renderInvTable() {
+  const r = S.inv;
+  if (!r) { $("table").innerHTML = `<div class="empty">Reading the box…</div>`; return; }
+  if (r.error) { $("table").innerHTML = `<div class="empty" style="color:var(--down)">${esc(r.error)}</div>`; return; }
+  const q = $("invfilter").value.trim().toLowerCase(), sort = invSort();
+  const th = (key, label, title, align) => `<th class="click" data-isort="${key}" title="${esc(title)}"${align ? ` style="text-align:${align}"` : ""}>${label}${sort.key === key ? (sort.dir > 0 ? " ▲" : " ▼") : ""}</th>`;
+  const cmp = (a, b) => {
+    const va = a[sort.key], vb = b[sort.key];
+    const d = typeof va === "string" ? va.localeCompare(vb) : va - vb;
+    return d * sort.dir || a.rank - b.rank || a.key - b.key;
+  };
+  const delta = v => v ? ` <span class="${v > 0 ? "pos" : "neg"}">${v > 0 ? "+" : ""}${v}</span>` : "";
+  if (invView() === "armor") {
+    const part = S.settings.invPart ?? -1;
+    const rows = r.armors.filter(a => (part < 0 || a.part === part) && (!S.settings.invAugOnly || a.augmented)
+      && (!q || a.name.toLowerCase().includes(q) || a.skills.some(s => s.name.toLowerCase().includes(q)))).sort(cmp);
+    if (!rows.length) { $("table").innerHTML = `<div class="empty">No armor piece matches.</div>`; return; }
+    $("table").innerHTML = `<table><thead><tr>${th("rank", "Rank", "Place by score among all your armor")}`
+      + th("partRank", "Part rank", "Place by score among your pieces of the same part")
+      + th("score", "Score", "Skills and slots weighted by the preset", "right")
+      + th("name", "Armor", "Sort by name")
+      + `<th>Qurious defense</th><th>Slots</th><th>Qurious resistances</th><th>Skills</th></tr></thead><tbody>`
+      + rows.map(a => `<tr><td class="n">${a.rank}</td><td class="n">${a.partRank}</td><td class="sc">${a.score.toLocaleString()}</td>
+        <td class="arm">${mask(PARTS[a.part], "var(--gold)", PARTS[a.part])} <span class="nm">${esc(a.name)}</span>
+          <span class="muted"> R${a.rarity}</span>${a.augmented ? ` <span class="rar" title="Qurious crafted">qurious</span>` : ""}</td>
+        <td>${a.augmented ? `${img(a.def < 0 ? "defense_down" : "defense", "Defense", a.def ? "" : "off")} ${signed(a.def)}` : ""}</td>
+        <td class="slots">${a.slots.map(s => slot(s.lv, s.up)).join("")}</td>
+        <td>${a.augmented ? a.res.map((v, k) => `<span class="res">${img(ELEMENTS[k], ELEMENTS[k], v ? "" : "off")}${signed(v)}</span>`).join("") : ""}</td>
+        <td class="skills">${a.skills.map(s => `<span class="sk">${skillIcon(s.color, s.name)}<span class="nm">${esc(s.name)}</span> <b style="color:var(--gold)">${s.level ? "Lv" + s.level : ""}</b>${delta(s.delta)}</span>`).join("")}</td></tr>`).join("")
+      + `</tbody></table>`;
+    return;
+  }
+  const rows = r.talismans.filter(t => !q || t.skills.some(s => s.name.toLowerCase().includes(q)))
+    .map(t => ({ ...t, name: t.skills[0] ? t.skills[0].name : "" })).sort(cmp);
+  if (!rows.length) { $("table").innerHTML = `<div class="empty">No talisman matches.</div>`; return; }
+  const cell = s => s ? `<span class="sk">${skillIcon(s.color, s.name)}<span class="nm">${esc(s.name)}</span> <b style="color:var(--gold)">Lv${s.level}</b></span>` : `<span class="muted">—</span>`;
+  $("table").innerHTML = `<table><thead><tr>${th("rank", "Rank", "Place by score among your talismans")}`
+    + th("score", "Score", "Skills and slots weighted by the preset", "right")
+    + th("perfection", "Perfection", "Skill and slot levels against the best talisman with the same skills")
+    + th("name", "Skill 1", "Sort by skill 1") + `<th>Skill 2</th><th>Slots</th><th>Best from</th></tr></thead><tbody>`
+    + rows.map(t => `<tr><td class="n">${t.rank}</td><td class="sc">${t.score.toLocaleString()}</td><td>${perfCell(t)}</td>
+      <td>${cell(t.skills[0])}</td><td>${cell(t.skills[1])}</td>
+      <td class="slots">${t.slots.map(l => slot(l, false)).join("")}</td><td class="muted">${esc(t.method)}</td></tr>`).join("")
+    + `</tbody></table>`;
 }
 
 window.addEventListener("pywebviewready", boot);
