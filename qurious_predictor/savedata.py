@@ -16,8 +16,11 @@ FACILITY_SAVE = hash_utf8("snow.data.FacilityDataManager.SaveData")
 # The name is unknown; it is the only 56-entry GUID list in that class.
 MANUAL_STATES_FIELD = 0x38CB095F
 MANUAL_COUNT = 56
+ID_TYPE_WEAPON = 1
 ID_TYPE_ARMOR = 2
 ID_TYPE_TALISMAN = 3
+# Equipment pack / My Set inventory index lists: weapon, head, chest, arm, waist, leg, petalace, talisman.
+PACK_WEAPON, PACK_ARMOR, PACK_TALISMAN = 0, slice(1, 6), 7
 
 
 class SaveDataError(Exception):
@@ -65,19 +68,39 @@ class ArmorItem:
     resistances: list = None         # fire, water, thunder, ice, dragon
     slot_points: int = 0
     skills: list = None              # [(skill, +/- levels)], in augment order
+    index: int = -1                  # position in the equipment box
+    decos: list = None               # decoration ids slotted in it
 
 
 @dataclass
 class TalismanItem:
     skills: list                     # [(skill, level)]
     slots: list                      # 3 slot levels, highest first
+    index: int = -1
+    decos: list = None
+
+
+@dataclass
+class WeaponItem:
+    weapon_id: int
+    index: int
+    decos: list
+
+
+@dataclass
+class Loadout:
+    name: str
+    weapon: int | None               # box indices (None = nothing equipped there)
+    armor: list                      # 5 box indices or None, head..leg
+    talisman: int | None
+    decos: dict                      # box index -> decoration ids as slotted in this loadout
 
 
 def box_items(save: SaveFile, data: dict) -> tuple[list[ArmorItem], list[TalismanItem]]:
     """Every armor piece and talisman in the equipment box, with the qurious augments of each piece."""
     base = {(b["table"], b["id"]): b for b in data["base"]}
     armors, talismans = [], []
-    for v in inventory(save):
+    for pos, v in enumerate(inventory(save)):
         if not isinstance(v, Class):
             continue
         kind = v["_IdType"].s
@@ -85,7 +108,8 @@ def box_items(save: SaveFile, data: dict) -> tuple[list[ArmorItem], list[Talisma
             aid = v["_IdVal"].u
             if str(aid) not in data["all_armors"]:
                 continue
-            item = ArmorItem(aid, bool(v["_CustomEnable"].b), resistances=[0] * 5, skills=[])
+            item = ArmorItem(aid, bool(v["_CustomEnable"].b), resistances=[0] * 5, skills=[], index=pos,
+                             decos=[x.u for x in v["_DecoIdList"]])
             table = data["armors"].get(str(aid), {}).get("table")
             if item.augmented and table:
                 for b in v["_CustomBuildup"]:
@@ -115,5 +139,62 @@ def box_items(save: SaveFile, data: dict) -> tuple[list[ArmorItem], list[Talisma
                 slots += [level] * (deco[level] if level < len(deco) else 0)
             skills = [(s, l) for s, l in zip(sk, lv) if s and l]
             if skills:
-                talismans.append(TalismanItem(skills, (slots + [0, 0, 0])[:3]))
+                talismans.append(TalismanItem(skills, (slots + [0, 0, 0])[:3], pos, [x.u for x in v["_DecoIdList"]]))
     return armors, talismans
+
+
+def box_weapons(save: SaveFile) -> list[WeaponItem]:
+    return [WeaponItem(v["_IdVal"].u, pos, [x.u for x in v["_DecoIdList"]])
+            for pos, v in enumerate(inventory(save)) if isinstance(v, Class) and v["_IdType"].s == ID_TYPE_WEAPON]
+
+
+def owned_decorations(save: SaveFile) -> Counter:
+    """Decoration id -> how many the hunter has: in the decoration box plus slotted in equipment."""
+    out = Counter()
+    for dm in save.walk_classes("snow.data.DataManager.SaveData1"):
+        for d in dm["_PlDecoBoxInventoryDataList"]:
+            if d["_Id"].u and d["_Num"].u:
+                out[d["_Id"].u] += d["_Num"].u
+        break
+    for v in inventory(save):
+        if isinstance(v, Class) and v["_IdType"].s in (ID_TYPE_WEAPON, ID_TYPE_ARMOR, ID_TYPE_TALISMAN):
+            for x in v["_DecoIdList"]:
+                if x.u:
+                    out[x.u] += 1
+    return out
+
+
+def loadouts(save: SaveFile) -> list[Loadout]:
+    """The equipment the hunter wears now, then every saved equipment loadout (My Set)."""
+    box = inventory(save)
+
+    def idx(v):
+        return v if 0 <= v < len(box) else None
+
+    def decos_of(i):
+        return [x.u for x in box[i]["_DecoIdList"]] if i is not None else []
+
+    out = []
+    for dm in save.walk_classes("snow.data.EquipDataManager.SaveData1"):
+        pack = [idx(x.s) for x in dm["_PlEquipPack"]["_InventoryIndexList"]]
+        if len(pack) >= 8:
+            used = [pack[PACK_WEAPON], *pack[PACK_ARMOR], pack[PACK_TALISMAN]]
+            out.append(Loadout("Equipped now", pack[PACK_WEAPON], pack[PACK_ARMOR], pack[PACK_TALISMAN],
+                               {i: decos_of(i) for i in used if i is not None}))
+        for n, m in enumerate(dm["_PlEquipMySetList"], 1):
+            if not m["_IsUsing"].b:
+                continue
+            ids = [idx(x.s) for x in m["_InventoryIndexList"]]
+            if len(ids) < 8 or all(i is None for i in ids[PACK_ARMOR]):
+                continue
+            backup = m["_BackupDataList"]
+            decos = {}
+            for k in [PACK_WEAPON, 1, 2, 3, 4, 5, PACK_TALISMAN]:
+                i = ids[k]
+                if i is None:
+                    continue
+                saved = [x.u for x in backup[k]["DecoIdList"]] if k < len(backup) else []
+                decos[i] = saved if any(saved) else decos_of(i)
+            out.append(Loadout(f"{n}. {m['_Name'] or 'My Set'}", ids[PACK_WEAPON], ids[PACK_ARMOR], ids[PACK_TALISMAN], decos))
+        break
+    return out

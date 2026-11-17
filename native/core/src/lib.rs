@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 
 pub mod melding;
+pub mod sets;
 
 // snow.data.DataDef.CustomBuildupCategoryId
 pub const CAT_DEF: i32 = 13;

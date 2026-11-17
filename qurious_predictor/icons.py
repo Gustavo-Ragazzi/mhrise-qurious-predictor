@@ -14,7 +14,7 @@ from pathlib import Path
 
 from mhrise_exporter.pak import open_game_paks
 
-CACHE_VERSION = 2
+CACHE_VERSION = 3
 
 # name -> (atlas, group, index)
 SPRITES = {
@@ -35,6 +35,8 @@ SPRITES = {
     "arms": ("EquipIcon", 0, 2),
     "waist": ("EquipIcon", 0, 3),
     "legs": ("EquipIcon", 0, 4),
+    "talisman": ("EquipIcon", 0, 5),
+    "weapon": ("EquipIcon", 0, 15),
 }
 
 

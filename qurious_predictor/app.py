@@ -10,6 +10,7 @@ from mhrise_exporter import core, steam
 from mhrise_exporter.export import _expand_slots, apply_slot_bonus
 
 from . import engine, gamedata, icons, melding, ranking, savedata, search
+from .app_sets import SetsMixin
 
 TITLE = "MH Rise Qurious Predictor"
 WEB = Path(__file__).with_name("web") / "index.html"
@@ -22,7 +23,8 @@ DEFAULT_SETTINGS = {"rolls": 200, "lang": "en", "hunter": None, "armor": None, "
                     "rankSort": {"key": "rank", "dir": 1},
                     "talMethod": 10, "talTargets": {}, "talCount": 1000, "talFilter": None,
                     "talPreset": "builtin:all", "talSort": {"key": "n", "dir": 1},
-                    "invView": "armor", "invPreset": "builtin:all", "invSort": {}, "invPart": -1, "invAugOnly": False}
+                    "invView": "armor", "invPreset": "builtin:all", "invSort": {}, "invPart": -1, "invAugOnly": False,
+                    "build": None, "opt": None, "export": None, "lastModes": {}}
 
 
 def _merge_skills(pairs):
@@ -33,7 +35,7 @@ def _merge_skills(pairs):
     return [(sid, v) for sid, v in total.items() if v]
 
 
-class Api:
+class Api(SetsMixin):
     def __init__(self):
         self._lock = threading.Lock()
         self.cache_dir = gamedata.default_cache_dir()
@@ -49,6 +51,11 @@ class Api:
         self.owned = {}
         self.hunters = []
         self.box = ([], [])
+        self.save_file = None
+        self.owned_decos = {}
+        self.loadout_list = []
+        self.box_weapons = []
+        self._weapon = [0, 0, 0]
 
     # ---- setup ------------------------------------------------------------------------------------
 
@@ -125,6 +132,10 @@ class Api:
                 self.generators = savedata.manual_generators(save)
                 owned = savedata.owned_armor(save)
                 self.box = savedata.box_items(save, self.data)
+                self.owned_decos = savedata.owned_decorations(save)
+                self.loadout_list = savedata.loadouts(save)
+                self.box_weapons = savedata.box_weapons(save)
+                self.save_file = save
             except Exception as e:
                 return {"error": f"Cannot read the save: {e}"}
             self.save_settings({"hunter": key})

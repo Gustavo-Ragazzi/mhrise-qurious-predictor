@@ -207,6 +207,42 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
 .god { font-size: 11px; font-weight: 800; letter-spacing: .08em; color: #1a1208; padding: 0 5px; border-radius: 3px;
   background: linear-gradient(180deg, #ffe9a8, #d9a63c); box-shadow: 0 0 6px #e8c47c99; }
 .psegs { display: flex; gap: 3px; width: 84px; }
+/* main tabs */
+.groups { display: flex; gap: 2px; padding: 0 14px; background: #19140e; border-bottom: 1px solid var(--line); }
+.gtab { padding: 8px 18px 7px; cursor: pointer; color: var(--muted); font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; font-size: 13px; border-bottom: 2px solid transparent; }
+.gtab:hover { color: var(--text); }
+.gtab.on { color: var(--gold); border-bottom-color: var(--gold); }
+/* set cards */
+.setcard { margin: 10px; border: 1px solid var(--line2); border-radius: 6px; background: #17130e; }
+.sethead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 8px 12px; border-bottom: 1px solid var(--line);
+  background: linear-gradient(90deg, #3b2f1d, transparent); }
+.sethead .big { font-size: 17px; font-weight: 700; color: var(--gold); }
+.settable td { padding: 5px 8px; }
+.settable td.own { width: 34px; text-align: center; }
+.settable td.pn { white-space: normal; min-width: 220px; }
+.settable td.pn .nm { font-weight: 600; }
+.settable tr.changed td { background: #1f2a17; }
+.settable tr.changed td:first-child { box-shadow: inset 3px 0 0 var(--up); }
+.dslots { white-space: normal; min-width: 260px; }
+.dslot { display: inline-flex; align-items: center; gap: 2px; margin: 1px 10px 1px 0; }
+.dslot .tint { width: 24px; height: 24px; }
+.deco { font-size: 12.5px; }
+.deco.free { color: var(--dim); font-style: italic; }
+.deco.extra { color: var(--up); }
+.src { font-size: 11.5px; border: 1px solid var(--line); border-radius: 3px; padding: 0 5px; margin-left: 4px; white-space: nowrap; }
+.src.own { color: var(--up); border-color: #3d5a2a; }
+.src.roll { color: var(--gold); border-color: var(--gold2); }
+.src.craft { color: var(--muted); }
+.setskills { display: flex; flex-wrap: wrap; gap: 2px 0; padding: 8px 12px; border-top: 1px solid var(--line); }
+.setskills .sk { margin: 1px 14px 1px 0; }
+.steps { margin: 0; padding: 8px 12px 10px 32px; border-top: 1px solid var(--line); color: var(--text); }
+.steps li { margin: 2px 0; }
+.others { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px 10px 0; }
+.cardlabel { padding: 14px 12px 0; color: var(--gold2); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+.exporttext { display: block; width: calc(100% - 20px); height: calc(100% - 20px); margin: 10px; resize: none; background: #120f0b;
+  border: 1px solid var(--line2); border-radius: 4px; color: var(--text); font: 13px/1.45 Consolas, "Cascadia Mono", monospace; padding: 8px; }
+input.rollsin { width: 84px; }
 .pseg { flex: 1; height: 5px; border-radius: 2px; background: linear-gradient(90deg, var(--gold) var(--f), #3a3022 var(--f)); }
 </style>
 </head>
@@ -220,13 +256,8 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
   <label for="lang">Names</label><select id="lang"></select>
   <button class="btn" id="gamedir">Game folder…</button>
 </header>
-<nav class="modes" id="modes">
-  <span class="mode" data-mode="piece">Selected piece</span>
-  <span class="mode" data-mode="all">Search all listed armor</span>
-  <span class="mode" data-mode="rank">Ranking</span>
-  <span class="mode" data-mode="talisman">Talismans</span>
-  <span class="mode" data-mode="inventory">Inventory</span>
-</nav>
+<nav class="groups" id="groups"></nav>
+<nav class="modes" id="modes"></nav>
 <main>
   <section class="frame col" id="listcol">
     <h2 id="listtitle">Armor</h2>
@@ -324,6 +355,79 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
         <span class="spacer"></span>
         <span class="flabel">Score with</span>
         <div class="picker" id="invpreset" style="width:250px" title="Skill weights of a Ranking preset"></div>
+      </div>
+    </div>
+    <div class="filterbar" id="buildbar" style="display:none">
+      <div class="frow">
+        <span class="flabel">Skill</span>
+        <div class="picker" id="bskill" style="width:290px"></div>
+        <span class="flabel">Lv</span>
+        <div class="picker" id="blevel" style="width:78px"></div>
+        <button class="btn gold" id="badd" title="Want this skill at this level">Add</button>
+        <span id="bwanted" class="wantlist"></span>
+        <button class="btn" id="bclear" style="display:none">Clear</button>
+      </div>
+      <div class="frow">
+        <span class="flabel">Weapon slots</span>
+        <div class="picker slotpick" id="bw0"></div><div class="picker slotpick" id="bw1"></div><div class="picker slotpick" id="bw2"></div>
+        <span class="flabel">Game armor</span>
+        <div class="chips" id="branks"></div>
+        <label class="toggle" title="The armor in your box, with its qurious augments"><input type="checkbox" id="bownarm"><span></span>My armor</label>
+        <label class="toggle" title="The talismans in your box"><input type="checkbox" id="bowntal"><span></span>My talismans</label>
+        <label class="toggle" title="Only as many decorations as you have (in the box and slotted)"><input type="checkbox" id="bowndeco"><span></span>Only my decorations</label>
+      </div>
+      <div class="frow">
+        <span class="flabel">Qurious rolls</span>
+        <input id="bqrolls" class="rollsin" type="number" min="0" max="1000" step="50" title="Each master rank piece can take any of its next N augments of every option (0: no augments)">
+        <span class="flabel">Talisman rolls</span>
+        <input id="btrolls" class="rollsin" type="number" min="0" max="1000" step="50" title="Any of the next N talismans of every melding method (0: none)">
+        <span class="flabel">Then best</span>
+        <div class="picker" id="bsort" style="width:170px"></div>
+        <div class="picker" id="bpreset" style="width:240px" title="Ranking preset for the score"></div>
+        <span class="spacer"></span>
+        <span id="bprogress" class="muted"></span>
+        <button class="btn gold" id="bsearch">Search</button>
+      </div>
+    </div>
+    <div class="filterbar" id="optbar" style="display:none">
+      <div class="frow">
+        <span class="flabel">Loadout</span>
+        <div class="picker" id="oload" style="width:300px"></div>
+        <span class="flabel">Score with</span>
+        <div class="picker" id="opreset" style="width:250px" title="Skill weights of a Ranking preset"></div>
+        <span class="flabel">Weapon slots</span>
+        <div class="picker slotpick" id="ow0"></div><div class="picker slotpick" id="ow1"></div><div class="picker slotpick" id="ow2"></div>
+      </div>
+      <div class="frow">
+        <span class="flabel">Keep</span>
+        <span id="owanted" class="wantlist"></span>
+        <div class="picker" id="oskill" style="width:240px"></div>
+        <div class="picker" id="olevel" style="width:78px"></div>
+        <button class="btn" id="oadd">Add</button>
+        <button class="btn" id="oreset" title="The loadout's skills that the preset weighs, and its weapon slots">Reset to the loadout</button>
+      </div>
+      <div class="frow">
+        <label class="toggle" title="Also armor you do not have yet (to craft), and qurious rolls on it"><input type="checkbox" id="ogame"><span></span>Other game armor</label>
+        <label class="toggle" title="Only as many decorations as you have"><input type="checkbox" id="odeco"><span></span>Only my decorations</label>
+        <span class="flabel">Qurious rolls</span>
+        <input id="oqrolls" class="rollsin" type="number" min="0" max="1000" step="50" title="Next N augments of every option per piece (0: none)">
+        <span class="flabel">Talisman rolls</span>
+        <input id="otrolls" class="rollsin" type="number" min="0" max="1000" step="50" title="Next N talismans of every melding method (0: none)">
+        <span class="spacer"></span>
+        <span id="oprogress" class="muted"></span>
+        <button class="btn gold" id="orun">Optimize</button>
+      </div>
+    </div>
+    <div class="filterbar" id="expbar" style="display:none">
+      <div class="frow">
+        <span class="flabel">Export</span>
+        <div class="chips" id="xkinds"></div>
+        <span class="flabel">Format</span>
+        <div class="chips" id="xfmts"></div>
+        <span class="spacer"></span>
+        <span id="xinfo" class="muted"></span>
+        <button class="btn" id="xcopy">Copy</button>
+        <button class="btn gold" id="xsave">Save as…</button>
       </div>
     </div>
     <div class="filterbar" id="filterbar">
@@ -545,7 +649,7 @@ async function boot() {
     S.settings[key].skills = groupsOf(S.settings[key].skills);
   }
   S.settings.list = { ...LIST_DEFAULTS, ...(S.settings.list || {}) };
-  S.mode = ["all", "rank", "talisman", "inventory"].includes(S.settings.mode) ? S.settings.mode : "piece";
+  S.mode = ALL_MODES.includes(S.settings.mode) ? S.settings.mode : "piece";
   $("rolls").value = S.settings.rolls;
   $("ownedonly").checked = $("rownedonly").checked = !!L().ownedOnly;
   $("rankdepth").value = S.settings.rankDepth || 200;
@@ -560,6 +664,10 @@ async function boot() {
   await loadPresets();
   await setupTalismans();
   setupInventory();
+  setupBuilder();
+  setupOptimizer();
+  setupExport();
+  S.exportKinds = await api().export_kinds();
   renderParts(); renderModes(); syncFilterUi();
   if (r.hunters.length) await loadHunter(); else status("No MH Rise save found on this PC.");
 }
@@ -580,9 +688,16 @@ async function loadHunter() {
   renderRarities(); renderArmors();
   const owned = S.armors.filter(a => a.count).length;
   status(`${S.armors.length} qurious-capable armor pieces in the game, ${owned} crafted. Predictions follow the save as it is now: after augmenting, save in game and press Reload save.`);
+  const info = await api().builder_info();
+  if (!info.error) { S.bskills = info.skills; S.loadouts = info.loadouts; }
+  S.build = null; S.opt = null; S.optCurrent = null;
+  syncBuildUi(); syncOptUi();
   if (S.mode === "all") return showMode();
   if (S.mode === "talisman") { showMode(); return runTal(); }
   if (S.mode === "inventory") { showMode(); return loadInventory(); }
+  if (S.mode === "builder") return showMode();
+  if (S.mode === "optimizer") { showMode(); return loadOptimizer(); }
+  if (S.mode === "export") { showMode(); return loadExport(); }
   const keep = S.armors.find(a => a.id === S.settings.armor);
   if (keep) await selectArmor(keep.id); else { S.pred = null; showMode(); }
 }
@@ -639,28 +754,31 @@ function renderArmors() {
 
 /* ---- modes ----------------------------------------------------------------------------------------- */
 function renderModes() {
-  const rank = S.mode === "rank", tal = S.mode === "talisman" || S.mode === "inventory";
-  document.querySelectorAll(".mode").forEach(m => m.classList.toggle("on", m.dataset.mode === S.mode));
+  const rank = S.mode === "rank", full = FULL_WIDTH.has(S.mode);
+  renderGroups();
   $("tabs").style.display = S.mode === "piece" ? "" : "none";
-  $("listcol").style.display = rank || tal ? "none" : "";
+  $("listcol").style.display = rank || full ? "none" : "";
   $("presetcol").style.display = rank ? "" : "none";
-  $("filterbar").style.display = tal ? "none" : "";
+  $("filterbar").style.display = full ? "none" : "";
   $("rankbar").style.display = rank ? "" : "none";
-  $("talbar").style.display = S.mode === "talisman" ? "" : "none";
-  $("invbar").style.display = S.mode === "inventory" ? "" : "none";
-  document.querySelector("main").style.gridTemplateColumns = tal ? "minmax(0, 1fr)" : "";
-  $("rolls").style.display = document.querySelector('label[for="rolls"]').style.display = tal ? "none" : "";
+  for (const [bar, mode] of [["talbar", "talisman"], ["invbar", "inventory"], ["buildbar", "builder"], ["optbar", "optimizer"], ["expbar", "export"]])
+    $(bar).style.display = S.mode === mode ? "" : "none";
+  document.querySelector("main").style.gridTemplateColumns = full ? "minmax(0, 1fr)" : "";
+  $("rolls").style.display = document.querySelector('label[for="rolls"]').style.display = full ? "none" : "";
 }
 
 async function setMode(mode) {
   if (mode === S.mode) return;
   await stopJob();
-  S.mode = mode; api().save_settings({ mode });
+  S.mode = mode; api().save_settings({ mode }); rememberMode(mode);
   renderModes(); renderArmors(); updateLevels();
   if (mode === "piece" && S.settings.armor && S.armors.some(a => a.id === S.settings.armor)) return selectArmor(S.settings.armor);
   showMode();
   if (mode === "talisman") { syncTalUi(); runTal(); }
   if (mode === "inventory") { syncInvUi(); loadInventory(); }
+  if (mode === "builder") syncBuildUi();
+  if (mode === "optimizer") { syncOptUi(); loadOptimizer(); }
+  if (mode === "export") loadExport();
 }
 
 function showMode() {
@@ -781,6 +899,9 @@ function showSearchUi() {
 }
 
 function renderHead() {
+  if (S.mode === "builder") return renderBuildHead();
+  if (S.mode === "optimizer") return renderOptHead();
+  if (S.mode === "export") return renderExportHead();
   if (S.mode === "inventory") return renderInvHead();
   if (S.mode === "talisman") return renderTalHead();
   if (S.mode === "rank") return renderRankHead();
@@ -836,6 +957,9 @@ const MAX_ALL_ROWS = 400;
 
 function renderTable() {
   $("table").classList.remove("all");
+  if (S.mode === "builder") return renderBuildTable();
+  if (S.mode === "optimizer") return renderOptTable();
+  if (S.mode === "export") return renderExportTable();
   if (S.mode === "inventory") return renderInvTable();
   if (S.mode === "talisman") return renderTalTable();
   if (S.mode === "all") return renderAllTable();
@@ -1468,6 +1592,386 @@ function renderInvTable() {
       <td>${cell(t.skills[0])}</td><td>${cell(t.skills[1])}</td>
       <td class="slots">${t.slots.map(l => slot(l, false)).join("")}</td><td class="muted">${esc(t.method)}</td></tr>`).join("")
     + `</tbody></table>`;
+}
+
+/* ---- main tabs: groups of modes ------------------------------------------------------------------ */
+const GROUPS = [
+  { id: "pred", name: "Predictions", modes: [["piece", "Selected piece"], ["all", "Search all listed armor"], ["rank", "Ranking"], ["talisman", "Talismans"]] },
+  { id: "equip", name: "My equipment", modes: [["inventory", "Inventory"], ["optimizer", "Build optimizer"], ["export", "Export"]] },
+  { id: "build", name: "Set builder", modes: [["builder", "Set builder"]] },
+];
+const ALL_MODES = GROUPS.flatMap(g => g.modes.map(m => m[0]));
+const groupOf = mode => GROUPS.find(g => g.modes.some(m => m[0] === mode)) || GROUPS[0];
+const FULL_WIDTH = new Set(["talisman", "inventory", "optimizer", "export", "builder"]);
+
+function renderGroups() {
+  const g = groupOf(S.mode);
+  $("groups").innerHTML = GROUPS.map(x => `<span class="gtab ${x.id === g.id ? "on" : ""}" data-group="${x.id}">${esc(x.name)}</span>`).join("");
+  $("modes").innerHTML = g.modes.map(([id, name]) => `<span class="mode ${id === S.mode ? "on" : ""}" data-mode="${id}">${esc(name)}</span>`).join("");
+  $("modes").style.display = g.modes.length > 1 ? "" : "none";
+}
+$("groups").addEventListener("click", e => {
+  const t = e.target.closest("[data-group]");
+  if (!t) return;
+  const g = GROUPS.find(x => x.id === t.dataset.group);
+  if (groupOf(S.mode).id === g.id) return;
+  const last = (S.settings.lastModes || {})[g.id];
+  setMode(g.modes.some(m => m[0] === last) ? last : g.modes[0][0]);
+});
+function rememberMode(mode) {
+  S.settings.lastModes = { ...(S.settings.lastModes || {}), [groupOf(mode).id]: mode };
+  api().save_settings({ lastModes: S.settings.lastModes });
+}
+
+/* ---- set view (set builder and optimizer) -------------------------------------------------------- */
+const OWNERS = ["weapon", ...PARTS, "talisman"];
+const OWNER_NAMES = ["Weapon", "Head", "Chest", "Arms", "Waist", "Legs", "Talisman"];
+const slotWithDeco = s => {
+  const d = s.deco;
+  const cls = d ? (d.extra ? "deco extra" : "deco") : "deco free";
+  const label = d ? esc(d.name) : "free";
+  return `<span class="dslot" title="${d ? `${esc(d.name)} (Lv${d.level})${d.extra ? ", extra" : ""}` : `free Lv${s.lv} slot`}">${slot(s.lv, s.up)}<span class="${cls}">${label}</span></span>`;
+};
+function pieceSource(p) {
+  if (p.kind === "roll") {
+    return `<span class="src roll" title="${esc(p.roll.typeName)} on cost ${p.roll.cost} armor: augment #${p.roll.n} from now">augment #${p.roll.n} · ${esc(p.roll.typeName.replace("Augment: ", ""))}</span>`
+      + (p.owned ? "" : `<span class="src craft" title="Craft a copy first">craft</span>`);
+  }
+  if (p.kind === "owned") return `<span class="src own">${p.augmented ? "your qurious" : "yours"}</span>`;
+  return p.owned ? `<span class="src own">yours</span>` : `<span class="src craft">craft</span>`;
+}
+function talSource(t) {
+  if (t.kind === "roll") return `<span class="src roll" title="${esc(t.methodName)}${t.targetName ? ", picking " + esc(t.targetName) : ""}">talisman #${t.n} · ${esc(t.methodName.replace(/^(Qurious )?Melding—/, ""))}</span>${t.unsure ? `<span class="src craft" title="Cyclus re-picks a second skill equal to the picked one with a generator the save does not keep">2nd skill unsure</span>` : ""}`;
+  return `<span class="src own">yours</span>`;
+}
+const skillList = list => list.map(s => `<span class="sk">${skillIcon(s.color, s.name)}<span class="nm">${esc(s.name)}</span> <b style="color:var(--gold)">${s.level}</b></span>`).join("");
+
+function setCard(st, opts = {}) {
+  const rows = [];
+  if (st.slots[0].length) rows.push(`<tr><td class="own">${img("weapon", "Weapon")}</td><td class="pn muted">Weapon</td><td class="dslots">${st.slots[0].map(slotWithDeco).join("")}</td><td></td></tr>`);
+  st.pieces.forEach((p, i) => {
+    const changed = opts.changed && opts.changed.includes(i) ? " changed" : "";
+    rows.push(p ? `<tr class="${changed}"><td class="own">${mask(PARTS[i], "var(--gold)", PARTS[i])}</td>
+      <td class="pn"><span class="nm">${esc(p.name)}</span> <span class="muted">R${p.rarity}</span> ${pieceSource(p)}</td>
+      <td class="dslots">${st.slots[i + 1].map(slotWithDeco).join("") || `<span class="muted">no slots</span>`}</td>
+      <td class="skills">${skillList(p.skills)}</td></tr>`
+      : `<tr class="${changed}"><td class="own">${mask(PARTS[i], "var(--dim)", PARTS[i])}</td><td class="pn muted">nothing</td><td></td><td></td></tr>`);
+  });
+  const t = st.talisman, tch = opts.changed && opts.changed.includes(5) ? " changed" : "";
+  rows.push(t ? `<tr class="${tch}"><td class="own">${img("talisman", "Talisman")}</td><td class="pn"><span class="nm">Talisman</span> ${talSource(t)}</td>
+      <td class="dslots">${st.slots[6].map(slotWithDeco).join("") || `<span class="muted">no slots</span>`}</td><td class="skills">${skillList(t.skills)}</td></tr>`
+    : `<tr class="${tch}"><td class="own">${img("talisman", "Talisman", "off")}</td><td class="pn muted">no talisman</td><td></td><td></td></tr>`);
+  const head = opts.title !== undefined ? opts.title : (st.cost ? `${st.cost.toLocaleString()} roll${st.cost > 1 ? "s" : ""}` : "No rolls needed");
+  const rollChips = [];
+  if (st.rolls.qurious) rollChips.push(`<span class="rar" title="Augments in total, over every sequence used">${st.rolls.qurious} qurious augment${st.rolls.qurious > 1 ? "s" : ""}</span>`);
+  if (st.rolls.talisman) rollChips.push(`<span class="rar">${st.rolls.talisman} talisman${st.rolls.talisman > 1 ? "s" : ""}</span>`);
+  const sk = st.skills.map(s => `<span class="sk ${s.wanted ? "wanted" : ""}" title="${s.wanted ? `wanted: Lv${s.wanted}` : "extra"}">${skillIcon(s.color, s.name)}<span class="nm">${esc(s.name)}</span> <b style="color:var(--gold)">${s.level}</b><span class="muted">/${s.max}</span></span>`).join("");
+  return `<div class="setcard">
+    <div class="sethead"><span class="big">${head}</span>${rollChips.join("")}
+      <span>${img("defense", "Defense")} <b>${st.defense}</b></span>
+      <span title="Preset score of the skills and the free slots">Score <b style="color:var(--gold)">${st.score.toLocaleString()}</b>${st.gain !== null && st.gain !== undefined ? ` ${signed(st.gain)}` : ""}</span>
+      <span>${st.res.map((v, k) => `<span class="res">${img(ELEMENTS[k], ELEMENTS[k], v ? "" : "off")}${signed(v)}</span>`).join("")}</span>
+      ${st.free.length ? `<span class="muted">free slots ${st.free.map(l => slot(l, false)).join("")}</span>` : ""}</div>
+    <table class="settable"><tbody>${rows.join("")}</tbody></table>
+    <div class="setskills">${sk}</div>
+    ${st.steps && st.steps.length ? `<ol class="steps">${st.steps.map(x => `<li>${esc(x)}</li>`).join("")}</ol>` : ""}
+  </div>`;
+}
+
+/* skill + level picker pair with a wanted list; used by the set builder and the optimizer */
+function wantEditor(prefix, getList, setList) {
+  const sp = makePicker($(prefix + "skill"), { search: true, placeholder: "Choose a skill…", onChange: () => levels() });
+  const lp = makePicker($(prefix + "level"), {});
+  const levels = () => {
+    const s = (S.bskills || []).find(x => x.id === sp.value);
+    lp.setItems([...Array(s ? s.max : 1).keys()].map(i => ({ value: i + 1, text: "Lv" + (i + 1), html: `<span>Lv ${i + 1}</span>` })), s ? s.max : 1);
+  };
+  const add = () => {
+    if (sp.value === null) { status("Choose a skill first."); return; }
+    setList(getList().filter(w => w.id !== sp.value).concat([{ id: sp.value, level: lp.value || 1 }]));
+  };
+  $(prefix + "add").addEventListener("click", add);
+  $(prefix + "wanted").addEventListener("click", e => {
+    const b = e.target.closest("[data-unw]");
+    if (!b) return;
+    e.stopPropagation();
+    setList(getList().filter(w => w.id !== +b.dataset.unw));
+  });
+  return {
+    sync() {
+      sp.setItems((S.bskills || []).map(s => ({ value: s.id, text: s.name,
+        html: `${skillIcon(s.color, s.name)}<span>${esc(s.name)}</span>${s.deco ? `<span class="hint">jewel Lv${s.deco}</span>` : `<span class="hint">no jewel</span>`}` })), sp.value);
+      if (lp.value === null) levels();
+      $(prefix + "wanted").innerHTML = getList().map(w => {
+        const s = (S.bskills || []).find(x => x.id === w.id) || { name: "#" + w.id, color: 0, max: w.level };
+        return `<span class="want">${skillIcon(s.color, s.name)}${esc(s.name)}<b style="color:var(--gold);margin-left:4px">${w.level}</b><span class="muted">/${s.max}</span><button data-unw="${w.id}" title="Remove">✕</button></span>`;
+      }).join("") || `<span class="muted">no skills yet</span>`;
+    },
+  };
+}
+const weaponSlotItems = () => [{ value: 0, text: "none", html: `<span class="muted">none</span>` }]
+  .concat([1, 2, 3, 4].map(l => ({ value: l, text: "Lv" + l, html: `${slot(l, false)}<span>Lv${l}</span>` })));
+const clampRolls = v => Math.max(0, Math.min(1000, parseInt(v) || 0));
+
+/* ---- set builder ----------------------------------------------------------------------------------- */
+const BUILD_DEFAULTS = { skills: [], weapon: [0, 0, 0], ranks: ["master"], ownedArmor: true, ownedTalismans: true, ownedDecos: false,
+  quriousRolls: 0, talismanRolls: 0, sortBy: "defense", preset: "builtin:all" };
+const BS = () => S.settings.build;
+let buildWant, buildWeapon, buildSort, buildPreset;
+function saveBuild(patch, stale = true) {
+  S.settings.build = { ...BS(), ...patch };
+  api().save_settings({ build: S.settings.build });
+  if (stale && S.build) S.build.stale = true;
+  syncBuildUi();
+  if (S.mode === "builder") renderBuildHead();
+}
+function setupBuilder() {
+  S.settings.build = { ...BUILD_DEFAULTS, ...(S.settings.build || {}) };
+  buildWant = wantEditor("b", () => BS().skills, skills => saveBuild({ skills }));
+  buildWeapon = [0, 1, 2].map(i => makePicker($("bw" + i), { onChange: v => { const w = [...BS().weapon]; w[i] = v; saveBuild({ weapon: w }); } }));
+  buildSort = makePicker($("bsort"), { onChange: v => saveBuild({ sortBy: v }) });
+  buildPreset = makePicker($("bpreset"), { search: true, onChange: v => saveBuild({ preset: v }) });
+  $("branks").addEventListener("click", e => {
+    const c = e.target.closest("[data-brank]");
+    if (!c) return;
+    e.stopPropagation();
+    const r = c.dataset.brank, cur = BS().ranks;
+    const next = cur.includes(r) ? cur.filter(x => x !== r) : cur.concat([r]);
+    saveBuild({ ranks: next.length ? next : [r] });
+  });
+  for (const [id, key] of [["bownarm", "ownedArmor"], ["bowntal", "ownedTalismans"], ["bowndeco", "ownedDecos"]])
+    $(id).addEventListener("change", () => saveBuild({ [key]: $(id).checked }));
+  for (const [id, key] of [["bqrolls", "quriousRolls"], ["btrolls", "talismanRolls"]])
+    $(id).addEventListener("change", () => { $(id).value = clampRolls($(id).value); saveBuild({ [key]: clampRolls($(id).value) }); });
+  $("bsearch").addEventListener("click", runBuild);
+  $("bclear").addEventListener("click", () => saveBuild({ skills: [] }));
+  $("table").addEventListener("click", e => {
+    const o = e.target.closest("[data-bset]");
+    if (!o || S.mode !== "builder") return;
+    S.build.sel = +o.dataset.bset; renderBuildTable();
+  });
+}
+function syncBuildUi() {
+  const b = BS();
+  buildWant.sync();
+  buildWeapon.forEach((p, i) => p.setItems(weaponSlotItems(), b.weapon[i] || 0));
+  buildSort.setItems([{ value: "defense", text: "Defense", html: `${img("defense", "Defense")}<span>Defense</span>` },
+    { value: "score", text: "Score", html: `<span>Score (preset)</span>` }], b.sortBy);
+  buildPreset.setItems(allPresets().map(p => ({ value: p.id, text: p.name, html: `<span>${esc(p.name)}</span>` })), (allPresets().find(p => p.id === b.preset) || allPresets()[0]).id);
+  $("bpreset").style.display = b.sortBy === "score" ? "" : "none";
+  $("branks").innerHTML = [["low", "Low"], ["high", "High"], ["master", "Master"]].map(([r, n]) =>
+    `<span class="chip ${b.ranks.includes(r) ? "on" : ""}" data-brank="${r}">${n}</span>`).join("");
+  $("bownarm").checked = b.ownedArmor; $("bowntal").checked = b.ownedTalismans; $("bowndeco").checked = b.ownedDecos;
+  $("bqrolls").value = b.quriousRolls; $("btrolls").value = b.talismanRolls;
+  $("bclear").style.display = b.skills.length ? "" : "none";
+}
+let buildSeq = 0;
+async function runBuild() {
+  const b = BS();
+  if (!b.skills.length) { status("Add at least one skill."); return; }
+  const seq = ++buildSeq;
+  S.build = { running: true };
+  $("bsearch").disabled = true; $("bprogress").textContent = "Searching…";
+  renderBuildHead(); renderBuildTable();
+  const preset = allPresets().find(p => p.id === b.preset) || allPresets()[0];
+  const r = await api().build_search({ ...b, preset });
+  if (seq !== buildSeq) return;
+  $("bsearch").disabled = false;
+  S.build = { ...r, sel: 0 };
+  $("bprogress").textContent = r.error ? "" : `${r.seconds}s · ${r.candidates.toLocaleString()} candidates`;
+  renderBuildHead(); renderBuildTable();
+}
+function renderBuildHead() {
+  const b = BS(), r = S.build;
+  let note = `Armor sets with every wanted skill. Sets that need no rolls come first (game armor to craft, your armor
+    and talismans), then the set that needs the fewest future rolls: <b>Qurious rolls</b> lets each armor piece take any of
+    its next N augments of every option, <b>Talisman rolls</b> any of the next N talismans of every melding method. Only
+    the closest sets are shown (equal rolls: the best ${b.sortBy === "score" ? "score" : "defense"} first); decorations go
+    in the smallest slot that fits, so the biggest slots stay free.`;
+  if (r && r.stale) note += ` <b style="color:var(--gold)">Options changed: press Search again.</b>`;
+  if (r && r.complete === false) note += ` <b style="color:var(--gold)">The search stopped at its time limit: the set shown is the best found, there may be closer ones.</b>`;
+  $("head").innerHTML = `<span class="big">Set builder</span>${b.skills.length ? `<span class="rar">${b.skills.length} skills</span>` : ""}<div class="note">${note}</div>`;
+}
+function renderBuildTable() {
+  const r = S.build;
+  if (!r) { $("table").innerHTML = `<div class="empty">Add the skills you want, then press Search.</div>`; return; }
+  if (r.running) { $("table").innerHTML = `<div class="empty">Searching…</div>`; return; }
+  if (r.error) { $("table").innerHTML = `<div class="empty" style="color:var(--down)">${esc(r.error)}</div>`; return; }
+  if (!r.sets.length) {
+    const b = BS();
+    $("table").innerHTML = `<div class="empty">No set reaches every wanted skill${b.quriousRolls || b.talismanRolls ? " within these rolls" : ""}.
+      ${b.quriousRolls || b.talismanRolls ? "Allow more rolls, " : "Allow qurious or talisman rolls, "}more armor ranks${b.ownedDecos ? ", every decoration" : ""} or fewer skills.</div>`;
+    return;
+  }
+  const sel = Math.min(r.sel || 0, r.sets.length - 1);
+  const others = r.sets.length > 1 ? `<div class="others"><span class="flabel">Sets with the same rolls</span>${r.sets.map((s, i) =>
+    `<span class="chip ${i === sel ? "on" : ""}" data-bset="${i}" title="${s.pieces.map(p => p ? p.name : "—").join(" · ")}">${i + 1}: ${img("defense", "Defense")} ${s.defense} · ${s.score}</span>`).join("")}</div>` : "";
+  $("table").innerHTML = others + setCard(r.sets[sel]);
+}
+
+/* ---- build optimizer --------------------------------------------------------------------------------- */
+const OPT_DEFAULTS = { loadout: 0, preset: "builtin:all", weapon: null, keep: null, gameArmor: false, ownedDecos: true, quriousRolls: 0, talismanRolls: 0 };
+const OS = () => S.settings.opt;
+let optWant, optLoad, optPreset, optWeapon;
+function saveOpt(patch, stale = true) {
+  S.settings.opt = { ...OS(), ...patch };
+  api().save_settings({ opt: S.settings.opt });
+  if (stale && S.opt) S.opt.stale = true;
+  syncOptUi();
+  if (S.mode === "optimizer") renderOptHead();
+}
+const optPresetObj = () => allPresets().find(p => p.id === OS().preset) || allPresets()[0];
+const usefulSkills = (st, preset) => st.skills.filter(s => (preset.weights || {})[s.id] > 0).map(s => ({ id: s.id, level: s.level }));
+function setupOptimizer() {
+  S.settings.opt = { ...OPT_DEFAULTS, ...(S.settings.opt || {}) };
+  optWant = wantEditor("o", () => OS().keep || [], keep => saveOpt({ keep }));
+  optLoad = makePicker($("oload"), { search: true, onChange: v => { saveOpt({ loadout: v, keep: null, weapon: null }); loadOptimizer(); } });
+  optPreset = makePicker($("opreset"), { search: true, onChange: v => { saveOpt({ preset: v }); loadOptimizer(); } });
+  optWeapon = [0, 1, 2].map(i => makePicker($("ow" + i), { onChange: v => { const w = [...(OS().weapon || [0, 0, 0])]; w[i] = v; saveOpt({ weapon: w }); } }));
+  $("ogame").addEventListener("change", () => saveOpt({ gameArmor: $("ogame").checked }));
+  $("odeco").addEventListener("change", () => saveOpt({ ownedDecos: $("odeco").checked }));
+  for (const [id, key] of [["oqrolls", "quriousRolls"], ["otrolls", "talismanRolls"]])
+    $(id).addEventListener("change", () => { $(id).value = clampRolls($(id).value); saveOpt({ [key]: clampRolls($(id).value) }); });
+  $("oreset").addEventListener("click", () => {
+    if (S.optCurrent) saveOpt({ keep: usefulSkills(S.optCurrent.current, optPresetObj()), weapon: S.optCurrent.weapon });
+  });
+  $("orun").addEventListener("click", runOptimize);
+  $("table").addEventListener("click", e => {
+    const o = e.target.closest("[data-oset]");
+    if (!o || S.mode !== "optimizer") return;
+    S.opt.sel = +o.dataset.oset; renderOptTable();
+  });
+}
+function syncOptUi() {
+  const o = OS();
+  optWant.sync();
+  optLoad.setItems((S.loadouts || []).map(l => ({ value: l.key, text: l.name, html: `<span>${esc(l.name)}</span>` })), o.loadout);
+  optPreset.setItems(allPresets().map(p => ({ value: p.id, text: p.name, html: `<span>${esc(p.name)}</span>` })), optPresetObj().id);
+  optWeapon.forEach((p, i) => p.setItems(weaponSlotItems(), (o.weapon || [0, 0, 0])[i] || 0));
+  $("ogame").checked = o.gameArmor; $("odeco").checked = o.ownedDecos;
+  $("oqrolls").value = o.quriousRolls; $("otrolls").value = o.talismanRolls;
+}
+async function loadOptimizer() {
+  if (!(S.loadouts || []).length) { S.optCurrent = null; renderOptHead(); renderOptTable(); return; }
+  const r = await api().optimizer_load(OS().loadout, optPresetObj());
+  S.optCurrent = r;
+  if (!r.error) {
+    const patch = {};
+    if (OS().keep === null) patch.keep = usefulSkills(r.current, optPresetObj());
+    if (OS().weapon === null) patch.weapon = r.weapon;
+    if (Object.keys(patch).length) saveOpt(patch, false);
+  }
+  S.opt = null;
+  renderOptHead(); renderOptTable();
+}
+let optSeq = 0;
+async function runOptimize() {
+  const o = OS(), seq = ++optSeq;
+  S.opt = { running: true };
+  $("orun").disabled = true; $("oprogress").textContent = "Optimizing…";
+  renderOptHead(); renderOptTable();
+  const r = await api().optimize({ loadout: o.loadout, skills: o.keep || [], weapon: o.weapon || [0, 0, 0], preset: optPresetObj(),
+    gameArmor: o.gameArmor, ownedDecos: o.ownedDecos, quriousRolls: o.quriousRolls, talismanRolls: o.talismanRolls });
+  if (seq !== optSeq) return;
+  $("orun").disabled = false;
+  S.opt = { ...r, sel: 0 };
+  if (!r.error) S.optCurrent = { ...S.optCurrent, current: r.current };
+  $("oprogress").textContent = r.error ? "" : `${r.seconds}s`;
+  renderOptHead(); renderOptTable();
+}
+function renderOptHead() {
+  const r = S.opt;
+  let note = `Starts from a loadout of your save and keeps the skills under <b>Keep</b> (by default the ones the preset
+    weighs). The first set is the best one without rolls (your armor, talismans${OS().gameArmor ? ", game armor to craft" : ""}
+    and ${OS().ownedDecos ? "your" : "any"} decorations); each next one needs more rolls (qurious augments of ${OS().gameArmor ? "any" : "your"}
+    armor, future talismans) and scores more. <b>Score</b>: preset weights of every skill (capped at its max) plus the
+    free slots; <b>Gain</b> is against the loadout as it is. With rolls, sets one or two changes away from these are
+    searched, so the list is a set of suggestions, not every possible set.`;
+  if (r && r.stale) note += ` <b style="color:var(--gold)">Options changed: press Optimize again.</b>`;
+  if (r && r.proven === false) note += ` <b style="color:var(--gold)">The search without rolls stopped at its time limit.</b>`;
+  const cur = S.optCurrent && S.optCurrent.current;
+  $("head").innerHTML = `<span class="big">Build optimizer</span>${cur ? `<span class="rar">${esc(cur.name)}</span>${cur.weaponName ? `<span class="muted">${esc(cur.weaponName)}</span>` : ""}` : ""}<div class="note">${note}</div>`;
+}
+function renderOptTable() {
+  const c = S.optCurrent, r = S.opt;
+  if (!c) { $("table").innerHTML = `<div class="empty">No equipment found in this save.</div>`; return; }
+  if (c.error) { $("table").innerHTML = `<div class="empty" style="color:var(--down)">${esc(c.error)}</div>`; return; }
+  let html = "";
+  if (r && r.running) html = `<div class="empty">Optimizing…</div>`;
+  else if (r && r.error) html = `<div class="empty" style="color:var(--down)">${esc(r.error)}</div>`;
+  else if (r && !r.sets.length) html = `<div class="empty">No set keeps every skill under Keep (check the decorations option and the weapon slots).</div>`;
+  else if (r) {
+    const sel = Math.min(r.sel || 0, r.sets.length - 1);
+    const changes = st => st.changed.map(i => i === 5 ? (st.talisman ? `Talisman ${talSource(st.talisman)}` : "no talisman")
+      : st.pieces[i] ? `${mask(PARTS[i], "var(--gold)", PARTS[i])} ${esc(st.pieces[i].name)} ${pieceSource(st.pieces[i])}` : `${PARTS[i]}: nothing`).join("<br>");
+    const gained = st => {
+      const before = new Map(c.current.skills.map(s => [s.id, s.level]));
+      return st.skills.filter(s => s.level > (before.get(s.id) || 0)).map(s => `<span class="sk">${skillIcon(s.color, s.name)}<span class="nm">${esc(s.name)}</span> ${signed(s.level - (before.get(s.id) || 0))}</span>`).join("");
+    };
+    html = `<table><thead><tr><th style="text-align:right">Rolls</th><th style="text-align:right">Score</th><th style="text-align:right">Gain</th><th>Changes</th><th>Skills up</th></tr></thead><tbody>`
+      + r.sets.map((st, i) => `<tr class="click ${i === sel ? "match" : ""}" data-oset="${i}"><td class="n">${st.cost ? st.cost.toLocaleString() : "none"}</td>
+        <td class="sc">${st.score.toLocaleString()}</td><td class="gn">${signed(st.gain)}</td>
+        <td class="pn">${changes(st) || `<span class="muted">same pieces, other decorations</span>`}</td><td class="skills">${gained(st)}</td></tr>`).join("")
+      + `</tbody></table>` + setCard(r.sets[sel], { changed: r.sets[sel].changed });
+  } else html = `<div class="empty">Press Optimize to look for better sets.</div>`;
+  $("table").innerHTML = html + `<div class="cardlabel">${esc(c.current.name)}, as it is in the save</div>` + setCard(c.current, { title: "Current" });
+}
+
+/* ---- export ------------------------------------------------------------------------------------------ */
+const FORMAT_NAMES = { wikidb: "wiki-db import", csv: "CSV", json: "JSON" };
+const XS = () => S.settings.export || { kind: "talismans", fmt: "wikidb" };
+function setupExport() {
+  $("xkinds").addEventListener("click", e => {
+    const c = e.target.closest("[data-xkind]");
+    if (!c) return;
+    e.stopPropagation();
+    const k = (S.exportKinds || []).find(x => x.kind === c.dataset.xkind);
+    S.settings.export = { kind: k.kind, fmt: k.formats.includes(XS().fmt) ? XS().fmt : k.formats[0] };
+    api().save_settings({ export: S.settings.export }); loadExport();
+  });
+  $("xfmts").addEventListener("click", e => {
+    const c = e.target.closest("[data-xfmt]");
+    if (!c) return;
+    e.stopPropagation();
+    S.settings.export = { ...XS(), fmt: c.dataset.xfmt };
+    api().save_settings({ export: S.settings.export }); loadExport();
+  });
+  $("xcopy").addEventListener("click", async () => { if ($("xtext")) { await copyText($("xtext")); status("Copied to the clipboard."); } });
+  $("xsave").addEventListener("click", async () => {
+    if (!S.export || S.export.error) return;
+    const r = await api().save_text(S.export.fileName, S.export.text);
+    if (r.saved) status(`Saved ${r.saved}`);
+  });
+}
+function syncExportUi() {
+  const x = XS(), kinds = S.exportKinds || [];
+  const k = kinds.find(y => y.kind === x.kind) || kinds[0];
+  if (!k) return;
+  $("xkinds").innerHTML = kinds.map(y => `<span class="chip ${y.kind === k.kind ? "on" : ""}" data-xkind="${y.kind}">${esc(y.label)}</span>`).join("");
+  $("xfmts").innerHTML = k.formats.map(f => `<span class="chip ${f === x.fmt ? "on" : ""}" data-xfmt="${f}">${FORMAT_NAMES[f]}</span>`).join("");
+}
+async function loadExport() {
+  syncExportUi();
+  const x = XS();
+  S.export = await api().export_text(x.kind, x.fmt);
+  renderExportHead(); renderExportTable();
+}
+function renderExportHead() {
+  const x = XS();
+  const note = x.fmt === "wikidb"
+    ? `Lines in the import format of the mhrise.wiki-db.com skill simulator (the same files MHRiseExporter writes:
+       ExportedTalismans.txt, ExportedQuriousArmors.txt). Paste them in its talisman / qurious armor import.`
+    : x.fmt === "csv" ? `One line per item, for spreadsheets.` : `Everything about each item, for other tools.`;
+  const n = S.export && !S.export.error ? `<span class="rar">${S.export.count} items</span>` : "";
+  $("head").innerHTML = `<span class="big">Export</span>${n}<div class="note">${note} Read from the save as it is now.</div>`;
+}
+function renderExportTable() {
+  const r = S.export;
+  if (!r) { $("table").innerHTML = ""; return; }
+  if (r.error) { $("table").innerHTML = `<div class="empty" style="color:var(--down)">${esc(r.error)}</div>`; return; }
+  $("table").innerHTML = `<textarea id="xtext" class="exporttext" readonly spellcheck="false"></textarea>`;
+  $("xtext").value = r.text;
+  $("xinfo").textContent = r.fileName;
 }
 
 window.addEventListener("pywebviewready", boot);

@@ -372,6 +372,371 @@ fn meld_scan(
     Ok((r.scanned, r.matches, r.first_match, rows))
 }
 
+// ---- set builder ----------------------------------------------------------------------------------------
+
+use core::sets;
+
+/// (key, skills, slot levels, defense, sequence, roll)
+type CandTuple = (u32, Vec<(i32, i32)>, [u8; 3], i32, i32, u32);
+/// (key, skill, slot level, points, count)
+type DecoTuple = (u32, i32, u8, i32, u32);
+/// (parts, talisman, decos (owner, slot, deco key, extra), skills, free slots, cost, defense, score)
+type SetTuple = (
+    [Option<u32>; 5],
+    Option<u32>,
+    Vec<(u8, u8, u32, bool)>,
+    Vec<(i32, i32)>,
+    Vec<u8>,
+    u32,
+    i32,
+    f64,
+);
+
+fn cand(t: CandTuple) -> sets::Cand {
+    sets::Cand {
+        key: t.0,
+        skills: t.1,
+        slots: t.2,
+        defense: t.3,
+        seq: t.4,
+        roll: t.5,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn query_of(
+    parts: [Vec<CandTuple>; 5],
+    talismans: Vec<CandTuple>,
+    weapon: [u8; 3],
+    decos: Vec<DecoTuple>,
+    reqs: Vec<(i32, i32)>,
+    max_levels: HashMap<i32, i32>,
+    weights: HashMap<i32, f64>,
+    slot_values: [f64; 5],
+    value: &str,
+    cost_first: bool,
+    max_cost: u32,
+    limit: usize,
+    floor: f64,
+) -> PyResult<sets::Query> {
+    let value = match value {
+        "defense" => sets::Value::Defense,
+        "score" => sets::Value::Score,
+        other => {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "unknown value {other}"
+            )))
+        }
+    };
+    if reqs.len() > sets::MAX_REQ {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "at most {} skills",
+            sets::MAX_REQ
+        )));
+    }
+    Ok(sets::Query {
+        parts: parts.map(|p| p.into_iter().map(cand).collect()),
+        talismans: talismans.into_iter().map(cand).collect(),
+        weapon,
+        decos: decos
+            .into_iter()
+            .map(|(key, skill, level, points, count)| sets::Deco {
+                key,
+                skill,
+                level,
+                points,
+                count,
+            })
+            .collect(),
+        reqs,
+        max_levels,
+        weights,
+        slot_values,
+        value,
+        cost_first,
+        max_cost,
+        limit: limit.max(1),
+        floor,
+    })
+}
+
+fn deadline(seconds: f64) -> Option<std::time::Instant> {
+    (seconds > 0.0).then(|| std::time::Instant::now() + std::time::Duration::from_secs_f64(seconds))
+}
+
+fn set_rows(out: sets::Outcome) -> (Vec<SetTuple>, bool) {
+    let rows = out
+        .sets
+        .into_iter()
+        .map(|r| {
+            (
+                r.parts,
+                r.talisman,
+                r.decos,
+                r.skills,
+                r.free_slots,
+                r.cost,
+                r.defense,
+                r.score,
+            )
+        })
+        .collect();
+    (rows, out.complete)
+}
+
+/// The best sets (see `qurious_core::sets::search`) and whether the search finished within `seconds`.
+/// `value` is "defense" or "score".
+#[pyfunction]
+#[pyo3(signature = (parts, talismans, weapon, decos, reqs, max_levels, weights, slot_values, value, cost_first, max_cost, limit, seconds=20.0, floor=0.0))]
+#[allow(clippy::too_many_arguments)]
+fn set_search(
+    py: Python<'_>,
+    parts: [Vec<CandTuple>; 5],
+    talismans: Vec<CandTuple>,
+    weapon: [u8; 3],
+    decos: Vec<DecoTuple>,
+    reqs: Vec<(i32, i32)>,
+    max_levels: HashMap<i32, i32>,
+    weights: HashMap<i32, f64>,
+    slot_values: [f64; 5],
+    value: &str,
+    cost_first: bool,
+    max_cost: u32,
+    limit: usize,
+    seconds: f64,
+    floor: f64,
+) -> PyResult<(Vec<SetTuple>, bool)> {
+    let q = query_of(
+        parts,
+        talismans,
+        weapon,
+        decos,
+        reqs,
+        max_levels,
+        weights,
+        slot_values,
+        value,
+        cost_first,
+        max_cost,
+        limit,
+        floor,
+    )?;
+    let t = deadline(seconds);
+    Ok(set_rows(py.allow_threads(move || sets::search(&q, t))))
+}
+
+/// Pareto front of rolls and value from local changes of `starts` (see `qurious_core::sets::improve`).
+/// starts = [[talisman, head, chest, arms, waist, legs]] as candidate tuples (None = nothing).
+#[pyfunction]
+#[pyo3(signature = (parts, talismans, weapon, decos, reqs, max_levels, weights, slot_values, value, max_cost, limit, starts, seconds=10.0))]
+#[allow(clippy::too_many_arguments)]
+fn set_improve(
+    py: Python<'_>,
+    parts: [Vec<CandTuple>; 5],
+    talismans: Vec<CandTuple>,
+    weapon: [u8; 3],
+    decos: Vec<DecoTuple>,
+    reqs: Vec<(i32, i32)>,
+    max_levels: HashMap<i32, i32>,
+    weights: HashMap<i32, f64>,
+    slot_values: [f64; 5],
+    value: &str,
+    max_cost: u32,
+    limit: usize,
+    starts: Vec<[Option<CandTuple>; 6]>,
+    seconds: f64,
+) -> PyResult<(Vec<SetTuple>, bool)> {
+    let q = query_of(
+        parts,
+        talismans,
+        weapon,
+        decos,
+        reqs,
+        max_levels,
+        weights,
+        slot_values,
+        value,
+        false,
+        max_cost,
+        limit,
+        0.0,
+    )?;
+    let starts: Vec<[Option<sets::Cand>; 6]> = starts
+        .into_iter()
+        .map(|st| st.map(|c| c.map(cand)))
+        .collect();
+    let t = deadline(seconds);
+    Ok(set_rows(
+        py.allow_threads(move || sets::improve(&q, &starts, t)),
+    ))
+}
+
+fn slot_caps(slots: &[i32]) -> [i32; 5] {
+    let mut out = [0; 5];
+    for &s in slots {
+        for c in out.iter_mut().take(s.clamp(0, 4) as usize + 1).skip(1) {
+            *c += 1;
+        }
+    }
+    out
+}
+
+/// Score of a piece's skills (uncapped) and slots; 0 without weights.
+fn ub(
+    weights: &HashMap<i32, f64>,
+    slot_values: &[f64; 5],
+    skills: &[(i32, i32)],
+    slots: &[i32],
+) -> f64 {
+    if weights.is_empty() {
+        return 0.0;
+    }
+    skills
+        .iter()
+        .map(|(s, l)| weights.get(s).copied().unwrap_or(0.0).max(0.0) * (*l).max(0) as f64)
+        .sum::<f64>()
+        + slots
+            .iter()
+            .map(|&l| slot_values[l.clamp(0, 4) as usize])
+            .sum::<f64>()
+}
+
+/// (key, augment type, roll, skills, slot levels, defense change, resistance changes)
+type AugTuple = (u32, i32, u32, Vec<(i32, i32)>, [u8; 3], i32, [i32; 5]);
+/// (key, table, cost, skills, slot counts per level)
+type PieceArgs = (u32, i32, i32, Vec<(i32, i32)>, Vec<i32>);
+
+/// The augments of the next `count` rolls of every piece and type that make the piece better: a
+/// `relevant` skill level or slot capacity more, or (with `weights`) a higher score. Of results with
+/// the same relevant levels and slots only the earliest roll is kept, or a later one with a higher
+/// score. `generators` = the 56 saved states.
+#[pyfunction]
+#[pyo3(signature = (tables, pieces, generators, types, count, relevant, weights, slot_values))]
+#[allow(clippy::too_many_arguments)]
+fn augment_candidates(
+    py: Python<'_>,
+    tables: &Tables,
+    pieces: Vec<PieceArgs>,
+    generators: Vec<[u32; 4]>,
+    types: Vec<i32>,
+    count: u32,
+    relevant: Vec<i32>,
+    weights: HashMap<i32, f64>,
+    slot_values: [f64; 5],
+) -> Vec<AugTuple> {
+    let t = tables.0.clone();
+    py.allow_threads(move || {
+        pieces
+            .par_iter()
+            .flat_map_iter(|(key, table, cost, skills, nums)| {
+                let base_slots = core::expand_slots(nums);
+                let base_caps = slot_caps(&base_slots);
+                let level = |list: &[(i32, i32)], r: i32| {
+                    list.iter().filter(|e| e.0 == r).map(|e| e.1).sum::<i32>()
+                };
+                let base_lv: Vec<i32> = relevant.iter().map(|&r| level(skills, r)).collect();
+                let mut rngs: Vec<(i32, core::Rng)> = types
+                    .iter()
+                    .filter_map(|&ty| {
+                        generators
+                            .get(core::seed_index(*cost, ty))
+                            .map(|g| (ty, core::Rng::new(*g)))
+                    })
+                    .collect();
+                let base_ub = ub(&weights, &slot_values, skills, &base_slots);
+                let mut seen: HashMap<(Vec<i32>, [u8; 3]), f64> = HashMap::new();
+                let mut out = Vec::new();
+                let mut buf = Vec::with_capacity(8);
+                for n in 1..=count {
+                    for (ty, rng) in rngs.iter_mut() {
+                        core::create_result(rng, &t, *table, *cost, skills, *ty, &mut buf);
+                        let s = core::summarize(&buf);
+                        let mut levels = skills.clone();
+                        for &(sid, v) in &s.skills {
+                            match levels.iter_mut().find(|(x, _)| *x == sid) {
+                                Some(e) => e.1 += v,
+                                None => levels.push((sid, v)),
+                            }
+                        }
+                        levels.retain(|e| e.1 > 0);
+                        let slots_v = if s.slots != 0 {
+                            core::apply_slot_bonus(&base_slots, s.slots)
+                        } else {
+                            base_slots.clone()
+                        };
+                        let caps = slot_caps(&slots_v);
+                        let lv: Vec<i32> = relevant.iter().map(|&r| level(&levels, r)).collect();
+                        let value = ub(&weights, &slot_values, &levels, &slots_v);
+                        let better = lv.iter().zip(&base_lv).any(|(a, b)| a > b)
+                            || (1..=4).any(|l| caps[l] > base_caps[l])
+                            || value > base_ub;
+                        if !better {
+                            continue;
+                        }
+                        let mut slots = [0u8; 3];
+                        for (o, v) in slots.iter_mut().zip(&slots_v) {
+                            *o = (*v).clamp(0, 4) as u8;
+                        }
+                        let e = seen.entry((lv, slots)).or_insert(f64::NEG_INFINITY);
+                        if value > *e {
+                            *e = value;
+                            out.push((*key, *ty, n, levels, slots, s.defense, s.resistances));
+                        }
+                    }
+                }
+                out
+            })
+            .collect()
+    })
+}
+
+/// (roll, skills, slot levels, unsure)
+type MeldCand = (u32, Vec<(i32, i32)>, [i32; 3], bool);
+
+/// The next `count` talismans of a method that have a `relevant` skill, a slot or (with `weights`) a
+/// score; of those with the same relevant levels and slots only the first, or a later one with a
+/// higher score.
+#[pyfunction]
+#[pyo3(signature = (tables, method, target, state, count, relevant, weights, slot_values))]
+#[allow(clippy::too_many_arguments)]
+fn meld_candidates(
+    py: Python<'_>,
+    tables: &MeldTables,
+    method: i32,
+    target: Option<i32>,
+    state: [u32; 4],
+    count: u32,
+    relevant: Vec<i32>,
+    weights: HashMap<i32, f64>,
+    slot_values: [f64; 5],
+) -> PyResult<Vec<MeldCand>> {
+    let tables = tables.0.clone();
+    py.allow_threads(move || -> Result<Vec<MeldCand>, String> {
+        let mut m = meld::Melder::new(&tables, method, target, [None, None])?;
+        let mut rng = core::Rng::new(state);
+        let mut seen: HashMap<(Vec<i32>, [i32; 3]), f64> = HashMap::new();
+        let mut out = Vec::new();
+        for n in 1..=count {
+            let t = m.talisman(&mut rng);
+            let lv: Vec<i32> = relevant
+                .iter()
+                .map(|r| t.skills.iter().filter(|e| e.0 == *r).map(|e| e.1).sum())
+                .collect();
+            let value = ub(&weights, &slot_values, &t.skills, &t.slots);
+            if lv.iter().all(|&x| x == 0) && t.slots[0] == 0 && value <= 0.0 {
+                continue;
+            }
+            let e = seen.entry((lv, t.slots)).or_insert(f64::NEG_INFINITY);
+            if value > *e {
+                *e = value;
+                out.push((n, t.skills.clone(), t.slots, t.unsure));
+            }
+        }
+        Ok(out)
+    })
+    .map_err(pyo3::exceptions::PyValueError::new_err)
+}
+
 impl Drop for Scan {
     fn drop(&mut self) {
         self.0.cancel.store(true, Ordering::Relaxed);
@@ -387,6 +752,10 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<MeldTables>()?;
     m.add_function(wrap_pyfunction!(meld_rolls, m)?)?;
     m.add_function(wrap_pyfunction!(meld_scan, m)?)?;
+    m.add_function(wrap_pyfunction!(set_search, m)?)?;
+    m.add_function(wrap_pyfunction!(set_improve, m)?)?;
+    m.add_function(wrap_pyfunction!(augment_candidates, m)?)?;
+    m.add_function(wrap_pyfunction!(meld_candidates, m)?)?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }

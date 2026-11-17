@@ -7,8 +7,11 @@ piece in the game (crafted or not) for each option of the game's menu: **Augment
 find what you want (skills at a minimum level, with AND/OR, minimum slots, defense, no skill loss, no
 negative resistance), one search can look through every armor piece at once, and a **Ranking** tab
 scores every piece's next augments with weighted skill presets. A **Talismans** tab predicts the
-next talismans of every Melding Pot method, and an **Inventory** tab ranks the armor and talismans
-you own.
+next talismans of every Melding Pot method. Under **My equipment**, an **Inventory** ranks the armor
+and talismans you own, a **Build optimizer** improves a loadout of your save, and **Export** writes
+your talismans, armor and decorations (wiki-db import lines, CSV or JSON). The **Set builder** is a
+skill simulator that also counts future qurious augments and talismans: it finds the armor set
+that needs the fewest rolls.
 
 The game does not need to be running and no mod is needed. The save is only read, never written.
 
@@ -27,6 +30,9 @@ data and icons from your install (a few seconds) and caches them in
 `%LOCALAPPDATA%\mhrise-qurious-predictor`.
 
 ## How to use
+
+The window has three main tabs: **Predictions** (Selected piece, Search all listed armor, Ranking,
+Talismans), **My equipment** (Inventory, Build optimizer, Export) and **Set builder**.
 
 1. Pick your hunter. The list on the left has every qurious-capable armor piece (master rank),
    grouped by rarity; filter by name or skill, part and rarity, or switch on **Crafted only**.
@@ -82,6 +88,31 @@ data and icons from your install (a few seconds) and caches them in
    any melding method can make with the same skills (**Best from** names that method). Filter by
    part, name or skill, or **Qurious only**, and click the column titles to sort.
 
+9. **Set builder** (a skill simulator like the one on mhrise.wiki-db.com): add the skills you want
+   and their levels, the weapon's decoration slots and the armor ranks, then **Search**. It looks
+   through game armor (to craft), your own armor with its qurious augments and your talismans, and
+   places decorations (every decoration, or **Only my decorations**: as many as you have, in the box
+   and slotted). With **Qurious rolls** = N every piece can also take any of its next N augments of
+   every option, and with **Talisman rolls** = N any of the next N talismans of every melding method.
+   Only the closest sets are shown: first those that need no rolls, otherwise those that need the
+   fewest (equal rolls: the best defense, or the best score with a Ranking preset). A set's rolls are
+   counted per sequence: two pieces with the same augment cost and option share one sequence, so
+   augments #3 and #7 of it cost 7 rolls, not 10, and need different roll numbers. Below the set,
+   **what to do** lists the pieces to craft, which augment to keep on which piece and which talisman
+   to keep.
+10. **Build optimizer**: pick a loadout (what you wear now or any My Set of the save) and a Ranking
+    preset. **Keep** starts with the loadout's skills the preset weighs (edit it to drop or add
+    skills); the weapon slots come from the loadout's weapon. **Optimize** lists the best set
+    without rolls (your armor, talismans and decorations; also game armor to craft with **Other game
+    armor**) and then sets that need more rolls and score more, so you can decide whether a few more
+    augments or melds are worth it. Score = preset weight x level of every skill (capped at its max)
+    plus the free slots; Gain is against the loadout as it is. Without rolls the search is exact;
+    with rolls it searches sets one or two changes away from the loadout and from that best set, so
+    the list is a set of suggestions, not every possible set.
+11. **Export**: talismans or qurious armor as wiki-db import lines (the same `ExportedTalismans.txt`
+    and `ExportedQuriousArmors.txt` MHRiseExporter writes), or talismans, all armor and decorations as
+    CSV or JSON; **Copy** or **Save as…**.
+
 ### Built-in presets
 
 Damage skills (Attack Boost, Weakness Exploit, Bloodlust, Mail of Hellfire, Burst, Coalescence...)
@@ -134,6 +165,14 @@ Talismans work the same way: every Melding Pot method has its own generator in t
 and `LotFunc`) on the melding tables read from your install. The Talismans tab runs the Rust port
 (`native/core/src/melding.rs`, about 5 million talismans per second), which filters, scores and sorts
 in place and returns only the rows shown; the Python version is the reference it is tested against.
+
+The Set builder and the Build optimizer run `native/core/src/sets.rs`, an exact branch and bound
+adapted from mhrise-set-builder: candidates per part (dominated ones dropped), bounds on the wanted
+skill levels (decorations included) and on the value, and an exact decoration placement at each
+complete set. Future augments and talismans are candidates that cost rolls of their sequence; the roll
+budget grows step by step (0, 1, 2, 4...) so a close set is found and proven quickly. Searches stop
+after 20 seconds and then say so. Tests compare it with a brute force on random sets and check every
+set found against the engine's own predictions (`tests/test_sets.py`).
 
 The game executable is packed, so nothing was disassembled: the algorithm was reconstructed
 black-box, by calling the game's own functions through REFramework from known generator states.
@@ -193,6 +232,7 @@ Build the executable (also done by GitHub Actions on `v*` tags):
 * RSZ type layouts: [kvasszn/ree-save-editor](https://github.com/kvasszn/ree-save-editor) and
   [alphazolam/RE_RSZ](https://github.com/alphazolam/RE_RSZ) (melding tables of the final game version).
 * [REFramework](https://github.com/praydog/REFramework), used for the research probes.
+* The set search, weapon layouts and armor upgrade tables follow mhrise-set-builder (same author).
 * [PyO3](https://pyo3.rs), [maturin](https://www.maturin.rs) and [rayon](https://github.com/rayon-rs/rayon)
   (MIT/Apache-2.0) for the Rust engine.
 * The "Qurious Preview and Export as csv" REFramework mod (Nexus Mods), used as ground truth.
