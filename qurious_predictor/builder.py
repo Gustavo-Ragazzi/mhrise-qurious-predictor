@@ -7,6 +7,8 @@ generator states into candidates and the results into rows for the app.
 
 from __future__ import annotations
 
+import os
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from mhrise_exporter.export import _expand_slots, apply_slot_bonus
@@ -16,6 +18,7 @@ from . import engine, melding, search
 PART_NAMES = ["Head", "Chest", "Arms", "Waist", "Legs"]
 RANKS = {"low": (1, 3), "high": (4, 7), "master": (8, 99)}
 TALISMAN_SEQ = 100           # talisman sequence ids: TALISMAN_SEQ + melding generator index
+TALISMAN_METHODS = (10, 11)  # talisman rolls: Qurious Melding—Vigor and —Cyclus
 NO_LIMIT = 2**32 - 1
 
 
@@ -113,11 +116,12 @@ class Builder:
                 search.native_tables(self.data), pieces, [g.state() for g in generators], list(engine.TYPE_NAMES),
                 int(o.qurious_rolls), [s for s, _ in o.reqs], {int(k): float(v) for k, v in weights.items()},
                 [float(x) for x in o.slot_values])
-            for aid, ty, n, skills, slots, ddef, res in rows:
+            for aid, ty, n, skills, slots, ddef, res, delta, points in rows:
                 a, full = self.data["armors"][str(aid)], self.data["all_armors"][str(aid)]
                 seq = engine.seed_index(a["cost"], ty)
                 add(full["part"], {"kind": "roll", "id": str(aid), "type": ty, "n": n, "seq": seq, "cost": a["cost"],
-                                   "owned": aid in owned_ids, "def": ddef, "res": list(res)},
+                                   "owned": aid in owned_ids, "def": ddef, "res": list(res),
+                                   "augments": [tuple(x) for x in delta], "slotPoints": points},
                     skills, slots, full.get("defMax", 0) + ddef, seq, n)
         return infos, parts
 
@@ -138,21 +142,26 @@ class Builder:
                     add({"kind": "owned", "box": it.index, "skills": list(it.skills), "slots": list(it.slots)},
                         it.skills, it.slots)
         if o.talisman_rolls > 0 and generators:
-            wanted = {s for s, _ in o.reqs}
             weights = {int(k): float(v) for k, v in (o.weights if o.value == "score" else {}).items() if v}
-            picks = wanted | set(weights)
             nt = melding.native_tables(self.data["melding"])
-            for m in melding.ORDER:
-                targets = [r for r in self.meld.targets(m) if r.skill in picks] if m in melding.TARGETED else [None]
-                for row in targets:
-                    gen = melding.generator_index(m, row)
-                    rows = native().meld_candidates(nt, m, row.skill if row else None, list(generators[gen].state()),
-                                                    int(o.talisman_rolls), [s for s, _ in o.reqs], weights,
-                                                    [float(x) for x in o.slot_values])
-                    for n, skills, slots, unsure in rows:
-                        add({"kind": "roll", "method": m, "target": row.skill if row else None, "n": n,
-                             "unsure": unsure, "skills": [list(s) for s in skills], "slots": list(slots)},
-                            skills, slots, TALISMAN_SEQ + gen, n)
+            # Qurious Melding only: Vigor (random) and Cyclus with every skill it can pick
+            jobs = [(m, row) for m in TALISMAN_METHODS
+                    for row in (self.meld.targets(m) if m in melding.TARGETED else [None])]
+
+            def run(job):
+                m, row = job
+                gen = melding.generator_index(m, row)
+                return m, row, gen, native().meld_candidates(
+                    nt, m, row.skill if row else None, list(generators[gen].state()), int(o.talisman_rolls),
+                    [s for s, _ in o.reqs], weights, [float(x) for x in o.slot_values])
+
+            with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as pool:
+                results = list(pool.map(run, jobs))
+            for m, row, gen, rows in results:
+                for n, skills, slots, unsure in rows:
+                    add({"kind": "roll", "method": m, "target": row.skill if row else None, "n": n,
+                         "unsure": unsure, "skills": [list(s) for s in skills], "slots": list(slots)},
+                        skills, slots, TALISMAN_SEQ + gen, n)
         return infos, cands
 
     def _deco_tuples(self, o: Options, owned_decos):

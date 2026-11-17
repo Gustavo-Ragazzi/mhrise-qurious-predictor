@@ -92,10 +92,15 @@ Talismans), **My equipment** (Inventory, Build optimizer, Export) and **Set buil
    and their levels, the weapon's decoration slots and the armor ranks, then **Search**. It looks
    through game armor (to craft), your own armor with its qurious augments and your talismans, and
    places decorations (every decoration, or **Only my decorations**: as many as you have, in the box
-   and slotted). With **Qurious rolls** = N every piece can also take any of its next N augments of
-   every option, and with **Talisman rolls** = N any of the next N talismans of every melding method.
-   Only the closest sets are shown: first those that need no rolls, otherwise those that need the
-   fewest (equal rolls: the best defense, or the best score with a Ranking preset). A set's rolls are
+   and slotted). **My armor** / **My talismans** add what is in your box as it is; independently,
+   with **Qurious rolls** = N every qurious-capable piece can also take any of its next N augments
+   of each of the four options (Augment, Stability, Skills+, Slots+, on a copy without augments), and
+   with **Talisman rolls** = N any of the next N talismans of Qurious Melding—Vigor and of Qurious
+   Melding—Cyclus with any skill it can pick. There is no limit on N (it runs in Rust; very large
+   values take longer). **Results** sets are listed (20 by default), fewest rolls first (equal rolls:
+   the best defense, or the best score with a Ranking preset); the search stops at the **Time limit**
+   and then says so. Click a wanted skill to change its level. The **Qurious** column shows what
+   qurious crafting changes on each piece: the augments it already has, or the one to roll. A set's rolls are
    counted per sequence: two pieces with the same augment cost and option share one sequence, so
    augments #3 and #7 of it cost 7 rolls, not 10, and need different roll numbers. Below the set,
    **what to do** lists the pieces to craft, which augment to keep on which piece and which talisman

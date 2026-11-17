@@ -601,8 +601,8 @@ fn ub(
             .sum::<f64>()
 }
 
-/// (key, augment type, roll, skills, slot levels, defense change, resistance changes)
-type AugTuple = (u32, i32, u32, Vec<(i32, i32)>, [u8; 3], i32, [i32; 5]);
+/// (key, augment type, roll, skills, slot levels, defense change, resistance changes, skill changes, slot points)
+type AugTuple = (u32, i32, u32, Vec<(i32, i32)>, [u8; 3], i32, [i32; 5], Vec<(i32, i32)>, i32);
 /// (key, table, cost, skills, slot counts per level)
 type PieceArgs = (u32, i32, i32, Vec<(i32, i32)>, Vec<i32>);
 
@@ -680,7 +680,15 @@ fn augment_candidates(
                         let e = seen.entry((lv, slots)).or_insert(f64::NEG_INFINITY);
                         if value > *e {
                             *e = value;
-                            out.push((*key, *ty, n, levels, slots, s.defense, s.resistances));
+                            let mut delta: Vec<(i32, i32)> = Vec::new();
+                            for &(sid, v) in &s.skills {
+                                match delta.iter_mut().find(|e| e.0 == sid) {
+                                    Some(e) => e.1 += v,
+                                    None => delta.push((sid, v)),
+                                }
+                            }
+                            delta.retain(|e| e.1 != 0);
+                            out.push((*key, *ty, n, levels, slots, s.defense, s.resistances, delta, s.slots));
                         }
                     }
                 }

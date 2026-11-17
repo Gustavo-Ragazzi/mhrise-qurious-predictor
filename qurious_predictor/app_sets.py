@@ -12,7 +12,8 @@ from mhrise_exporter.export import Names, _expand_slots, apply_slot_bonus, qurio
 
 from . import builder, engine, melding
 
-MAX_ROLLS = 1000
+MAX_ROLLS = 2**31 - 1          # no practical limit: the engine runs them in Rust
+MAX_RESULTS = 1000
 OWNER_NAMES = ["Weapon", "Head", "Chest", "Arms", "Waist", "Legs", "Talisman"]
 EXPORTS = {
     # kind: (label, formats)
@@ -122,6 +123,8 @@ class SetsMixin:
             if info["kind"] == "roll":
                 row["roll"] = {"type": info["type"], "typeName": engine.TYPE_NAMES[info["type"]], "n": info["n"],
                                "cost": info["cost"], "seq": info["seq"]}
+            if info["kind"] == "roll" or info.get("augmented"):
+                row["qurious"] = self._qurious(info)
             pieces.append(row)
         tal = None
         if f.talisman:
@@ -149,6 +152,14 @@ class SetsMixin:
                       "pieces": n_qur},
             "steps": self._steps(f),
         }
+
+    def _qurious(self, info) -> dict:
+        """What qurious crafting changes on a piece: skill levels, slot points, defense, resistances."""
+        total = {}
+        for sid, v in info.get("augments") or []:
+            total[sid] = total.get(sid, 0) + v
+        return {"skills": [dict(self._skill(sid), delta=v) for sid, v in total.items() if v],
+                "slots": info.get("slotPoints", 0), "def": info.get("def", 0), "res": list(info.get("res") or [0] * 5)}
 
     @staticmethod
     def _seq_tops(f: builder.Found) -> list[int]:
@@ -200,8 +211,9 @@ class SetsMixin:
                 return {"error": "Game data not loaded."}
             if not p.get("skills"):
                 return {"error": "Add at least one skill."}
+            limit = max(1, min(MAX_RESULTS, int(p.get("limit") or 20)))
             o = self._options(p, value="score" if p.get("sortBy") == "score" else "defense", cost_first=True,
-                              limit=10, seconds=float(p.get("seconds") or 20))
+                              limit=limit + 5, seconds=max(1.0, float(p.get("seconds") or 30)))
             self._weapon = o.weapon
             gens = self.generators if (o.qurious_rolls or o.talisman_rolls) else None
             armors, talismans = self.box
@@ -218,8 +230,7 @@ class SetsMixin:
                 if sig not in seen:
                     seen.add(sig)
                     rows.append(self._set_row(f, o.reqs))
-            best = rows[0]["cost"] if rows else None
-            return {"sets": [r for r in rows if r["cost"] == best], "complete": counts["complete"],
+            return {"sets": rows[:limit], "complete": counts["complete"],
                     "candidates": sum(counts["armor"]) + counts["talismans"], "seconds": round(time.time() - t0, 2)}
 
     # ---- build optimizer ---------------------------------------------------------------------------

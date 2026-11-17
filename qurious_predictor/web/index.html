@@ -239,6 +239,13 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
 .steps { margin: 0; padding: 8px 12px 10px 32px; border-top: 1px solid var(--line); color: var(--text); }
 .steps li { margin: 2px 0; }
 .others { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px 10px 0; }
+.want.click { cursor: pointer; }
+.want.click:hover { border-color: var(--gold); }
+.setlist { margin: 6px 10px 10px; width: calc(100% - 20px); }
+.setlist td.pn { white-space: normal; }
+.setlist .rolled { color: var(--gold); }
+.setlist td.pn .tint { width: 18px; height: 18px; margin: 0 2px 0 8px; }
+.qcell .sk { margin-right: 8px; }
 .cardlabel { padding: 14px 12px 0; color: var(--gold2); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
 .exporttext { display: block; width: calc(100% - 20px); height: calc(100% - 20px); margin: 10px; resize: none; background: #120f0b;
   border: 1px solid var(--line2); border-radius: 4px; color: var(--text); font: 13px/1.45 Consolas, "Cascadia Mono", monospace; padding: 8px; }
@@ -372,18 +379,22 @@ input.rollsin { width: 84px; }
         <div class="picker slotpick" id="bw0"></div><div class="picker slotpick" id="bw1"></div><div class="picker slotpick" id="bw2"></div>
         <span class="flabel">Game armor</span>
         <div class="chips" id="branks"></div>
-        <label class="toggle" title="The armor in your box, with its qurious augments"><input type="checkbox" id="bownarm"><span></span>My armor</label>
-        <label class="toggle" title="The talismans in your box"><input type="checkbox" id="bowntal"><span></span>My talismans</label>
+        <label class="toggle" title="Also use the armor in your box as it is, with the qurious augments it already has (no rolls). Independent of Qurious rolls: those add future augments on top of this."><input type="checkbox" id="bownarm"><span></span>My armor</label>
+        <label class="toggle" title="Also use the talismans in your box (no rolls). Independent of Talisman rolls: those add future talismans on top of this."><input type="checkbox" id="bowntal"><span></span>My talismans</label>
         <label class="toggle" title="Only as many decorations as you have (in the box and slotted)"><input type="checkbox" id="bowndeco"><span></span>Only my decorations</label>
       </div>
       <div class="frow">
-        <span class="flabel">Qurious rolls</span>
-        <input id="bqrolls" class="rollsin" type="number" min="0" max="1000" step="50" title="Each master rank piece can take any of its next N augments of every option (0: no augments)">
-        <span class="flabel">Talisman rolls</span>
-        <input id="btrolls" class="rollsin" type="number" min="0" max="1000" step="50" title="Any of the next N talismans of every melding method (0: none)">
+        <span class="flabel" title="Future qurious augments. Every qurious-capable armor piece of the ranks chosen (master rank) can take any of its next N augments of each of the 4 options: Augment, Augment: Stability, Augment: Skills+ and Augment: Slots+. The augment goes on a copy without augments (yours, or crafted). Counted from the save as it is now. 0 = no augments. Large values take longer (the simulation runs in Rust).">Qurious rolls ⓘ</span>
+        <input id="bqrolls" class="rollsin" type="number" min="0" step="100" title="Future qurious augments. Every qurious-capable armor piece of the ranks chosen (master rank) can take any of its next N augments of each of the 4 options: Augment, Augment: Stability, Augment: Skills+ and Augment: Slots+. The augment goes on a copy without augments (yours, or crafted). Counted from the save as it is now. 0 = no augments. Large values take longer (the simulation runs in Rust).">
+        <span class="flabel" title="Future talismans of Qurious Melding only: any of the next N talismans of Qurious Melding—Vigor, and of Qurious Melding—Cyclus with any skill it can pick. Counted from the save as it is now. 0 = no talismans.">Talisman rolls ⓘ</span>
+        <input id="btrolls" class="rollsin" type="number" min="0" step="100" title="Future talismans of Qurious Melding only: any of the next N talismans of Qurious Melding—Vigor, and of Qurious Melding—Cyclus with any skill it can pick. Counted from the save as it is now. 0 = no talismans.">
         <span class="flabel">Then best</span>
         <div class="picker" id="bsort" style="width:170px"></div>
         <div class="picker" id="bpreset" style="width:240px" title="Ranking preset for the score"></div>
+        <span class="flabel" title="How many sets to list, fewest rolls first">Results</span>
+        <input id="blimit" class="rollsin" type="number" min="1" max="1000" step="10" title="How many sets to list, fewest rolls first (up to 1000)">
+        <span class="flabel" title="The search stops after this many seconds and shows the best sets found">Time limit</span>
+        <input id="bsecs" class="rollsin" type="number" min="1" step="10" title="Seconds; the search stops then and shows the best sets found">
         <span class="spacer"></span>
         <span id="bprogress" class="muted"></span>
         <button class="btn gold" id="bsearch">Search</button>
@@ -410,9 +421,9 @@ input.rollsin { width: 84px; }
         <label class="toggle" title="Also armor you do not have yet (to craft), and qurious rolls on it"><input type="checkbox" id="ogame"><span></span>Other game armor</label>
         <label class="toggle" title="Only as many decorations as you have"><input type="checkbox" id="odeco"><span></span>Only my decorations</label>
         <span class="flabel">Qurious rolls</span>
-        <input id="oqrolls" class="rollsin" type="number" min="0" max="1000" step="50" title="Next N augments of every option per piece (0: none)">
+        <input id="oqrolls" class="rollsin" type="number" min="0" step="100" title="Future qurious augments. Every qurious-capable armor piece of the ranks chosen (master rank) can take any of its next N augments of each of the 4 options: Augment, Augment: Stability, Augment: Skills+ and Augment: Slots+. The augment goes on a copy without augments (yours, or crafted). Counted from the save as it is now. 0 = no augments. Large values take longer (the simulation runs in Rust). Without Other game armor, only pieces you have.">
         <span class="flabel">Talisman rolls</span>
-        <input id="otrolls" class="rollsin" type="number" min="0" max="1000" step="50" title="Next N talismans of every melding method (0: none)">
+        <input id="otrolls" class="rollsin" type="number" min="0" step="100" title="Future talismans of Qurious Melding only: any of the next N talismans of Qurious Melding—Vigor, and of Qurious Melding—Cyclus with any skill it can pick. Counted from the save as it is now. 0 = no talismans.">
         <span class="spacer"></span>
         <span id="oprogress" class="muted"></span>
         <button class="btn gold" id="orun">Optimize</button>
@@ -1634,33 +1645,42 @@ const slotWithDeco = s => {
 };
 function pieceSource(p) {
   if (p.kind === "roll") {
-    return `<span class="src roll" title="${esc(p.roll.typeName)} on cost ${p.roll.cost} armor: augment #${p.roll.n} from now">augment #${p.roll.n} · ${esc(p.roll.typeName.replace("Augment: ", ""))}</span>`
+    return `<span class="src roll" title="Roll ${esc(p.roll.typeName)} on cost ${p.roll.cost} armor: the result comes on augment #${p.roll.n} from now (the earlier ones on any cost ${p.roll.cost} piece), on a copy without augments">roll ${esc(p.roll.typeName)} · #${p.roll.n}</span>`
       + (p.owned ? "" : `<span class="src craft" title="Craft a copy first">craft</span>`);
   }
   if (p.kind === "owned") return `<span class="src own">${p.augmented ? "your qurious" : "yours"}</span>`;
   return p.owned ? `<span class="src own">yours</span>` : `<span class="src craft">craft</span>`;
 }
 function talSource(t) {
-  if (t.kind === "roll") return `<span class="src roll" title="${esc(t.methodName)}${t.targetName ? ", picking " + esc(t.targetName) : ""}">talisman #${t.n} · ${esc(t.methodName.replace(/^(Qurious )?Melding—/, ""))}</span>${t.unsure ? `<span class="src craft" title="Cyclus re-picks a second skill equal to the picked one with a generator the save does not keep">2nd skill unsure</span>` : ""}`;
+  if (t.kind === "roll") return `<span class="src roll" title="Meld with ${esc(t.methodName)}${t.targetName ? ", picking " + esc(t.targetName) : ""}: the result is talisman #${t.n} from now">roll ${esc(t.methodName.replace(/^Qurious Melding—/, ""))}${t.targetName ? " (" + esc(t.targetName) + ")" : ""} · #${t.n}</span>${t.unsure ? `<span class="src craft" title="Cyclus re-picks a second skill equal to the picked one with a generator the save does not keep">2nd skill unsure</span>` : ""}`;
   return `<span class="src own">yours</span>`;
+}
+function quriousCell(p) {
+  const q = p && p.qurious;
+  if (!q) return `<span class="muted">—</span>`;
+  const bits = q.skills.map(s => `<span class="sk">${skillIcon(s.color, s.name)}<span class="nm">${esc(s.name)}</span> ${signed(s.delta)}</span>`);
+  if (q.slots) bits.push(`<span class="sk">${slot(1, true)} ${signed(q.slots)}</span>`);
+  if (q.def) bits.push(`<span class="sk">${img(q.def < 0 ? "defense_down" : "defense", "Defense")} ${signed(q.def)}</span>`);
+  q.res.forEach((v, k) => { if (v) bits.push(`<span class="res">${img(ELEMENTS[k], ELEMENTS[k])}${signed(v)}</span>`); });
+  return bits.join("") || `<span class="muted">nothing</span>`;
 }
 const skillList = list => list.map(s => `<span class="sk">${skillIcon(s.color, s.name)}<span class="nm">${esc(s.name)}</span> <b style="color:var(--gold)">${s.level}</b></span>`).join("");
 
 function setCard(st, opts = {}) {
   const rows = [];
-  if (st.slots[0].length) rows.push(`<tr><td class="own">${img("weapon", "Weapon")}</td><td class="pn muted">Weapon</td><td class="dslots">${st.slots[0].map(slotWithDeco).join("")}</td><td></td></tr>`);
+  if (st.slots[0].length) rows.push(`<tr><td class="own">${img("weapon", "Weapon")}</td><td class="pn muted">Weapon</td><td class="dslots">${st.slots[0].map(slotWithDeco).join("")}</td><td></td><td></td></tr>`);
   st.pieces.forEach((p, i) => {
     const changed = opts.changed && opts.changed.includes(i) ? " changed" : "";
     rows.push(p ? `<tr class="${changed}"><td class="own">${mask(PARTS[i], "var(--gold)", PARTS[i])}</td>
       <td class="pn"><span class="nm">${esc(p.name)}</span> <span class="muted">R${p.rarity}</span> ${pieceSource(p)}</td>
       <td class="dslots">${st.slots[i + 1].map(slotWithDeco).join("") || `<span class="muted">no slots</span>`}</td>
-      <td class="skills">${skillList(p.skills)}</td></tr>`
-      : `<tr class="${changed}"><td class="own">${mask(PARTS[i], "var(--dim)", PARTS[i])}</td><td class="pn muted">nothing</td><td></td><td></td></tr>`);
+      <td class="skills">${skillList(p.skills)}</td><td class="skills qcell">${quriousCell(p)}</td></tr>`
+      : `<tr class="${changed}"><td class="own">${mask(PARTS[i], "var(--dim)", PARTS[i])}</td><td class="pn muted">nothing</td><td></td><td></td><td></td></tr>`);
   });
   const t = st.talisman, tch = opts.changed && opts.changed.includes(5) ? " changed" : "";
   rows.push(t ? `<tr class="${tch}"><td class="own">${img("talisman", "Talisman")}</td><td class="pn"><span class="nm">Talisman</span> ${talSource(t)}</td>
-      <td class="dslots">${st.slots[6].map(slotWithDeco).join("") || `<span class="muted">no slots</span>`}</td><td class="skills">${skillList(t.skills)}</td></tr>`
-    : `<tr class="${tch}"><td class="own">${img("talisman", "Talisman", "off")}</td><td class="pn muted">no talisman</td><td></td><td></td></tr>`);
+      <td class="dslots">${st.slots[6].map(slotWithDeco).join("") || `<span class="muted">no slots</span>`}</td><td class="skills">${skillList(t.skills)}</td><td></td></tr>`
+    : `<tr class="${tch}"><td class="own">${img("talisman", "Talisman", "off")}</td><td class="pn muted">no talisman</td><td></td><td></td><td></td></tr>`);
   const head = opts.title !== undefined ? opts.title : (st.cost ? `${st.cost.toLocaleString()} roll${st.cost > 1 ? "s" : ""}` : "No rolls needed");
   const rollChips = [];
   if (st.rolls.qurious) rollChips.push(`<span class="rar" title="Augments in total, over every sequence used">${st.rolls.qurious} qurious augment${st.rolls.qurious > 1 ? "s" : ""}</span>`);
@@ -1672,7 +1692,7 @@ function setCard(st, opts = {}) {
       <span title="Preset score of the skills and the free slots">Score <b style="color:var(--gold)">${st.score.toLocaleString()}</b>${st.gain !== null && st.gain !== undefined ? ` ${signed(st.gain)}` : ""}</span>
       <span>${st.res.map((v, k) => `<span class="res">${img(ELEMENTS[k], ELEMENTS[k], v ? "" : "off")}${signed(v)}</span>`).join("")}</span>
       ${st.free.length ? `<span class="muted">free slots ${st.free.map(l => slot(l, false)).join("")}</span>` : ""}</div>
-    <table class="settable"><tbody>${rows.join("")}</tbody></table>
+    <table class="settable"><thead><tr><th></th><th>Piece</th><th>Slots and decorations</th><th>Skills</th><th title="What qurious crafting changes on the piece: augments it already has, or the one to roll">Qurious</th></tr></thead><tbody>${rows.join("")}</tbody></table>
     <div class="setskills">${sk}</div>
     ${st.steps && st.steps.length ? `<ol class="steps">${st.steps.map(x => `<li>${esc(x)}</li>`).join("")}</ol>` : ""}
   </div>`;
@@ -1688,14 +1708,20 @@ function wantEditor(prefix, getList, setList) {
   };
   const add = () => {
     if (sp.value === null) { status("Choose a skill first."); return; }
-    setList(getList().filter(w => w.id !== sp.value).concat([{ id: sp.value, level: lp.value || 1 }]));
+    const w = { id: sp.value, level: lp.value || 1 }, list = getList();
+    setList(list.some(x => x.id === w.id) ? list.map(x => x.id === w.id ? w : x) : list.concat([w]));
   };
   $(prefix + "add").addEventListener("click", add);
   $(prefix + "wanted").addEventListener("click", e => {
     const b = e.target.closest("[data-unw]");
-    if (!b) return;
+    if (b) { e.stopPropagation(); setList(getList().filter(w => w.id !== +b.dataset.unw)); return; }
+    const c = e.target.closest("[data-editw]");
+    if (!c) return;
     e.stopPropagation();
-    setList(getList().filter(w => w.id !== +b.dataset.unw));
+    const w = getList().find(x => x.id === +c.dataset.editw);
+    if (!w) return;
+    sp.set(w.id); levels(); lp.set(w.level);
+    status("Change the level and press Add to update this skill.");
   });
   return {
     sync() {
@@ -1704,18 +1730,18 @@ function wantEditor(prefix, getList, setList) {
       if (lp.value === null) levels();
       $(prefix + "wanted").innerHTML = getList().map(w => {
         const s = (S.bskills || []).find(x => x.id === w.id) || { name: "#" + w.id, color: 0, max: w.level };
-        return `<span class="want">${skillIcon(s.color, s.name)}${esc(s.name)}<b style="color:var(--gold);margin-left:4px">${w.level}</b><span class="muted">/${s.max}</span><button data-unw="${w.id}" title="Remove">✕</button></span>`;
+        return `<span class="want click" data-editw="${w.id}" title="Click to change the level">${skillIcon(s.color, s.name)}${esc(s.name)}<b style="color:var(--gold);margin-left:4px">${w.level}</b><span class="muted">/${s.max}</span><button data-unw="${w.id}" title="Remove">✕</button></span>`;
       }).join("") || `<span class="muted">no skills yet</span>`;
     },
   };
 }
 const weaponSlotItems = () => [{ value: 0, text: "none", html: `<span class="muted">none</span>` }]
   .concat([1, 2, 3, 4].map(l => ({ value: l, text: "Lv" + l, html: `${slot(l, false)}<span>Lv${l}</span>` })));
-const clampRolls = v => Math.max(0, Math.min(1000, parseInt(v) || 0));
+const clampRolls = v => Math.max(0, Math.min(2147483647, parseInt(v) || 0));
 
 /* ---- set builder ----------------------------------------------------------------------------------- */
 const BUILD_DEFAULTS = { skills: [], weapon: [0, 0, 0], ranks: ["master"], ownedArmor: true, ownedTalismans: true, ownedDecos: false,
-  quriousRolls: 0, talismanRolls: 0, sortBy: "defense", preset: "builtin:all" };
+  quriousRolls: 0, talismanRolls: 0, sortBy: "defense", preset: "builtin:all", limit: 20, seconds: 30 };
 const BS = () => S.settings.build;
 let buildWant, buildWeapon, buildSort, buildPreset;
 function saveBuild(patch, stale = true) {
@@ -1744,6 +1770,8 @@ function setupBuilder() {
   for (const [id, key] of [["bqrolls", "quriousRolls"], ["btrolls", "talismanRolls"]])
     $(id).addEventListener("change", () => { $(id).value = clampRolls($(id).value); saveBuild({ [key]: clampRolls($(id).value) }); });
   $("bsearch").addEventListener("click", runBuild);
+  $("blimit").addEventListener("change", () => { const v = Math.max(1, Math.min(1000, parseInt($("blimit").value) || 20)); $("blimit").value = v; saveBuild({ limit: v }); });
+  $("bsecs").addEventListener("change", () => { const v = Math.max(1, parseInt($("bsecs").value) || 30); $("bsecs").value = v; saveBuild({ seconds: v }); });
   $("bclear").addEventListener("click", () => saveBuild({ skills: [] }));
   $("table").addEventListener("click", e => {
     const o = e.target.closest("[data-bset]");
@@ -1763,6 +1791,7 @@ function syncBuildUi() {
     `<span class="chip ${b.ranks.includes(r) ? "on" : ""}" data-brank="${r}">${n}</span>`).join("");
   $("bownarm").checked = b.ownedArmor; $("bowntal").checked = b.ownedTalismans; $("bowndeco").checked = b.ownedDecos;
   $("bqrolls").value = b.quriousRolls; $("btrolls").value = b.talismanRolls;
+  $("blimit").value = b.limit; $("bsecs").value = b.seconds;
   $("bclear").style.display = b.skills.length ? "" : "none";
 }
 let buildSeq = 0;
@@ -1789,7 +1818,9 @@ function renderBuildHead() {
     the closest sets are shown (equal rolls: the best ${b.sortBy === "score" ? "score" : "defense"} first); decorations go
     in the smallest slot that fits, so the biggest slots stay free.`;
   if (r && r.stale) note += ` <b style="color:var(--gold)">Options changed: press Search again.</b>`;
-  if (r && r.complete === false) note += ` <b style="color:var(--gold)">The search stopped at its time limit: the set shown is the best found, there may be closer ones.</b>`;
+  if (r && r.complete === false) note += r.sets && r.sets.length
+    ? ` <b style="color:var(--gold)">The search stopped at its time limit: these are the best sets found, there may be closer ones.</b>`
+    : ` <b style="color:var(--gold)">The search stopped at its time limit before finding a set: raise the time limit, or use fewer skills or armor ranks.</b>`;
   $("head").innerHTML = `<span class="big">Set builder</span>${b.skills.length ? `<span class="rar">${b.skills.length} skills</span>` : ""}<div class="note">${note}</div>`;
 }
 function renderBuildTable() {
@@ -1797,6 +1828,10 @@ function renderBuildTable() {
   if (!r) { $("table").innerHTML = `<div class="empty">Add the skills you want, then press Search.</div>`; return; }
   if (r.running) { $("table").innerHTML = `<div class="empty">Searching…</div>`; return; }
   if (r.error) { $("table").innerHTML = `<div class="empty" style="color:var(--down)">${esc(r.error)}</div>`; return; }
+  if (!r.sets.length && r.complete === false) {
+    $("table").innerHTML = `<div class="empty">No set found within ${BS().seconds} seconds (the search did not finish). Raise the time limit, or use fewer skills or armor ranks.</div>`;
+    return;
+  }
   if (!r.sets.length) {
     const b = BS();
     $("table").innerHTML = `<div class="empty">No set reaches every wanted skill${b.quriousRolls || b.talismanRolls ? " within these rolls" : ""}.
@@ -1804,9 +1839,15 @@ function renderBuildTable() {
     return;
   }
   const sel = Math.min(r.sel || 0, r.sets.length - 1);
-  const others = r.sets.length > 1 ? `<div class="others"><span class="flabel">Sets with the same rolls</span>${r.sets.map((s, i) =>
-    `<span class="chip ${i === sel ? "on" : ""}" data-bset="${i}" title="${s.pieces.map(p => p ? p.name : "—").join(" · ")}">${i + 1}: ${img("defense", "Defense")} ${s.defense} · ${s.score}</span>`).join("")}</div>` : "";
-  $("table").innerHTML = others + setCard(r.sets[sel]);
+  const name = (p, i) => p ? `${mask(PARTS[i], "var(--gold)", PARTS[i])}<span class="${p.kind === "roll" ? "rolled" : ""}">${esc(p.name)}</span>` : `<span class="muted">—</span>`;
+  const list = `<table class="setlist"><thead><tr><th>#</th><th style="text-align:right">Rolls</th><th style="text-align:right">Defense</th><th style="text-align:right">Score</th><th>Pieces (rolled in gold)</th><th>Talisman</th></tr></thead><tbody>`
+    + r.sets.map((s, i) => `<tr class="click ${i === sel ? "match" : ""}" data-bset="${i}"><td class="n">${i + 1}</td>
+      <td class="n">${s.cost ? s.cost.toLocaleString() : "none"}</td><td class="n">${s.defense}</td><td class="sc">${s.score}</td>
+      <td class="pn">${s.pieces.map(name).join(" ")}</td>
+      <td class="pn">${s.talisman ? (s.talisman.kind === "roll" ? `<span class="rolled">#${s.talisman.n}</span> ` : "") + s.talisman.skills.map(k => `${esc(k.name)} ${k.level}`).join(", ") : "—"}</td></tr>`).join("")
+    + `</tbody></table>`;
+  $("table").innerHTML = setCard(r.sets[sel], { title: `Set ${sel + 1}: ${r.sets[sel].cost ? r.sets[sel].cost.toLocaleString() + " rolls" : "no rolls needed"}` })
+    + `<div class="cardlabel">${r.sets.length} set${r.sets.length > 1 ? "s" : ""}, fewest rolls first: click one to see it</div>` + list;
 }
 
 /* ---- build optimizer --------------------------------------------------------------------------------- */

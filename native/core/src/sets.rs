@@ -20,7 +20,7 @@
 
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
-use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 use std::time::Instant;
 
 use rayon::prelude::*;
@@ -194,8 +194,6 @@ struct Ctx<'a> {
     best_slot: [i64; 5],
     widx: HashMap<i32, usize>,
     threshold: AtomicI64,
-    /// Fewest rolls of a set found so far (`cost_first`).
-    best_cost: AtomicU32,
     deadline: Option<Instant>,
     nodes: AtomicU64,
     stopped: AtomicBool,
@@ -485,7 +483,6 @@ impl<'a> Ctx<'a> {
             suf_wlv,
             suf_slot_ub,
             threshold: AtomicI64::new(i64::MIN),
-            best_cost: AtomicU32::new(u32::MAX),
             deadline: None,
             nodes: AtomicU64::new(0),
             stopped: AtomicBool::new(false),
@@ -768,9 +765,6 @@ impl<'a> Ctx<'a> {
         if bound < self.floor || self.obj(cost, bound) < self.threshold.load(Ordering::Relaxed) {
             return;
         }
-        if self.q.cost_first && cost > self.best_cost.load(Ordering::Relaxed) {
-            return;
-        }
         if self.stopped.load(Ordering::Relaxed) {
             return;
         }
@@ -801,7 +795,6 @@ impl<'a> Ctx<'a> {
             if value < self.floor || obj < self.threshold.load(Ordering::Relaxed) {
                 return;
             }
-            self.best_cost.fetch_min(cost, Ordering::Relaxed);
             heap.push(Reverse(Found {
                 obj,
                 free,
@@ -1021,8 +1014,9 @@ pub struct Outcome {
 }
 
 /// The best `q.limit` sets, best first (none when no set reaches every requested level), searching
-/// until `deadline`. With `cost_first` the roll budget grows step by step (0, 1, 2, 4...): a set that
-/// needs few rolls is found and proven fast, without searching every far roll first.
+/// until `deadline`. With `cost_first` the roll budget grows step by step (0, 1, 2, 4...) until
+/// `q.limit` sets fit in it: sets that need few rolls are found and proven fast, without searching
+/// every far roll first.
 pub fn search(q: &Query, deadline: Option<Instant>) -> Outcome {
     if !q.cost_first {
         return run(q, deadline);
@@ -1037,7 +1031,8 @@ pub fn search(q: &Query, deadline: Option<Instant>) -> Outcome {
         let mut step = q.clone();
         step.max_cost = budget.min(top);
         let out = run(&step, deadline);
-        if !out.sets.is_empty() || !out.complete || budget >= top {
+        // `limit` sets within the budget are the best `limit` overall: any other needs more rolls
+        if out.sets.len() >= q.limit || !out.complete || budget >= top {
             return out;
         }
         budget = if budget == 0 {
