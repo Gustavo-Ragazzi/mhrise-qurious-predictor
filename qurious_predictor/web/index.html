@@ -2146,25 +2146,6 @@ function setupPlanner() {
       if (S.plan) S.plan.stale = true;
       return renderPlanTable();
     }
-    const up = e.target.closest("[data-pupd]");
-    if (up) {
-      const s = (S.saved || []).find(x => x.id === +up.dataset.pupd), b = BS();
-      openModal(`Update "${s.name}"?`, "", "Update", async () => {
-        closeModal();
-        S.checking = true; renderPlanTable();
-        const done = watchProgress($("pinfo"), $("pstop"));
-        const preset = allPresets().find(p => p.id === b.preset) || allPresets()[0];
-        const r = await api().update_saved_set(s.id, { ...b, preset });
-        done(); S.checking = false; $("pinfo").textContent = "";
-        if (r.error) { status(r.error); return renderPlanTable(); }
-        S.saved = r.sets; S.planView = s.id;
-        if (S.plan) S.plan.stale = true;
-        status(`Updated "${s.name}" within ${b.quriousRolls} qurious / ${b.talismanRolls} talisman rolls (${r.kept} of its pieces kept).`);
-        renderPlanTable();
-        loadPlanner();
-      }, `Searches its skills and weapon slots again with the Set builder's options (${b.quriousRolls} qurious, ${b.talismanRolls} talisman rolls), without this set in the saved sets' plan, and replaces it with the result that keeps most of its pieces. Name stays.`, "none");
-      return;
-    }
     const ag = e.target.closest("[data-pagain]");
     if (ag) {
       const s = (S.saved || []).find(x => x.id === +ag.dataset.pagain);
@@ -2254,7 +2235,6 @@ function renderPlanTable() {
         <td class="pn">${st.pieces.map((p, i) => p ? `${mask(PARTS[i], "var(--gold)", PARTS[i])}<span class="${p.kind === "roll" ? "rolled" : ""}">${esc(p.name)}</span>` : "").join(" ")}</td>
         <td class="pn">${needs}</td>
         <td style="white-space:nowrap"><button class="btn" data-pview="${s.id}">${S.planView === s.id ? "Hide" : "View"}</button>
-          ${overLimits(s) ? `<button class="btn gold" data-pupd="${s.id}" title="This set has a roll beyond the Set builder's Qurious rolls (${BS().quriousRolls}) or Talisman rolls (${BS().talismanRolls}): search it again within them and replace it with the result that keeps most of its pieces">Update</button>` : ""}
           <button class="btn" data-pagain="${s.id}" title="Open the Set builder with this set's skills and weapon slots and search again">Search again</button>
           <button class="btn" data-pren="${s.id}">Rename</button> <button class="btn" data-pdel="${s.id}">Delete</button></td></tr>`
         + (S.planView === s.id ? `<tr><td colspan="8">${setCard(st, { title: esc(s.name) })}</td></tr>` : "");
@@ -2262,13 +2242,7 @@ function renderPlanTable() {
   html += renderPlan();
   $("table").innerHTML = html;
 }
-function overLimits(s) {
-  const b = BS(), t = s.targets || {};
-  return (b.quriousRolls > 0 && (t.armor || []).some(a => a.n > b.quriousRolls))
-    || (b.talismanRolls > 0 && (t.talismans || []).some(a => a.n > b.talismanRolls));
-}
 function checkCell(s) {
-  if (overLimits(s)) return `<span style="color:var(--down)" title="Saved with a roll beyond the Set builder's Qurious rolls (${BS().quriousRolls}) or Talisman rolls (${BS().talismanRolls}): press Update">over the rolls limit ⚠</span>`;
   const c = s.check;
   if (S.checking && !c) return `<span class="muted">checking…</span>`;
   if (!c) return `<span class="muted">—</span>`;

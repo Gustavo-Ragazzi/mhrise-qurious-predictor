@@ -267,10 +267,8 @@ class SetsMixin:
 
     # ---- saved sets' pieces --------------------------------------------------------------------------
     def _saved_plan(self) -> dict | None:
-        """The roadmap of every saved set together (``Planner.plan``), cached per save state; without
-        the set being updated (``update_saved_set``)."""
-        skip = getattr(self, "_skip_saved", None)
-        sets = [x for x in self.saved_sets() if x["id"] != skip]
+        """The roadmap of every saved set together (``Planner.plan``), cached per save state."""
+        sets = self.saved_sets()
         if not sets or not self.generators:
             return None
         key = (json.dumps([x["targets"] for x in sets], sort_keys=True, default=str),
@@ -533,56 +531,6 @@ class SetsMixin:
         if changed:
             self.save_settings({"savedSets": sets})
         return sets
-
-    @staticmethod
-    def over_limits(x: dict, qurious: int, talisman: int) -> bool:
-        """A saved set with a roll beyond the rolls allowed (0: no limit)."""
-        t = x.get("targets") or {}
-        return bool((qurious and any(a["n"] > qurious for a in t.get("armor", [])))
-                    or (talisman and any(a["n"] > talisman for a in t.get("talismans", []))))
-
-    def update_saved_set(self, sid: int, p: dict):
-        """Search a saved set again (its skills and weapon slots, the other options from ``p``: the Set
-        builder's) without the set itself in the saved sets' plan, and replace it with the result that
-        keeps most of its pieces (the closest one on a tie). Name and id stay."""
-        old = next((x for x in self.saved_sets() if x["id"] == sid), None)
-        if old is None:
-            return {"error": "Saved set not found."}
-        q = old.get("query") or {}
-        if not q.get("skills"):
-            return {"error": "This set was saved without its skills: search in the Set builder."}
-        self._skip_saved = sid
-        try:
-            r = self.build_search({**p, "skills": q["skills"], "weapon": q.get("weapon") or [0, 0, 0],
-                                   "limit": max(20, int(p.get("limit") or 20))})
-        finally:
-            self._skip_saved = None
-        if r.get("error"):
-            return r
-        if not r["sets"]:
-            why = ("the search was stopped" if r.get("stopped") else "the search reached its time limit: raise it and try again"
-                   if not r.get("complete") else "the search finished: none exists, with the other saved sets kept as they are")
-            return {"error": f"No set with these skills within these rolls ({why}). The saved set was kept."}
-        def parts(row):
-            out = {(pc["id"], pc["kind"]) for pc in row["pieces"] if pc}
-            tal = row.get("talisman")
-            if tal:
-                out.add(("talisman", tuple((sk["id"], sk["level"]) for sk in tal["skills"])))
-            return out
-
-        before = parts(old["set"])
-
-        def kept(row):
-            return len(before & parts(row))
-        row = max(r["sets"], key=kept)          # max keeps the first of equals: the closest
-        sets = [dict(x, set=row, targets=planner.targets_of(row), updated=time.strftime("%Y-%m-%d %H:%M"),
-                     query={**q, "quriousRolls": p.get("quriousRolls"), "talismanRolls": p.get("talismanRolls")})
-                if x["id"] == sid else x for x in self.saved_sets()]
-        for x in sets:
-            if x["id"] == sid:
-                x.pop("check", None)
-        self.save_settings({"savedSets": sets})
-        return {"sets": sets, "kept": kept(row), "complete": r.get("complete"), "stopped": r.get("stopped")}
 
     def save_set(self, row: dict, name: str, query: dict | None = None):
         """Keep a Set builder result (with the rolls it needs) for the planner."""
