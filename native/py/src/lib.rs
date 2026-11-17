@@ -959,6 +959,39 @@ fn augment_advance(
     (rng.state(), last)
 }
 
+/// Like `augment_find`, but the augments before the wanted one go on another piece (`burn`: table,
+/// cost, skills): after j augments of `burn`, one augment of the target piece; the first j that gives
+/// `expected`: (j + 1, state after it), or None within `limit` augments.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn augment_find_via(
+    py: Python<'_>,
+    tables: &Tables,
+    state: [u32; 4],
+    burn: (i32, i32, Vec<(i32, i32)>),
+    target: (i32, i32, Vec<(i32, i32)>),
+    buildup_type: i32,
+    expected: Outcome,
+    limit: u64,
+) -> Option<(u64, [u32; 4])> {
+    let t = tables.0.clone();
+    let mut expected = expected;
+    expected.3.sort_unstable();
+    py.allow_threads(move || {
+        let mut rng = core::Rng::new(state);
+        let mut buf = Vec::with_capacity(8);
+        for n in 1..=limit {
+            let mut tr = core::Rng::new(rng.state());
+            core::create_result(&mut tr, &t, target.0, target.1, &target.2, buildup_type, &mut buf);
+            if outcome(&core::summarize(&buf)) == expected {
+                return Some((n, tr.state()));
+            }
+            core::create_result(&mut rng, &t, burn.0, burn.1, &burn.2, buildup_type, &mut buf);
+        }
+        None
+    })
+}
+
 /// Augments one piece again and again from `state` until an augment gives `expected` (defense, slot
 /// points, resistances and skill changes): (how many augments, state after the last one), or None
 /// within `limit`.
@@ -1193,6 +1226,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(meld_candidates, m)?)?;
     m.add_function(wrap_pyfunction!(augment_advance, m)?)?;
     m.add_function(wrap_pyfunction!(augment_find, m)?)?;
+    m.add_function(wrap_pyfunction!(augment_find_via, m)?)?;
     m.add_function(wrap_pyfunction!(meld_find, m)?)?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())

@@ -134,7 +134,10 @@ Talismans), **My equipment** (Inventory, Build optimizer, Export) and **Set buil
     Opening the tab checks every saved set against the save as it is now (again only after the save
     changed): **Now** shows the augments the planner needs for that set alone, in gold when that
     differs from what the set was saved with and with ⚠ when it is much more; **Search again** opens
-    the Set builder with the set's skills and weapon slots and searches. Tick
+    the Set builder with the set's skills and weapon slots and searches. A set with a roll beyond the Set builder's
+    Qurious rolls or Talisman rolls is marked *over the rolls limit* with **Update**: it is searched
+    again within them (without itself in the saved sets' roadmap) and replaced by the result that keeps
+    most of its pieces, keeping its name; when none exists the set is kept and the app says so. Tick
     saved sets and press **Make plan** for a roadmap from the save as it is now: per sequence, which
     piece to augment how many times and which augment to keep, per Qurious Melding sequence how many
     talismans to meld and which to keep, the pieces to craft, and the cost (zenny, Amber Essence

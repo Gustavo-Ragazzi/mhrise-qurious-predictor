@@ -176,6 +176,8 @@ class Builder:
                 a, full = self.data["armors"][str(aid)], self.data["all_armors"][str(aid)]
                 seq = engine.seed_index(a["cost"], ty)
                 after = paths[seq]["total"] if seq in paths else 0
+                if after + n > o.qurious_rolls:
+                    continue        # Qurious rolls caps the augments from now, the saved sets' plan included
                 info = {"kind": "roll", "id": str(aid), "type": ty, "n": n, "pos": after + n, "seq": seq, "cost": a["cost"],
                         "after": after, "owned": aid in owned_ids, "def": ddef, "res": list(res),
                         "augments": [tuple(x) for x in delta], "slotPoints": points}
@@ -184,7 +186,8 @@ class Builder:
             # the generator differently (the plan stays the same); its roll number is its place in the plan
             for seq, pa in paths.items():
                 same = [x for x in pieces if self.data["armors"][str(x[0])]["cost"] == pa["cost"]]
-                rows = native().path_candidates(nt, path_states[seq], pa["reserved"], same, pa["type"], relevant,
+                rows = native().path_candidates(nt, path_states[seq][:int(o.qurious_rolls) + 1], pa["reserved"], same,
+                                                pa["type"], relevant,
                                                 weights, [float(x) for x in o.slot_values])
                 for aid, ty, k, skills, slots, ddef, res, delta, points, _ in rows:
                     full = self.data["all_armors"][str(aid)]
@@ -248,6 +251,8 @@ class Builder:
                 k, segs = 0, [(m, tg) for m, tg, c in pa["segments"] for _ in range(c)]
                 for (skills, slots, unsure), (m, tg) in zip(tals_path, segs):
                     k += 1
+                    if k > o.talisman_rolls:
+                        break
                     lv = [sum(l for sk, l in skills if sk == r) for r in sorted(relevant)]
                     caps = [sum(1 for x in slots if x >= L) for L in (1, 2, 3, 4)]
                     if k in reserved or not (any(lv) or slots[0]):
@@ -276,6 +281,8 @@ class Builder:
                     info = {"kind": "roll", "method": m, "target": row.skill if row else None, "n": n,
                             "unsure": unsure, "skills": [list(s) for s in skills], "slots": list(slots)}
                     after = tpaths[gen]["total"] if gen in tpaths else 0
+                    if after + n > o.talisman_rolls:
+                        continue
                     info.update(after=after, pos=after + n)
                     add(info, skills, slots, TALISMAN_SEQ + gen, after + n)
         for pl in o.planned:

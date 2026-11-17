@@ -440,7 +440,7 @@ input.rollsin { width: 84px; }
       <div class="frow">
         <label class="toggle" title="Also armor you do not have yet (to craft), and qurious rolls on it"><input type="checkbox" id="ogame"><span></span>Other game armor</label>
         <label class="toggle" title="Only as many decorations as you have"><input type="checkbox" id="odeco"><span></span>Only my decorations</label>
-        <label class="toggle" title="Also the qurious pieces and talismans your saved sets will get (the ones ticked in Saved sets & planner, or all): tried after your own and before new rolls"><input type="checkbox" id="oplanned"><span></span>Saved sets' pieces</label>
+        <label class="toggle" title="Also the qurious pieces and talismans of every saved set: tried after your own and before new rolls"><input type="checkbox" id="oplanned"><span></span>Saved sets' pieces</label>
         <span class="flabel">Qurious rolls</span>
         <input id="oqrolls" class="rollsin" type="number" min="0" step="100" title="Future qurious augments. Every qurious-capable armor piece of the ranks chosen (master rank) can take any of its next N augments of each of the 4 options: Augment, Augment: Stability, Augment: Skills+ and Augment: Slots+. The augment goes on a copy without augments (yours, or crafted). Counted from the save as it is now. 0 = no augments. Large values take longer (the simulation runs in Rust). Without Other game armor, only pieces you have.">
         <span class="flabel">Talisman rolls</span>
@@ -2146,6 +2146,25 @@ function setupPlanner() {
       if (S.plan) S.plan.stale = true;
       return renderPlanTable();
     }
+    const up = e.target.closest("[data-pupd]");
+    if (up) {
+      const s = (S.saved || []).find(x => x.id === +up.dataset.pupd), b = BS();
+      openModal(`Update "${s.name}"?`, "", "Update", async () => {
+        closeModal();
+        S.checking = true; renderPlanTable();
+        const done = watchProgress($("pinfo"), $("pstop"));
+        const preset = allPresets().find(p => p.id === b.preset) || allPresets()[0];
+        const r = await api().update_saved_set(s.id, { ...b, preset });
+        done(); S.checking = false; $("pinfo").textContent = "";
+        if (r.error) { status(r.error); return renderPlanTable(); }
+        S.saved = r.sets; S.planView = s.id;
+        if (S.plan) S.plan.stale = true;
+        status(`Updated "${s.name}" within ${b.quriousRolls} qurious / ${b.talismanRolls} talisman rolls (${r.kept} of its pieces kept).`);
+        renderPlanTable();
+        loadPlanner();
+      }, `Searches its skills and weapon slots again with the Set builder's options (${b.quriousRolls} qurious, ${b.talismanRolls} talisman rolls), without this set in the saved sets' plan, and replaces it with the result that keeps most of its pieces. Name stays.`, "none");
+      return;
+    }
     const ag = e.target.closest("[data-pagain]");
     if (ag) {
       const s = (S.saved || []).find(x => x.id === +ag.dataset.pagain);
@@ -2235,6 +2254,7 @@ function renderPlanTable() {
         <td class="pn">${st.pieces.map((p, i) => p ? `${mask(PARTS[i], "var(--gold)", PARTS[i])}<span class="${p.kind === "roll" ? "rolled" : ""}">${esc(p.name)}</span>` : "").join(" ")}</td>
         <td class="pn">${needs}</td>
         <td style="white-space:nowrap"><button class="btn" data-pview="${s.id}">${S.planView === s.id ? "Hide" : "View"}</button>
+          ${overLimits(s) ? `<button class="btn gold" data-pupd="${s.id}" title="This set has a roll beyond the Set builder's Qurious rolls (${BS().quriousRolls}) or Talisman rolls (${BS().talismanRolls}): search it again within them and replace it with the result that keeps most of its pieces">Update</button>` : ""}
           <button class="btn" data-pagain="${s.id}" title="Open the Set builder with this set's skills and weapon slots and search again">Search again</button>
           <button class="btn" data-pren="${s.id}">Rename</button> <button class="btn" data-pdel="${s.id}">Delete</button></td></tr>`
         + (S.planView === s.id ? `<tr><td colspan="8">${setCard(st, { title: esc(s.name) })}</td></tr>` : "");
@@ -2242,13 +2262,20 @@ function renderPlanTable() {
   html += renderPlan();
   $("table").innerHTML = html;
 }
+function overLimits(s) {
+  const b = BS(), t = s.targets || {};
+  return (b.quriousRolls > 0 && (t.armor || []).some(a => a.n > b.quriousRolls))
+    || (b.talismanRolls > 0 && (t.talismans || []).some(a => a.n > b.talismanRolls));
+}
 function checkCell(s) {
+  if (overLimits(s)) return `<span style="color:var(--down)" title="Saved with a roll beyond the Set builder's Qurious rolls (${BS().quriousRolls}) or Talisman rolls (${BS().talismanRolls}): press Update">over the rolls limit ⚠</span>`;
   const c = s.check;
   if (S.checking && !c) return `<span class="muted">checking…</span>`;
   if (!c) return `<span class="muted">—</span>`;
   if (c.error) return `<span style="color:var(--down)" title="${esc(c.error)}">error</span>`;
   if (c.missing) return `<span style="color:var(--down)" title="${c.missing} wanted result(s) do not come again from the save as it is now">${c.missing} not reachable</span>`;
   const n = c.augments.toLocaleString();
+  if (c.missingAlone) return `<span style="color:var(--gold)" title="${c.missingAlone} of its results come only with the augments before them spent on another saved set's piece: it needs the other saved sets (see Make plan)">needs the other saved sets</span>`;
   if (c.inOrder) return `<span title="The rolls come as saved">${n} augments ✓</span>`;
   const worse = c.augments > c.savedAugments * 1.5;
   return `<span style="color:${worse ? "var(--down)" : "var(--gold)"}" title="Saved with ${c.savedAugments.toLocaleString()} augments assuming every piece of a sequence moves it the same way; they do not, so the planner re-finds each result: ${n} augments${worse ? ". Consider Search again" : ""}">${n} augments${worse ? " ⚠" : ""}</span>`;

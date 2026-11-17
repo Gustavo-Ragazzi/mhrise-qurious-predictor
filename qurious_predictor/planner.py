@@ -43,7 +43,7 @@ def best_order(start, targets, find):
             f = find(state, t, FIND_LIMIT)
             if f is None:
                 return None
-            out.append((t, f[0], f[1]))
+            out.append((t, *f))
             state = f[1]
         return out
     best = [None, math.inf]
@@ -60,7 +60,7 @@ def best_order(start, targets, find):
                 return
             f = find(state, t, limit)
             if f is not None:
-                rec(f[1], rest[:i] + rest[i + 1:], steps + [(t, f[0], f[1])], total + f[0])
+                rec(f[1], rest[:i] + rest[i + 1:], steps + [(t, *f)], total + f[0])
 
     rec(start, ts, [], 0)
     return best[0]
@@ -87,7 +87,7 @@ def targets_of(row: dict) -> dict:
         if p["kind"] == "roll":
             q = p.get("qurious") or {}
             armor.append({"id": p["id"], "name": p["name"], "part": p["part"], "type": p["roll"]["type"],
-                          "cost": p["roll"]["cost"], "n": p["roll"].get("pos", p["roll"]["n"]),
+                          "cost": p["roll"]["cost"], "n": p["roll"].get("pos", p["roll"]["n"]), "via": p["roll"].get("insteadId"),
                           "expected": [q.get("def", 0), q.get("slots", 0), list(q.get("res") or [0] * 5),
                                        sorted([s["id"], s["delta"]] for s in q.get("skills", []))]})
         elif p["kind"] == "game" and not p.get("owned"):
@@ -95,7 +95,7 @@ def targets_of(row: dict) -> dict:
     t = row.get("talisman")
     if t and t["kind"] == "roll":
         slots = sorted((s["lv"] for s in (row.get("slots") or [[]] * 7)[6]), reverse=True)
-        talismans.append({"method": t["method"], "target": t.get("target"), "n": t["n"],
+        talismans.append({"method": t["method"], "target": t.get("target"), "n": t.get("pos", t["n"]),
                           "skills": [[s["id"], s["level"]] for s in t["skills"]], "slots": (slots + [0, 0, 0])[:3]})
     return {"armor": armor, "talismans": talismans, "craft": craft}
 
@@ -167,27 +167,44 @@ class Planner:
             seq = engine.seed_index(cost, ty)
             start = generators[seq].state()
             nt = search.native_tables(self.data)
+            others = sorted({x["id"] for x in ts} | {x["via"] for x in ts if x.get("via")})
 
             def find(state, t, limit, ty=ty):
+                """The wanted augment with the augments before it on the piece itself or, when that is
+                closer, on another piece of this roadmap (a set saved with an augment from inside the
+                saved sets' plan needs the augments before it on the piece the plan spent them on)."""
                 table, c, skills = self._piece(t["id"])
-                return _native().augment_find(nt, list(state), table, c, skills, ty, outcome_key(t["expected"]), int(limit))
+                key = outcome_key(t["expected"])
+                best = _native().augment_find(nt, list(state), table, c, skills, ty, key, int(limit))
+                best = (*best, None) if best else None
+                for b in [t.get("via")] + [x for x in others if x != t.get("via")]:
+                    if not b or b == t["id"]:
+                        continue
+                    lim = int(limit) if best is None else best[0] - 1
+                    if lim <= 0:
+                        break
+                    f = _native().augment_find_via(nt, list(state), self._piece(b), (table, c, skills), ty, key, lim)
+                    if f:
+                        best = (*f, b)
+                return best
 
             best = best_order(start, ts, find)
             if best is None:          # some augment does not come again: plan the others
                 found = []
                 for t in sorted(ts, key=lambda t: t["n"]):
-                    steps = self._walk(start if not found else found[-1][2], [t], ty)
-                    if steps is None:
+                    f = find(start if not found else found[-1][2], t, FIND_LIMIT)
+                    if f is None:
                         missing.append(t)
                     else:
-                        found += steps
+                        found.append((t, *f))
                 best = found
             if not best:
                 continue
             cheap = min(owned.get(cost, ()), key=self._rarity, default=None)
-            burns = self._cheap_burns(start, best, ty, cheap)
+            burns = self._cheap_burns(start, [(t, k, st) for t, k, st, _ in best], ty, cheap)
+            burns = [via or b for (_, _, _, via), b in zip(best, burns)]
             rows, done, zenny, points = [], 0, 0, 0
-            for (t, k, _), burn in zip(best, burns):
+            for (t, k, _, _), burn in zip(best, burns):
                 done += k
                 if burn:
                     z1, p1 = self._armor_cost(burn, ty, k - 1)
