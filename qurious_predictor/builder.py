@@ -54,6 +54,9 @@ class Options:
     limit: int = 10
     seconds: float = 20.0                        # search time limit
     floor: float = 0.0                           # only sets worth at least this much
+    exclude_armor: frozenset = frozenset()       # armor ids never used
+    avoid_skills: frozenset = frozenset()        # no piece, talisman or decoration with these skills
+    planned: list = field(default_factory=list)  # pieces and talismans saved sets will get: no new rolls
 
 
 class Builder:
@@ -69,8 +72,11 @@ class Builder:
         infos, parts = [], [[] for _ in range(5)]
 
         def add(part, info, skills, slots, defense, seq=-1, roll=0):
+            skills = [(int(s), int(l)) for s, l in skills if l > 0]
+            if str(info["id"]) in o.exclude_armor or any(s in o.avoid_skills for s, _ in skills):
+                return
             info["key"] = len(infos)
-            info["skills"] = [(int(s), int(l)) for s, l in skills if l > 0]
+            info["skills"] = skills
             info["slots"] = [int(x) for x in (list(slots) + [0, 0, 0])[:3]]
             info["defense"] = int(defense)
             infos.append(info)
@@ -124,12 +130,30 @@ class Builder:
                                    "owned": aid in owned_ids, "def": ddef, "res": list(res),
                                    "augments": [tuple(x) for x in delta], "slotPoints": points},
                     skills, slots, full.get("defMax", 0) + ddef, seq, n)
+        for pl in o.planned:
+            if pl["what"] != "armor":
+                continue
+            full = self.data["all_armors"].get(pl["id"])
+            if full is None:
+                continue
+            levels = {sid: lv for sid, lv in full["skills"]}
+            d, points, res, delta = pl["expected"]
+            for sid, v in delta:
+                levels[sid] = levels.get(sid, 0) + v
+            base = _expand_slots(full["slots"])
+            slots = apply_slot_bonus(base, points) if points else sorted(base, reverse=True)
+            add(full["part"], {"kind": "planned", "id": pl["id"], "type": pl["type"], "n": pl["n"], "cost": pl["cost"],
+                               "sets": pl["sets"], "owned": int(pl["id"]) in owned_ids, "def": d, "res": list(res),
+                               "augments": [tuple(x) for x in delta], "slotPoints": points},
+                levels.items(), slots, full.get("defMax", 0) + d)
         return infos, parts
 
     def _talisman_candidates(self, o: Options, box_talismans, generators):
         infos, cands = [], []
 
         def add(info, skills, slots, seq=-1, roll=0):
+            if any(int(s) in o.avoid_skills for s, _ in skills):
+                return
             info["key"] = len(infos)
             infos.append(info)
             cands.append((info["key"], [(int(s), int(l)) for s, l in skills], tuple(int(x) for x in slots), 0, seq, roll))
@@ -163,13 +187,18 @@ class Builder:
                     add({"kind": "roll", "method": m, "target": row.skill if row else None, "n": n,
                          "unsure": unsure, "skills": [list(s) for s in skills], "slots": list(slots)},
                         skills, slots, TALISMAN_SEQ + gen, n)
+        for pl in o.planned:
+            if pl["what"] == "talisman":
+                add({"kind": "planned", "method": pl["method"], "target": pl["target"], "n": pl["n"], "sets": pl["sets"],
+                     "unsure": False, "skills": [list(x) for x in pl["skills"]], "slots": list(pl["slots"])},
+                    pl["skills"], pl["slots"])
         return infos, cands
 
     def _deco_tuples(self, o: Options, owned_decos):
         out = []
         for d in self.data["decorations"]:
             count = owned_decos.get(d["id"], 0) if o.owned_decos else NO_LIMIT
-            if count:
+            if count and d["skill"] not in o.avoid_skills:
                 out.append((d["id"], d["skill"], d["level"], d["points"], count))
         return out
 
@@ -212,16 +241,36 @@ class Builder:
         """Build optimizer: the best set without rolls (exact search, within a few seconds) and the front
         of improvements with rolls, from that set and from ``current`` (5 armor items, talisman item)."""
         base = Options(**{**o.__dict__, "qurious_rolls": 0, "talisman_rolls": 0, "cost_first": False, "limit": 1,
-                          "seconds": min(o.seconds, 8.0), "max_cost": 0})
+                          "seconds": min(o.seconds, 8.0), "max_cost": 0, "planned": []})
         best, counts0 = self.search(base, box_armors, box_talismans, generators, owned_decos)
-        starts = [current] if current else []
         for f in best:
+            f.tier = "owned"
+        planned_best = []
+        if o.planned:
+            planned_best, c1 = self.search(Options(**{**base.__dict__, "planned": o.planned}),
+                                           box_armors, box_talismans, generators, owned_decos)
+            planned_best = [f for f in planned_best if not best or f.score > best[0].score
+                            and any(p and p["kind"] == "planned" for p in [*f.pieces, f.talisman])]
+            for f in planned_best:
+                f.tier = "planned"
+            counts0["complete"] = counts0["complete"] and c1["complete"]
+        starts = [current] if current else []
+        for f in best + planned_best:
             starts.append(([self._item(p) for p in f.pieces], self._tal_item(box_talismans, f.talisman)))
         if not starts:
-            return [], {**counts0, "proven": counts0["complete"]}
+            return best + planned_best, {**counts0, "proven": counts0["complete"]}
         front, counts = self.improve(o, starts, box_armors, box_talismans, generators, owned_decos)
+        top = max((f.score for f in best + planned_best), default=float("-inf"))
+        rolled = [f for f in front if f.cost > 0 and f.score > top]
+        for f in rolled:
+            f.tier = "rolls"
+        if not best and not planned_best:
+            zero = [f for f in front if f.cost == 0][:1]
+            for f in zero:
+                f.tier = "planned" if any(p and p["kind"] == "planned" for p in [*f.pieces, f.talisman]) else "owned"
+            rolled = zero + rolled
         counts["proven"] = counts0["complete"]
-        return front, counts
+        return best + planned_best + rolled, counts
 
     @staticmethod
     def _item(info):
@@ -233,10 +282,20 @@ class Builder:
             return ArmorItem(int(info["id"]), info.get("augmented", False), defense=info.get("def", 0),
                              resistances=list(info.get("res") or [0] * 5), slot_points=info.get("slotPoints", 0),
                              skills=list(info.get("augments") or []), index=info.get("box", -1))
+        if info["kind"] == "planned":
+            it = ArmorItem(int(info["id"]), True, defense=info.get("def", 0), resistances=list(info.get("res") or [0] * 5),
+                           slot_points=info.get("slotPoints", 0), skills=list(info.get("augments") or []))
+            it.planned = info
+            return it
         return ArmorItem(int(info["id"]), False, resistances=[0] * 5, skills=[])
 
     @staticmethod
     def _tal_item(box_talismans, info):
+        if info is not None and info["kind"] == "planned":
+            from .savedata import TalismanItem
+            it = TalismanItem([tuple(x) for x in info["skills"]], list(info["slots"]))
+            it.planned = info
+            return it
         if info is None or info.get("box") is None:
             return None
         return next((it for it in box_talismans if it.index == info["box"]), None)
@@ -255,6 +314,10 @@ class Builder:
         info = {"kind": "owned" if owned else "game", "id": str(it.armor_id), "box": it.index if owned else None,
                 "augmented": it.augmented, "owned": owned, "def": it.defense, "res": list(it.resistances or [0] * 5),
                 "slotPoints": it.slot_points, "augments": list(it.skills or [])}
+        planned = getattr(it, "planned", None)
+        if planned:
+            info.update(kind="planned", augmented=False, owned=planned.get("owned", False),
+                        **{k: planned[k] for k in ("type", "n", "cost", "sets")})
         info["skills"] = [(int(s), int(l)) for s, l in levels.items() if l > 0]
         info["slots"] = [int(x) for x in (list(slots) + [0, 0, 0])[:3]]
         info["defense"] = int(a.get("defMax", 0) + it.defense)
@@ -273,6 +336,9 @@ class Builder:
         if it is None:
             return None
         info = {"kind": "owned", "box": it.index, "skills": list(it.skills), "slots": list(it.slots), "key": len(tinfo)}
+        planned = getattr(it, "planned", None)
+        if planned:
+            info = {**planned, "key": len(tinfo)}
         tinfo.append(info)
         return (info["key"], [(int(s), int(l)) for s, l in it.skills], tuple(int(x) for x in it.slots), 0, -1, 0)
 
@@ -286,6 +352,8 @@ class Found:
         f.pieces, f.talisman, f.decos, f.skills = pieces, talisman, decos, skills
         f.free, f.cost, f.defense, f.score = list(free), cost, defense, score
         return f
+
+    tier = None          # optimizer: "owned", "planned" (saved sets) or "rolls"
 
     def __init__(self, ainfo, tinfo, row):
         parts, tal, decos, skills, free, cost, defense, score = row

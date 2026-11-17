@@ -234,6 +234,7 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
 .src.own { color: var(--up); border-color: #3d5a2a; }
 .src.roll { color: var(--gold); border-color: var(--gold2); }
 .src.craft { color: var(--muted); }
+.src.plan { color: #8ec5ff; border-color: #3b5f86; }
 .setskills { display: flex; flex-wrap: wrap; gap: 2px 0; padding: 8px 12px; border-top: 1px solid var(--line); }
 .setskills .sk { margin: 1px 14px 1px 0; }
 .steps { margin: 0; padding: 8px 12px 10px 32px; border-top: 1px solid var(--line); color: var(--text); }
@@ -375,6 +376,14 @@ input.rollsin { width: 84px; }
         <button class="btn" id="bclear" style="display:none">Clear</button>
       </div>
       <div class="frow">
+        <span class="flabel" title="Pieces never used, and skills no piece, talisman or decoration of the set may have">Exclude</span>
+        <div class="picker" id="bexarmor" style="width:260px"></div>
+        <button class="btn" id="bexadd" title="Never use this armor piece">Exclude piece</button>
+        <div class="picker" id="bexskill" style="width:220px"></div>
+        <button class="btn" id="bavoid" title="No piece, talisman or decoration with this skill (for example Dragonheart)">Avoid skill</button>
+        <span id="bexcluded" class="wantlist"></span>
+      </div>
+      <div class="frow">
         <span class="flabel">Weapon slots</span>
         <div class="picker slotpick" id="bw0"></div><div class="picker slotpick" id="bw1"></div><div class="picker slotpick" id="bw2"></div>
         <span class="flabel">Game armor</span>
@@ -428,6 +437,7 @@ input.rollsin { width: 84px; }
       <div class="frow">
         <label class="toggle" title="Also armor you do not have yet (to craft), and qurious rolls on it"><input type="checkbox" id="ogame"><span></span>Other game armor</label>
         <label class="toggle" title="Only as many decorations as you have"><input type="checkbox" id="odeco"><span></span>Only my decorations</label>
+        <label class="toggle" title="Also the qurious pieces and talismans your saved sets will get (the ones ticked in Saved sets & planner, or all): tried after your own and before new rolls"><input type="checkbox" id="oplanned"><span></span>Saved sets' pieces</label>
         <span class="flabel">Qurious rolls</span>
         <input id="oqrolls" class="rollsin" type="number" min="0" step="100" title="Future qurious augments. Every qurious-capable armor piece of the ranks chosen (master rank) can take any of its next N augments of each of the 4 options: Augment, Augment: Stability, Augment: Skills+ and Augment: Slots+. The augment goes on a copy without augments (yours, or crafted). Counted from the save as it is now. 0 = no augments. Large values take longer (the simulation runs in Rust). Without Other game armor, only pieces you have.">
         <span class="flabel">Talisman rolls</span>
@@ -709,7 +719,7 @@ async function loadHunter() {
   const owned = S.armors.filter(a => a.count).length;
   status(`${S.armors.length} qurious-capable armor pieces in the game, ${owned} crafted. Predictions follow the save as it is now: after augmenting, save in game and press Reload save.`);
   const info = await api().builder_info();
-  if (!info.error) { S.bskills = info.skills; S.loadouts = info.loadouts; }
+  if (!info.error) { S.bskills = info.skills; S.loadouts = info.loadouts; S.barmors = info.armors; }
   S.build = null; S.opt = null; S.optCurrent = null;
   syncBuildUi(); syncOptUi();
   if (S.mode === "all") return showMode();
@@ -1665,11 +1675,14 @@ function pieceSource(p) {
     return `<span class="src roll" title="Roll ${esc(p.roll.typeName)} on cost ${p.roll.cost} armor: the result comes on augment #${p.roll.n} from now (the earlier ones on any cost ${p.roll.cost} piece), on a copy without augments">roll ${esc(p.roll.typeName)} · #${p.roll.n}</span>`
       + (p.owned ? "" : `<span class="src craft" title="Craft a copy first">craft</span>`);
   }
+  if (p.kind === "planned") return `<span class="src plan" title="${esc(p.planned.typeName)} on cost ${p.planned.cost} armor, planned by the saved set ${esc(p.planned.sets.join(", "))}: ${p.planned.n} augments from now (see Saved sets & planner)">planned · ${esc(p.planned.typeName.replace("Augment: ", ""))} · ${p.planned.n} rolls left</span>`
+    + (p.owned ? "" : `<span class="src craft">craft</span>`);
   if (p.kind === "owned") return `<span class="src own">${p.augmented ? "your qurious" : "yours"}</span>`;
   return p.owned ? `<span class="src own">yours</span>` : `<span class="src craft">craft</span>`;
 }
 function talSource(t) {
   if (t.kind === "roll") return `<span class="src roll" title="Meld with ${esc(t.methodName)}${t.targetName ? ", picking " + esc(t.targetName) : ""}: the result is talisman #${t.n} from now">roll ${esc(t.methodName.replace(/^Qurious Melding—/, ""))}${t.targetName ? " (" + esc(t.targetName) + ")" : ""} · #${t.n}</span>${t.unsure ? `<span class="src craft" title="Cyclus re-picks a second skill equal to the picked one with a generator the save does not keep">2nd skill unsure</span>` : ""}`;
+  if (t.kind === "planned") return `<span class="src plan" title="Planned by the saved set ${esc(t.sets.join(", "))}: talisman #${t.n} from now of ${esc(t.methodName)}">planned · ${esc(t.methodName.replace(/^Qurious Melding—/, ""))}${t.targetName ? " (" + esc(t.targetName) + ")" : ""} · ${t.n} left</span>`;
   return `<span class="src own">yours</span>`;
 }
 function quriousCell(p) {
@@ -1758,9 +1771,9 @@ const clampRolls = v => Math.max(0, Math.min(2147483647, parseInt(v) || 0));
 
 /* ---- set builder ----------------------------------------------------------------------------------- */
 const BUILD_DEFAULTS = { skills: [], weapon: [0, 0, 0], ranks: ["master"], ownedArmor: true, ownedTalismans: true, ownedDecos: false,
-  quriousRolls: 0, talismanRolls: 0, sortBy: "defense", preset: "builtin:all", limit: 20, seconds: 30 };
+  quriousRolls: 0, talismanRolls: 0, sortBy: "defense", preset: "builtin:all", limit: 20, seconds: 30, excludeArmor: [], avoidSkills: [] };
 const BS = () => S.settings.build;
-let buildWant, buildWeapon, buildSort, buildPreset;
+let buildWant, buildWeapon, buildSort, buildPreset, buildExArmor, buildExSkill;
 function saveBuild(patch, stale = true) {
   S.settings.build = { ...BS(), ...patch };
   api().save_settings({ build: S.settings.build });
@@ -1787,6 +1800,21 @@ function setupBuilder() {
   for (const [id, key] of [["bqrolls", "quriousRolls"], ["btrolls", "talismanRolls"]])
     $(id).addEventListener("change", () => { $(id).value = clampRolls($(id).value); saveBuild({ [key]: clampRolls($(id).value) }); });
   $("bsearch").addEventListener("click", runBuild);
+  buildExArmor = makePicker($("bexarmor"), { search: true, placeholder: "Armor piece…" });
+  buildExSkill = makePicker($("bexskill"), { search: true, placeholder: "Skill…" });
+  $("bexadd").addEventListener("click", () => {
+    if (buildExArmor.value === null) return status("Choose an armor piece first.");
+    if (!BS().excludeArmor.includes(buildExArmor.value)) saveBuild({ excludeArmor: BS().excludeArmor.concat([buildExArmor.value]) });
+  });
+  $("bavoid").addEventListener("click", () => {
+    if (buildExSkill.value === null) return status("Choose a skill first.");
+    if (!BS().avoidSkills.includes(buildExSkill.value)) saveBuild({ avoidSkills: BS().avoidSkills.concat([buildExSkill.value]) });
+  });
+  $("bexcluded").addEventListener("click", e => {
+    const a = e.target.closest("[data-unexa]"), k = e.target.closest("[data-unexs]");
+    if (a) { e.stopPropagation(); saveBuild({ excludeArmor: BS().excludeArmor.filter(x => x !== a.dataset.unexa) }); }
+    if (k) { e.stopPropagation(); saveBuild({ avoidSkills: BS().avoidSkills.filter(x => x !== +k.dataset.unexs) }); }
+  });
   $("blimit").addEventListener("change", () => { const v = Math.max(1, Math.min(1000, parseInt($("blimit").value) || 20)); $("blimit").value = v; saveBuild({ limit: v }); });
   $("bsecs").addEventListener("change", () => { const v = Math.max(1, parseInt($("bsecs").value) || 30); $("bsecs").value = v; saveBuild({ seconds: v }); });
   $("bclear").addEventListener("click", () => saveBuild({ skills: [] }));
@@ -1812,6 +1840,16 @@ function syncBuildUi() {
   $("bownarm").checked = b.ownedArmor; $("bowntal").checked = b.ownedTalismans; $("bowndeco").checked = b.ownedDecos;
   $("bqrolls").value = b.quriousRolls; $("btrolls").value = b.talismanRolls;
   $("blimit").value = b.limit; $("bsecs").value = b.seconds;
+  buildExArmor.setItems((S.barmors || []).map(a => ({ value: a.id, text: a.name,
+    html: `${mask(PARTS[a.part], "var(--gold)", PARTS[a.part])}<span>${esc(a.name)}</span><span class="hint">R${a.rarity}</span>` })), buildExArmor.value);
+  buildExSkill.setItems((S.bskills || []).map(k => ({ value: k.id, text: k.name, html: `${skillIcon(k.color, k.name)}<span>${esc(k.name)}</span>` })), buildExSkill.value);
+  $("bexcluded").innerHTML = b.excludeArmor.map(id => {
+    const a = (S.barmors || []).find(x => x.id === id) || { name: "#" + id, part: 0 };
+    return `<span class="want">${mask(PARTS[a.part], "var(--down)", PARTS[a.part])}<s>${esc(a.name)}</s><button data-unexa="${id}" title="Use it again">✕</button></span>`;
+  }).concat(b.avoidSkills.map(id => {
+    const k = (S.bskills || []).find(x => x.id === id) || { name: "#" + id, color: 0 };
+    return `<span class="want" title="No piece, talisman or decoration with this skill">${skillIcon(k.color, k.name)}<s>${esc(k.name)}</s><button data-unexs="${id}" title="Allow it again">✕</button></span>`;
+  })).join("") || `<span class="muted">nothing excluded</span>`;
   $("bclear").style.display = b.skills.length ? "" : "none";
 }
 let buildSeq = 0;
@@ -1871,7 +1909,7 @@ function renderBuildTable() {
 }
 
 /* ---- build optimizer --------------------------------------------------------------------------------- */
-const OPT_DEFAULTS = { loadout: 0, preset: "builtin:all", weapon: null, keep: null, gameArmor: false, ownedDecos: true, quriousRolls: 0, talismanRolls: 0 };
+const OPT_DEFAULTS = { loadout: 0, preset: "builtin:all", weapon: null, keep: null, gameArmor: false, ownedDecos: true, quriousRolls: 0, talismanRolls: 0, planned: true };
 const OS = () => S.settings.opt;
 let optWant, optLoad, optPreset, optWeapon;
 function saveOpt(patch, stale = true) {
@@ -1891,6 +1929,7 @@ function setupOptimizer() {
   optWeapon = [0, 1, 2].map(i => makePicker($("ow" + i), { onChange: v => { const w = [...(OS().weapon || [0, 0, 0])]; w[i] = v; saveOpt({ weapon: w }); } }));
   $("ogame").addEventListener("change", () => saveOpt({ gameArmor: $("ogame").checked }));
   $("odeco").addEventListener("change", () => saveOpt({ ownedDecos: $("odeco").checked }));
+  $("oplanned").addEventListener("change", () => saveOpt({ planned: $("oplanned").checked }));
   for (const [id, key] of [["oqrolls", "quriousRolls"], ["otrolls", "talismanRolls"]])
     $(id).addEventListener("change", () => { $(id).value = clampRolls($(id).value); saveOpt({ [key]: clampRolls($(id).value) }); });
   $("oreset").addEventListener("click", () => {
@@ -1909,7 +1948,7 @@ function syncOptUi() {
   optLoad.setItems((S.loadouts || []).map(l => ({ value: l.key, text: l.name, html: `<span>${esc(l.name)}</span>` })), o.loadout);
   optPreset.setItems(allPresets().map(p => ({ value: p.id, text: p.name, html: `<span>${esc(p.name)}</span>` })), optPresetObj().id);
   optWeapon.forEach((p, i) => p.setItems(weaponSlotItems(), (o.weapon || [0, 0, 0])[i] || 0));
-  $("ogame").checked = o.gameArmor; $("odeco").checked = o.ownedDecos;
+  $("ogame").checked = o.gameArmor; $("odeco").checked = o.ownedDecos; $("oplanned").checked = o.planned;
   $("oqrolls").value = o.quriousRolls; $("otrolls").value = o.talismanRolls;
 }
 async function loadOptimizer() {
@@ -1932,7 +1971,7 @@ async function runOptimize() {
   $("orun").disabled = true; $("oprogress").textContent = "Optimizing…";
   renderOptHead(); renderOptTable();
   const r = await api().optimize({ loadout: o.loadout, skills: o.keep || [], weapon: o.weapon || [0, 0, 0], preset: optPresetObj(),
-    gameArmor: o.gameArmor, ownedDecos: o.ownedDecos, quriousRolls: o.quriousRolls, talismanRolls: o.talismanRolls });
+    gameArmor: o.gameArmor, ownedDecos: o.ownedDecos, quriousRolls: o.quriousRolls, talismanRolls: o.talismanRolls, planned: o.planned });
   if (seq !== optSeq) return;
   $("orun").disabled = false;
   S.opt = { ...r, sel: 0 };
@@ -1943,7 +1982,8 @@ async function runOptimize() {
 function renderOptHead() {
   const r = S.opt;
   let note = `Starts from a loadout of your save and keeps the skills under <b>Keep</b> (by default the ones the preset
-    weighs). The first set is the best one without rolls (your armor, talismans${OS().gameArmor ? ", game armor to craft" : ""}
+    weighs). In order: the best set with your own pieces, then (if better) with the pieces and talismans your saved sets
+    will get (<span class="src plan">planned</span>, with the rolls still to make), then sets with new rolls. The first set is the best one without rolls (your armor, talismans${OS().gameArmor ? ", game armor to craft" : ""}
     and ${OS().ownedDecos ? "your" : "any"} decorations); each next one needs more rolls (qurious augments of ${OS().gameArmor ? "any" : "your"}
     armor, future talismans) and scores more. <b>Score</b>: preset weights of every skill (capped at its max) plus the
     free slots; <b>Gain</b> is against the loadout as it is. With rolls, sets one or two changes away from these are
@@ -1970,7 +2010,8 @@ function renderOptTable() {
       return st.skills.filter(s => s.level > (before.get(s.id) || 0)).map(s => `<span class="sk">${skillIcon(s.color, s.name)}<span class="nm">${esc(s.name)}</span> ${signed(s.level - (before.get(s.id) || 0))}</span>`).join("");
     };
     html = `<table><thead><tr><th style="text-align:right">Rolls</th><th style="text-align:right">Score</th><th style="text-align:right">Gain</th><th>Changes</th><th>Skills up</th></tr></thead><tbody>`
-      + r.sets.map((st, i) => `<tr class="click ${i === sel ? "match" : ""}" data-oset="${i}"><td class="n">${st.cost ? st.cost.toLocaleString() : "none"}</td>
+      + r.sets.map((st, i) => `<tr class="click ${i === sel ? "match" : ""}" data-oset="${i}"><td class="n">${
+        st.tier === "owned" ? `<span class="src own">yours</span>` : st.tier === "planned" ? `<span class="src plan">saved sets</span>` : st.cost.toLocaleString()}</td>
         <td class="sc">${st.score.toLocaleString()}</td><td class="gn">${signed(st.gain)}</td>
         <td class="pn">${changes(st) || `<span class="muted">same pieces, other decorations</span>`}</td><td class="skills">${gained(st)}</td></tr>`).join("")
       + `</tbody></table>` + setCard(r.sets[sel], { changed: r.sets[sel].changed });

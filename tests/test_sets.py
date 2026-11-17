@@ -151,3 +151,18 @@ def test_optimizer_front(data, build):
         assert a.cost < b.cost and a.score < b.score
     for f in front:
         check_set(data, f, reqs, o.weapon)
+
+
+@needs_game
+def test_excluded_pieces_and_avoided_skills(data, build):
+    reqs = [(skill(data, n), lv) for n, lv in [("Attack Boost", 7), ("Weakness Exploit", 3), ("Critical Eye", 5)]]
+    first, _ = build.search(builder.Options(reqs=reqs, weapon=[3, 1, 0], limit=3))
+    banned = {p["id"] for p in first[0].pieces if p}
+    avoid = frozenset({skill(data, "Dragonheart"), skill(data, "Critical Boost")})
+    found, _ = build.search(builder.Options(reqs=reqs, weapon=[3, 1, 0], limit=5, exclude_armor=frozenset(banned),
+                                            avoid_skills=avoid))
+    assert found
+    for f in found:
+        check_set(data, f, reqs, [3, 1, 0])
+        assert not banned & {p["id"] for p in f.pieces if p}
+        assert not avoid & {s for s, _ in f.skills}

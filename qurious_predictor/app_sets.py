@@ -76,7 +76,10 @@ class SetsMixin:
             deco_lv[d["skill"]] = min(deco_lv.get(d["skill"], 9), d["level"])
         skills = sorted((dict(self._skill(int(k)), deco=deco_lv.get(int(k))) for k in self.data["skills"]),
                         key=lambda s: s["name"].lower())
-        return {"skills": skills, "loadouts": [{"key": i, "name": l.name} for i, l in enumerate(self.loadout_list)],
+        armors = sorted(({"id": aid, "name": self._name(a["names"]), "part": a["part"], "rarity": a["rare"] + 1}
+                         for aid, a in self.data["all_armors"].items() if a["names"]), key=lambda a: (-a["rarity"], a["name"]))
+        return {"skills": skills, "armors": armors,
+                "loadouts": [{"key": i, "name": l.name} for i, l in enumerate(self.loadout_list)],
                 "decorations": sum(self.owned_decos.values()), "maxRolls": MAX_ROLLS}
 
     def _options(self, p: dict, **extra) -> builder.Options:
@@ -93,6 +96,8 @@ class SetsMixin:
             qurious_owned_only=bool(p.get("quriousOwnedOnly", False)),
             talisman_rolls=_rolls(p.get("talismanRolls")),
             owned_decos=bool(p.get("ownedDecos", False)),
+            exclude_armor=frozenset(str(x) for x in p.get("excludeArmor") or []),
+            avoid_skills=frozenset(int(x) for x in p.get("avoidSkills") or []),
             weights=weights, slot_values=slot_values, **extra)
 
     # ---- set rows ----------------------------------------------------------------------------------
@@ -123,7 +128,10 @@ class SetsMixin:
             if info["kind"] == "roll":
                 row["roll"] = {"type": info["type"], "typeName": engine.TYPE_NAMES[info["type"]], "n": info["n"],
                                "cost": info["cost"], "seq": info["seq"]}
-            if info["kind"] == "roll" or info.get("augmented"):
+            if info["kind"] == "planned":
+                row["planned"] = {"type": info["type"], "typeName": engine.TYPE_NAMES[info["type"]], "n": info["n"],
+                                  "cost": info["cost"], "sets": info["sets"]}
+            if info["kind"] in ("roll", "planned") or info.get("augmented"):
                 row["qurious"] = self._qurious(info)
             pieces.append(row)
         tal = None
@@ -135,6 +143,9 @@ class SetsMixin:
                 tal.update(method=t["method"], methodName=melding.METHODS[t["method"]], n=t["n"],
                            target=t["target"], targetName=self._skill(t["target"])["name"] if t["target"] else None,
                            unsure=t["unsure"])
+            if t["kind"] == "planned":
+                tal.update(method=t["method"], methodName=melding.METHODS[t["method"]], n=t["n"], sets=t["sets"],
+                           targetName=self._skill(t["target"])["name"] if t["target"] else None)
         for owner, k, did, extra in f.decos:
             if k < len(slots[owner]):
                 d = self._builder().decos.get(did, {})
@@ -151,6 +162,7 @@ class SetsMixin:
             "rolls": {"qurious": sum(self._seq_tops(f)), "talisman": f.talisman["n"] if f.talisman and f.talisman["kind"] == "roll" else 0,
                       "pieces": n_qur},
             "steps": self._steps(f),
+            "tier": f.tier,
         }
 
     def _qurious(self, info) -> dict:
@@ -175,6 +187,10 @@ class SetsMixin:
         for p in f.pieces:
             if p and p["kind"] == "game" and not p.get("owned"):
                 steps.append(f"Craft {self._armor_name(p['id'])}.")
+        planned = sorted({s for p in [*f.pieces, f.talisman] if p and p["kind"] == "planned" for s in p["sets"]})
+        if planned:
+            steps.append(f"Pieces planned by the saved set{'s' if len(planned) > 1 else ''} {', '.join(planned)}: "
+                         "make them as Saved sets & planner says.")
         groups = {}
         for p in f.pieces:
             if p and p["kind"] == "roll":
@@ -310,6 +326,10 @@ class SetsMixin:
                               value="score", cost_first=False, limit=6, seconds=float(p.get("seconds") or 12))
             o.game_armor = bool(p.get("gameArmor", False))
             o.owned_decos = bool(p.get("ownedDecos", True))
+            if p.get("planned", True) and self.saved_sets():
+                ticked = set(self.settings.get("planSel") or [])
+                sets = [x for x in self.saved_sets() if not ticked or x["id"] in ticked]
+                o.planned = planner.Planner(self.data, self.melding).planned(sets, self.generators)
             weapon = o.weapon
             current = self._current_row(L, armor, tal, weapon, p.get("preset"))
             self._weapon = weapon
@@ -326,10 +346,10 @@ class SetsMixin:
             for r in rows:
                 r["changed"] = [i for i, pc in enumerate(r["pieces"])
                                 if (pc["id"] if pc else None) != (cur_keys[i][0] if cur_keys[i] else None)
-                                or (pc and pc["kind"] == "roll")]
+                                or (pc and pc["kind"] in ("roll", "planned"))]
                 ct, rt = current["talisman"], r["talisman"]
                 if (ct and [(s["id"], s["level"]) for s in ct["skills"]]) != (rt and [(s["id"], s["level"]) for s in rt["skills"]]) \
-                        or (rt and rt["kind"] == "roll"):
+                        or (rt and rt["kind"] in ("roll", "planned")):
                     r["changed"].append(5)
             return {"current": current, "sets": rows, "complete": counts["complete"], "proven": counts.get("proven", True),
                     "seconds": round(time.time() - t0, 2)}

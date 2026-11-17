@@ -230,6 +230,31 @@ class Planner:
             out[-1] += 1
         return out
 
+    def planned(self, sets: list[dict], generators) -> list[dict]:
+        """Every roll the saved sets need, each with the augments or talismans still to make from the
+        save as it is now (each on its own: the planner orders them); not found again = left out."""
+        out = []
+        nt = search.native_tables(self.data)
+        mt = melding.native_tables(self.data["melding"])
+        for s in sets:
+            for t in s["targets"]["armor"]:
+                if any(x["what"] == "armor" and x["id"] == t["id"] and outcome_key(x["expected"]) == outcome_key(t["expected"])
+                       for x in out):
+                    continue
+                table, cost, skills = self._piece(t["id"])
+                f = _native().augment_find(nt, list(generators[engine.seed_index(cost, t["type"])].state()), table, cost,
+                                           skills, t["type"], outcome_key(t["expected"]), FIND_LIMIT)
+                if f:
+                    out.append({**t, "what": "armor", "n": f[0], "sets": [s["name"]]})
+            for t in s["targets"]["talismans"]:
+                row = next((r for r in self.meld.targets(t["method"]) if r.skill == t["target"]), None) if t["target"] else None
+                gen = melding.generator_index(t["method"], row)
+                f = _native().meld_find(mt, t["method"], t["target"], list(generators[gen].state()),
+                                        [tuple(x) for x in t["skills"]], list(t["slots"]), FIND_LIMIT)
+                if f:
+                    out.append({**t, "what": "talisman", "n": f[0], "sets": [s["name"]]})
+        return out
+
     def plan(self, sets: list[dict], generators, box_armors) -> dict:
         armor_t, tal_t, craft = [], [], {}
         for s in sets:

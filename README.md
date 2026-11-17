@@ -100,7 +100,9 @@ Talismans), **My equipment** (Inventory, Build optimizer, Export) and **Set buil
    values take longer). **Results** sets are listed (20 by default), fewest rolls first (equal rolls:
    the best defense, or the best score with a Ranking preset); the search stops at the **Time limit**
    and then says so. Click a wanted skill to change its level. The **Qurious** column shows what
-   qurious crafting changes on each piece: the augments it already has, or the one to roll. A set's rolls are
+   qurious crafting changes on each piece: the augments it already has, or the one to roll.
+   **Exclude** keeps armor pieces out (**Exclude piece**) or every piece, talisman and decoration with
+   a skill (**Avoid skill**, for example Dragonheart). A set's rolls are
    counted per sequence: two pieces with the same augment cost and option share one sequence, so
    augments #3 and #7 of it cost 7 rolls, not 10, and need different roll numbers. Below the set,
    **what to do** lists the pieces to craft, which augment to keep on which piece and which talisman
@@ -113,7 +115,10 @@ Talismans), **My equipment** (Inventory, Build optimizer, Export) and **Set buil
     augments or melds are worth it. Score = preset weight x level of every skill (capped at its max)
     plus the free slots; Gain is against the loadout as it is. Without rolls the search is exact;
     with rolls it searches sets one or two changes away from the loadout and from that best set, so
-    the list is a set of suggestions, not every possible set.
+    the list is a set of suggestions, not every possible set. With **Saved sets' pieces** the qurious
+    pieces and talismans your saved sets will get (the ones ticked in Saved sets & planner, or all)
+    are used too, tagged *planned* with the rolls still to make: the list goes from your own pieces,
+    to those planned pieces, to new rolls.
 11. **Saved sets & planner** (under Set builder): **Save set** on a Set builder result keeps it. Tick
     saved sets and press **Make plan** for a roadmap from the save as it is now: per sequence, which
     piece to augment how many times and which augment to keep, per Qurious Melding sequence how many
