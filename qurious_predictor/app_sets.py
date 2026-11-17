@@ -127,7 +127,9 @@ class SetsMixin:
                    "skills": [dict(self._skill(s), level=l) for s, l in info["skills"]]}
             if info["kind"] == "roll":
                 row["roll"] = {"type": info["type"], "typeName": engine.TYPE_NAMES[info["type"]], "n": info["n"],
-                               "cost": info["cost"], "seq": info["seq"]}
+                               "cost": info["cost"], "seq": info["seq"], "after": info.get("after", 0), "pos": info.get("pos", info["n"]),
+                               "inPlan": bool(info.get("inPlan")),
+                               "instead": self._armor_name(info["instead"]) if info.get("instead") else None}
             if info["kind"] == "planned":
                 row["planned"] = {"type": info["type"], "typeName": engine.TYPE_NAMES[info["type"]], "n": info["n"],
                                   "cost": info["cost"], "sets": info["sets"]}
@@ -142,7 +144,7 @@ class SetsMixin:
             if t["kind"] == "roll":
                 tal.update(method=t["method"], methodName=melding.METHODS[t["method"]], n=t["n"],
                            target=t["target"], targetName=self._skill(t["target"])["name"] if t["target"] else None,
-                           unsure=t["unsure"])
+                           unsure=t["unsure"], after=t.get("after", 0), inPlan=bool(t.get("inPlan")))
             if t["kind"] == "planned":
                 tal.update(method=t["method"], methodName=melding.METHODS[t["method"]], n=t["n"], sets=t["sets"],
                            targetName=self._skill(t["target"])["name"] if t["target"] else None)
@@ -159,7 +161,8 @@ class SetsMixin:
             "gain": round(f.score - base, 2) if base is not None else None,
             "pieces": pieces, "talisman": tal, "slots": [slots[o] for o in range(7)],
             "skills": skills, "free": f.free,
-            "rolls": {"qurious": sum(self._seq_tops(f)), "talisman": f.talisman["n"] if f.talisman and f.talisman["kind"] == "roll" else 0,
+            "rolls": {"qurious": sum(self._seq_tops(f)),
+                      "talisman": f.talisman.get("pos", f.talisman["n"]) if f.talisman and f.talisman["kind"] == "roll" else 0,
                       "pieces": n_qur},
             "steps": self._steps(f),
             "tier": f.tier,
@@ -178,7 +181,7 @@ class SetsMixin:
         tops = {}
         for p in f.pieces:
             if p and p["kind"] == "roll":
-                tops[p["seq"]] = max(tops.get(p["seq"], 0), p["n"])
+                tops[p["seq"]] = max(tops.get(p["seq"], 0), p.get("pos", p["n"]))
         return list(tops.values())
 
     def _steps(self, f: builder.Found) -> list[str]:
@@ -194,40 +197,124 @@ class SetsMixin:
         groups = {}
         for p in f.pieces:
             if p and p["kind"] == "roll":
-                groups.setdefault(p["seq"], []).append(p)
-        for seq, ps in groups.items():
-            ps.sort(key=lambda p: p["n"])
-            for p in ps:
                 if not p.get("owned"):
                     steps.append(f"Craft {self._armor_name(p['id'])} (a fresh copy, without augments).")
+                if p.get("inPlan"):
+                    steps.append(f"{engine.TYPE_NAMES[p['type']]} on cost {p['cost']} armor, while following the saved "
+                                 f"sets' plan (Saved sets & planner): its augment #{p['n']}, which the plan spends on "
+                                 f"{self._armor_name(p['instead'])}, goes on {self._armor_name(p['id'])} instead: keep it. "
+                                 f"The generator ends at the same place, so the rest of the plan stays the same.")
+                else:
+                    groups.setdefault(p["seq"], []).append(p)
+        for seq, ps in groups.items():
+            ps.sort(key=lambda p: p["n"])
             top = ps[-1]["n"]
-            keep = "; ".join(f"augment #{p['n']} on {self._armor_name(p['id'])}" for p in ps)
+            after = ps[0].get("after", 0)
             fresh = " (each on a copy without augments)" if any(p.get("augmented") or p.get("owned") for p in ps) else ""
-            others = top - len(ps)
-            steps.append(f"{engine.TYPE_NAMES[ps[0]['type']]} on cost {ps[0]['cost']} armor: {top} augment{'s' if top > 1 else ''} "
-                         f"in total. Keep {keep}{fresh}" + (f"; do the other {others} on that same piece (another piece can change "
-                                                             f"what comes next: save the set and use Saved sets & planner)."
-                                                             if others else "."))
+            done, parts = 0, []
+            for p in ps:
+                k = p["n"] - done
+                parts.append(f"{'augment' if not done else 'then'} {self._armor_name(p['id'])} {k} time{'s' if k > 1 else ''}"
+                             f" and keep the last (#{p['n']})")
+                done = p["n"]
+            first = (f"first finish the saved sets' plan on this sequence ({after:,} augments, Saved sets & planner), "
+                     f"then " if after else "")
+            steps.append(f"{engine.TYPE_NAMES[ps[0]['type']]} on cost {ps[0]['cost']} armor, {top} augment{'s' if top > 1 else ''} "
+                         f"in this order{fresh}: {first}{'; '.join(parts)}. Augmenting another piece in between can change "
+                         f"what comes next.")
         t = f.talisman
         if t and t["kind"] == "roll":
             pick = f", picking {self._skill(t['target'])['name']}" if t["target"] else ""
-            steps.append(f"{melding.METHODS[t['method']]}{pick}: talisman #{t['n']} "
-                         f"({t['n'] - 1} talisman{'s' if t['n'] != 2 else ''} of this method before it, any materials)."
-                         + (" Its second skill may differ: Cyclus re-picks it with a generator the save does not keep."
-                            if t["unsure"] else ""))
+            if t.get("inPlan"):
+                steps.append(f"{melding.METHODS[t['method']]}{pick}: talisman #{t['n']} of the saved sets' plan (one it "
+                             f"melds on the way): keep it.")
+            else:
+                after = t.get("after", 0)
+                first = (f"after the saved sets' plan on this melding sequence ({after:,} talismans), " if after else "")
+                steps.append(f"{melding.METHODS[t['method']]}{pick}: {first}talisman #{t['n']} "
+                             f"({t['n'] - 1} talisman{'s' if t['n'] != 2 else ''} of this method before it, any materials)."
+                             + (" Its second skill may differ: Cyclus re-picks it with a generator the save does not keep."
+                                if t["unsure"] else ""))
         if any(p and p["kind"] == "roll" for p in f.pieces) or (t and t["kind"] == "roll"):
             steps.append("Rolls are counted from the save as it is now; after each step, save in game and press Reload save.")
         return steps
 
+    # ---- progress and stop (called while a search runs: no lock) --------------------------------------
+    def _search_begin(self, phase: str):
+        builder.native().search_reset()
+        self._progress = {"phase": phase, "t0": time.time()}
+
+    def _search_phase(self, phase: str, **extra):
+        self._progress = {**getattr(self, "_progress", {"t0": time.time()}), "phase": phase, **extra}
+
+    def search_progress(self):
+        """What the running Set builder / optimizer search is doing, for the progress line."""
+        pr = getattr(self, "_progress", None)
+        if not pr:
+            return {"phase": None}
+        rolls, nodes, budget, stop = builder.native().search_progress()
+        return {"phase": pr.get("phase"), "rolls": rolls, "rollsTotal": pr.get("rollsTotal", 0), "nodes": nodes,
+                "budget": budget, "stopping": stop, "seconds": round(time.time() - pr["t0"], 1)}
+
+    def search_stop(self):
+        """Stop the running search: it returns the sets it found so far."""
+        builder.native().search_cancel()
+        return True
+
+    def _stopped(self) -> bool:
+        return builder.native().search_progress()[3]
+
+    # ---- saved sets' pieces --------------------------------------------------------------------------
+    def _saved_plan(self) -> dict | None:
+        """The roadmap of every saved set together (``Planner.plan``), cached per save state."""
+        sets = self.saved_sets()
+        if not sets or not self.generators:
+            return None
+        key = (json.dumps([x["targets"] for x in sets], sort_keys=True, default=str),
+               tuple(tuple(g.state()) for g in self.generators))
+        cache = getattr(self, "_plan_cache", None)
+        if cache and cache[0] == key:
+            return cache[1]
+        plan = planner.Planner(self.data, self.melding).plan(sets, self.generators, self.box[0])
+        self._plan_cache = (key, plan)
+        return plan
+
+    def _planned_pieces(self) -> tuple[list[dict], dict | None]:
+        """The pieces and talismans every saved set will get, each with how far along the saved sets'
+        roadmap it comes (``n``), and that roadmap as fixed paths for the new rolls (``builder.plan_paths``)."""
+        try:
+            plan = self._saved_plan()
+        except planner.Stopped:
+            return [], None
+        if not plan:
+            return [], None
+        out = []
+        for q in plan["armor"]:
+            for st in q["steps"]:
+                out.append({k: v for k, v in st.items() if k not in ("augments", "at", "burnOn", "zenny", "points")}
+                           | {"what": "armor", "n": st["at"]})
+        for g in plan["talismans"]:
+            for st in g["steps"]:
+                out.append({k: v for k, v in st.items() if k not in ("talismans", "at")} | {"what": "talisman", "n": st["at"]})
+        return out, builder.plan_paths(plan)
+
     # ---- set builder -------------------------------------------------------------------------------
+    @staticmethod
+    def _sig(f):
+        return (tuple((p["id"], p["kind"], p.get("type"), p.get("n")) if p else None for p in f.pieces),
+                (tuple(map(tuple, f.talisman["skills"])), tuple(f.talisman["slots"]), f.talisman.get("n"))
+                if f.talisman else None)
+
     def build_search(self, p: dict):
-        """Set builder: the sets that reach the wanted skills with the fewest rolls (then the best
-        defense or score), the closest first."""
+        """Set builder: the sets that reach the wanted skills, closest first: with your armor and game
+        armor (no rolls), then with the pieces your saved sets will get, then with new rolls (fewest
+        first; equal rolls: the best defense or score)."""
         with self._lock:
             if not self.data:
                 return {"error": "Game data not loaded."}
             if not p.get("skills"):
                 return {"error": "Add at least one skill."}
+            self._search_begin("Simulating augments")
             limit = max(1, min(MAX_RESULTS, int(p.get("limit") or 20)))
             o = self._options(p, value="score" if p.get("sortBy") == "score" else "defense", cost_first=True,
                               limit=limit + 5, seconds=max(1.0, float(p.get("seconds") or 30)))
@@ -235,19 +322,52 @@ class SetsMixin:
             gens = self.generators if (o.qurious_rolls or o.talisman_rolls) else None
             armors, talismans = self.box
             t0 = time.time()
+            planned = []
             try:
-                found, counts = self._builder().search(o, armors, talismans, gens, self.owned_decos)
+                if p.get("planned", True) and self.saved_sets() and self.generators:
+                    self._search_phase("Reading the saved sets' plan")
+                    planned, o.plan = self._planned_pieces()
+                    o.planned = planned
+                extra, c2 = [], {"complete": True}
+                if planned and not self._stopped():
+                    # the same search with the saved sets' pieces and no new rolls (fast, so first: a stop
+                    # later keeps them); listed after the sets that need nothing, before the ones with new rolls
+                    self._search_phase("Searching with the saved sets' pieces", rollsTotal=0)
+                    po = builder.Options(**{**o.__dict__, "qurious_rolls": 0, "talisman_rolls": 0,
+                                            "max_cost": 0, "seconds": max(1.0, o.seconds / 3)})
+                    extra, c2 = self._builder().search(po, armors, talismans, None, self.owned_decos)
+                    extra = [f for f in extra if any(x and x["kind"] == "planned" for x in [*f.pieces, f.talisman])]
+                    for f in extra:
+                        f.tier = "planned"
+                self._search_phase("Simulating augments", rollsTotal=o.qurious_rolls if gens else 0)
+                found, counts = self._builder().search(o, armors, talismans, gens, self.owned_decos,
+                                                       on_search=lambda: self._search_phase("Searching"))
+                counts["complete"] = counts["complete"] and c2["complete"]
             except Exception as e:
                 return {"error": f"Search failed: {e}"}
+            finally:
+                stopped = self._stopped()
+                self._progress = None
+            # yours / game armor -> the saved sets' pieces -> new rolls (fewest first)
+            uses_planned = lambda f: any(x and x["kind"] == "planned" for x in [*f.pieces, f.talisman])
+            free = [f for f in found if not builder.has_rolls(f) and not uses_planned(f)]
+            for f in free:
+                f.tier = "owned"
+            extra += [f for f in found if not builder.has_rolls(f) and uses_planned(f)]
+            for f in extra:
+                f.tier = "planned"
+            rolled = [f for f in found if builder.has_rolls(f)]
+            for f in rolled:
+                f.tier = "rolls"
+            ordered = free + extra + rolled
             rows, seen = [], set()
-            for f in found:
-                sig = (tuple((p["id"], p["kind"], p.get("type"), p.get("n")) if p else None for p in f.pieces),
-                       (tuple(map(tuple, f.talisman["skills"])), tuple(f.talisman["slots"]), f.talisman.get("n"))
-                       if f.talisman else None)
+            for f in ordered:
+                sig = self._sig(f)
                 if sig not in seen:
                     seen.add(sig)
                     rows.append(self._set_row(f, o.reqs))
-            return {"sets": rows[:limit], "complete": counts["complete"],
+            return {"sets": rows[:limit + len(extra)], "complete": counts["complete"] and not stopped,
+                    "stopped": stopped, "planned": len(planned),
                     "candidates": sum(counts["armor"]) + counts["talismans"], "seconds": round(time.time() - t0, 2)}
 
     # ---- build optimizer ---------------------------------------------------------------------------
@@ -326,10 +446,10 @@ class SetsMixin:
                               value="score", cost_first=False, limit=6, seconds=float(p.get("seconds") or 12))
             o.game_armor = bool(p.get("gameArmor", False))
             o.owned_decos = bool(p.get("ownedDecos", True))
+            self._search_begin("Reading the saved sets' plan")
             if p.get("planned", True) and self.saved_sets():
-                ticked = set(self.settings.get("planSel") or [])
-                sets = [x for x in self.saved_sets() if not ticked or x["id"] in ticked]
-                o.planned = planner.Planner(self.data, self.melding).planned(sets, self.generators)
+                o.planned, o.plan = self._planned_pieces()
+            self._search_phase("Searching")
             weapon = o.weapon
             current = self._current_row(L, armor, tal, weapon, p.get("preset"))
             self._weapon = weapon
@@ -340,6 +460,8 @@ class SetsMixin:
                     o, (armor, tal), armors, talismans, self.generators, self.owned_decos)
             except Exception as e:
                 return {"error": f"Optimization failed: {e}"}
+            finally:
+                self._progress = None
             rows = [self._set_row(f, o.reqs, current["score"]) for f in front]
             # changed parts against the loadout
             cur_keys = [(pc["id"], pc["kind"] == "roll") if pc else None for pc in current["pieces"]]
@@ -357,6 +479,43 @@ class SetsMixin:
     # ---- saved sets and planner -------------------------------------------------------------------
     def saved_sets(self):
         return self.settings.get("savedSets") or []
+
+    def check_saved_sets(self, force: bool = False):
+        """Check every saved set against the save as it is now (see ``Planner.check``) and keep the
+        result with the set; sets already checked against this save are not checked again."""
+        with self._lock:
+            if not self.generators:
+                return {"error": "Select a hunter first."}
+            self._search_begin("Checking the saved sets")
+            try:
+                return {"sets": self._check_sets(force)}
+            finally:
+                self._progress = None
+
+    def _check_sets(self, force: bool = False) -> list[dict]:
+        if not self.generators:
+            return self.saved_sets()
+        state = str(hash(tuple(tuple(g.state()) for g in self.generators)))
+        sets = [dict(x) for x in self.saved_sets()]
+        pl = planner.Planner(self.data, self.melding)
+        changed = False
+        try:
+            for x in sets:
+                if not force and (x.get("check") or {}).get("state") == state:
+                    continue
+                try:
+                    x["check"] = {**pl.check(x, self.generators, self.box[0]), "state": state,
+                                  "when": time.strftime("%Y-%m-%d %H:%M")}
+                except planner.Stopped:
+                    raise
+                except Exception as e:
+                    x["check"] = {"error": str(e), "state": state}
+                changed = True
+        except planner.Stopped:
+            pass
+        if changed:
+            self.save_settings({"savedSets": sets})
+        return sets
 
     def save_set(self, row: dict, name: str, query: dict | None = None):
         """Keep a Set builder result (with the rolls it needs) for the planner."""
@@ -386,10 +545,15 @@ class SetsMixin:
             if not sets:
                 return {"error": "Choose at least one saved set."}
             t0 = time.time()
+            self._search_begin("Planning")
             try:
                 plan = planner.Planner(self.data, self.melding).plan(sets, self.generators, self.box[0])
+            except planner.Stopped:
+                return {"error": "Stopped."}
             except Exception as e:
                 return {"error": f"Planning failed: {e}"}
+            finally:
+                self._progress = None
             return self._plan_view(plan, time.time() - t0)
 
     def _outcome_view(self, e) -> dict:

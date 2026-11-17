@@ -391,6 +391,7 @@ input.rollsin { width: 84px; }
         <label class="toggle" title="Also use the armor in your box as it is, with the qurious augments it already has (no rolls). Independent of Qurious rolls: those add future augments on top of this."><input type="checkbox" id="bownarm"><span></span>My armor</label>
         <label class="toggle" title="Also use the talismans in your box (no rolls). Independent of Talisman rolls: those add future talismans on top of this."><input type="checkbox" id="bowntal"><span></span>My talismans</label>
         <label class="toggle" title="Only as many decorations as you have (in the box and slotted)"><input type="checkbox" id="bowndeco"><span></span>Only my decorations</label>
+        <label class="toggle" title="Also the qurious pieces and talismans of every saved set (Saved sets & planner), as they will be once made: listed after the sets with your own pieces and before the ones with new rolls"><input type="checkbox" id="bplanned"><span></span>Saved sets' pieces</label>
       </div>
       <div class="frow">
         <span class="flabel" title="Future qurious augments. Every qurious-capable armor piece of the ranks chosen (master rank) can take any of its next N augments of each of the 4 options: Augment, Augment: Stability, Augment: Skills+ and Augment: Slots+. The augment goes on a copy without augments (yours, or crafted). Counted from the save as it is now. 0 = no augments. Large values take longer (the simulation runs in Rust).">Qurious rolls ⓘ</span>
@@ -406,6 +407,7 @@ input.rollsin { width: 84px; }
         <input id="bsecs" class="rollsin" type="number" min="1" step="10" title="Seconds; the search stops then and shows the best sets found">
         <span class="spacer"></span>
         <span id="bprogress" class="muted"></span>
+        <button class="btn" id="bstop" style="display:none" title="Stop the search and show the sets found so far">Stop</button>
         <button class="btn gold" id="bsearch">Search</button>
       </div>
     </div>
@@ -414,6 +416,7 @@ input.rollsin { width: 84px; }
         <span class="muted">Tick the saved sets to plan together.</span>
         <span class="spacer"></span>
         <span id="pinfo" class="muted"></span>
+        <button class="btn" id="pstop" style="display:none" title="Stop">Stop</button>
         <button class="btn gold" id="pmake">Make plan</button>
       </div>
     </div>
@@ -444,6 +447,7 @@ input.rollsin { width: 84px; }
         <input id="otrolls" class="rollsin" type="number" min="0" step="100" title="Future talismans of Qurious Melding only: any of the next N talismans of Qurious Melding—Vigor, and of Qurious Melding—Cyclus with any skill it can pick. Counted from the save as it is now. 0 = no talismans.">
         <span class="spacer"></span>
         <span id="oprogress" class="muted"></span>
+        <button class="btn" id="ostop" style="display:none" title="Stop and show what was found so far">Stop</button>
         <button class="btn gold" id="orun">Optimize</button>
       </div>
     </div>
@@ -1672,7 +1676,12 @@ const slotWithDeco = s => {
 };
 function pieceSource(p) {
   if (p.kind === "roll") {
-    return `<span class="src roll" title="Roll ${esc(p.roll.typeName)} on cost ${p.roll.cost} armor: the result comes on augment #${p.roll.n} from now (the earlier ones on any cost ${p.roll.cost} piece), on a copy without augments">roll ${esc(p.roll.typeName)} · #${p.roll.n}</span>`
+    const r = p.roll;
+    if (r.inPlan) return `<span class="src roll" title="${esc(r.typeName)} on cost ${r.cost} armor: augment #${r.n} of the saved sets' plan, which the plan spends on ${esc(r.instead)}, goes on this piece instead. It costs no extra augment and the plan stays the same">in plan · ${esc(r.typeName)} · #${r.n}</span>`
+      + (p.owned ? "" : `<span class="src craft" title="Craft a copy first">craft</span>`);
+    if (r.after) return `<span class="src roll" title="${esc(r.typeName)} on cost ${r.cost} armor: after the saved sets' plan on this sequence (${r.after.toLocaleString()} augments), the result comes on augment #${r.n}, augmenting this piece (in the order the steps give), on a copy without augments">roll ${esc(r.typeName)} · #${r.n} after plan</span>`
+      + (p.owned ? "" : `<span class="src craft" title="Craft a copy first">craft</span>`);
+    return `<span class="src roll" title="Roll ${esc(r.typeName)} on cost ${r.cost} armor: the result comes on augment #${r.n} from now, augmenting this piece (with other pieces of this sequence, in the order the steps give), on a copy without augments">roll ${esc(r.typeName)} · #${r.n}</span>`
       + (p.owned ? "" : `<span class="src craft" title="Craft a copy first">craft</span>`);
   }
   if (p.kind === "planned") return `<span class="src plan" title="${esc(p.planned.typeName)} on cost ${p.planned.cost} armor, planned by the saved set ${esc(p.planned.sets.join(", "))}: ${p.planned.n} augments from now (see Saved sets & planner)">planned · ${esc(p.planned.typeName.replace("Augment: ", ""))} · ${p.planned.n} rolls left</span>`
@@ -1681,6 +1690,8 @@ function pieceSource(p) {
   return p.owned ? `<span class="src own">yours</span>` : `<span class="src craft">craft</span>`;
 }
 function talSource(t) {
+  if (t.kind === "roll" && t.inPlan) return `<span class="src roll" title="Talisman #${t.n} of the saved sets' plan on this melding sequence (one it melds on the way): keep it">in plan · ${esc(t.methodName.replace(/^Qurious Melding—/, ""))} · #${t.n}</span>`;
+  if (t.kind === "roll" && t.after) return `<span class="src roll" title="Meld with ${esc(t.methodName)}${t.targetName ? ", picking " + esc(t.targetName) : ""}, after the saved sets' plan on this melding sequence (${t.after.toLocaleString()} talismans): the result is talisman #${t.n}">roll ${esc(t.methodName.replace(/^Qurious Melding—/, ""))}${t.targetName ? " (" + esc(t.targetName) + ")" : ""} · #${t.n} after plan</span>`;
   if (t.kind === "roll") return `<span class="src roll" title="Meld with ${esc(t.methodName)}${t.targetName ? ", picking " + esc(t.targetName) : ""}: the result is talisman #${t.n} from now">roll ${esc(t.methodName.replace(/^Qurious Melding—/, ""))}${t.targetName ? " (" + esc(t.targetName) + ")" : ""} · #${t.n}</span>${t.unsure ? `<span class="src craft" title="Cyclus re-picks a second skill equal to the picked one with a generator the save does not keep">2nd skill unsure</span>` : ""}`;
   if (t.kind === "planned") return `<span class="src plan" title="Planned by the saved set ${esc(t.sets.join(", "))}: talisman #${t.n} from now of ${esc(t.methodName)}">planned · ${esc(t.methodName.replace(/^Qurious Melding—/, ""))}${t.targetName ? " (" + esc(t.targetName) + ")" : ""} · ${t.n} left</span>`;
   return `<span class="src own">yours</span>`;
@@ -1771,7 +1782,8 @@ const clampRolls = v => Math.max(0, Math.min(2147483647, parseInt(v) || 0));
 
 /* ---- set builder ----------------------------------------------------------------------------------- */
 const BUILD_DEFAULTS = { skills: [], weapon: [0, 0, 0], ranks: ["master"], ownedArmor: true, ownedTalismans: true, ownedDecos: false,
-  quriousRolls: 0, talismanRolls: 0, sortBy: "defense", preset: "builtin:all", limit: 20, seconds: 30, excludeArmor: [], avoidSkills: [] };
+  quriousRolls: 0, talismanRolls: 0, sortBy: "defense", preset: "builtin:all", limit: 20, seconds: 30, excludeArmor: [], avoidSkills: [],
+  planned: true };
 const BS = () => S.settings.build;
 let buildWant, buildWeapon, buildSort, buildPreset, buildExArmor, buildExSkill;
 function saveBuild(patch, stale = true) {
@@ -1795,11 +1807,13 @@ function setupBuilder() {
     const next = cur.includes(r) ? cur.filter(x => x !== r) : cur.concat([r]);
     saveBuild({ ranks: next.length ? next : [r] });
   });
-  for (const [id, key] of [["bownarm", "ownedArmor"], ["bowntal", "ownedTalismans"], ["bowndeco", "ownedDecos"]])
+  for (const [id, key] of [["bownarm", "ownedArmor"], ["bowntal", "ownedTalismans"], ["bowndeco", "ownedDecos"], ["bplanned", "planned"]])
     $(id).addEventListener("change", () => saveBuild({ [key]: $(id).checked }));
   for (const [id, key] of [["bqrolls", "quriousRolls"], ["btrolls", "talismanRolls"]])
     $(id).addEventListener("change", () => { $(id).value = clampRolls($(id).value); saveBuild({ [key]: clampRolls($(id).value) }); });
   $("bsearch").addEventListener("click", runBuild);
+  $("bstop").addEventListener("click", () => { api().search_stop(); $("bstop").disabled = true; });
+  $("ostop").addEventListener("click", () => { api().search_stop(); $("ostop").disabled = true; });
   buildExArmor = makePicker($("bexarmor"), { search: true, placeholder: "Armor piece…" });
   buildExSkill = makePicker($("bexskill"), { search: true, placeholder: "Skill…" });
   $("bexadd").addEventListener("click", () => {
@@ -1837,7 +1851,7 @@ function syncBuildUi() {
   $("bpreset").style.display = b.sortBy === "score" ? "" : "none";
   $("branks").innerHTML = [["low", "Low"], ["high", "High"], ["master", "Master"]].map(([r, n]) =>
     `<span class="chip ${b.ranks.includes(r) ? "on" : ""}" data-brank="${r}">${n}</span>`).join("");
-  $("bownarm").checked = b.ownedArmor; $("bowntal").checked = b.ownedTalismans; $("bowndeco").checked = b.ownedDecos;
+  $("bownarm").checked = b.ownedArmor; $("bowntal").checked = b.ownedTalismans; $("bowndeco").checked = b.ownedDecos; $("bplanned").checked = b.planned;
   $("bqrolls").value = b.quriousRolls; $("btrolls").value = b.talismanRolls;
   $("blimit").value = b.limit; $("bsecs").value = b.seconds;
   buildExArmor.setItems((S.barmors || []).map(a => ({ value: a.id, text: a.name,
@@ -1853,6 +1867,28 @@ function syncBuildUi() {
   $("bclear").style.display = b.skills.length ? "" : "none";
 }
 let buildSeq = 0;
+/* Live progress of a running search (Set builder, optimizer): polled while the call runs. */
+function watchProgress(el, stopBtn) {
+  let alive = true;
+  stopBtn.style.display = ""; stopBtn.disabled = false;
+  const tick = async () => {
+    if (!alive) return;
+    let p = null;
+    try { p = await api().search_progress(); } catch (e) { /* the page is busy: try again */ }
+    if (!alive) return;
+    if (p && p.phase) {
+      const parts = [p.stopping ? "Stopping…" : esc(p.phase) + "…"];
+      if (p.phase.startsWith("Simulating") && p.rollsTotal) parts.push(`${p.rolls.toLocaleString()} / ${p.rollsTotal.toLocaleString()} augments per piece`);
+      if (p.nodes) parts.push(`${p.nodes.toLocaleString()} combinations tried`);
+      if (p.budget) parts.push(`up to ${p.budget.toLocaleString()} rolls`);
+      parts.push(`${p.seconds}s`);
+      el.innerHTML = parts.join(" · ");
+    }
+    setTimeout(tick, 300);
+  };
+  setTimeout(tick, 150);
+  return () => { alive = false; stopBtn.style.display = "none"; };
+}
 async function runBuild() {
   const b = BS();
   if (!b.skills.length) { status("Add at least one skill."); return; }
@@ -1861,22 +1897,26 @@ async function runBuild() {
   $("bsearch").disabled = true; $("bprogress").textContent = "Searching…";
   renderBuildHead(); renderBuildTable();
   const preset = allPresets().find(p => p.id === b.preset) || allPresets()[0];
+  const done = watchProgress($("bprogress"), $("bstop"));
   const r = await api().build_search({ ...b, preset });
+  done();
   if (seq !== buildSeq) return;
   $("bsearch").disabled = false;
   S.build = { ...r, sel: 0 };
-  $("bprogress").textContent = r.error ? "" : `${r.seconds}s · ${r.candidates.toLocaleString()} candidates`;
+  $("bprogress").textContent = r.error ? "" : `${r.stopped ? "stopped · " : ""}${r.seconds}s · ${r.candidates.toLocaleString()} candidates`;
   renderBuildHead(); renderBuildTable();
 }
 function renderBuildHead() {
   const b = BS(), r = S.build;
   let note = `Armor sets with every wanted skill. Sets that need no rolls come first (game armor to craft, your armor
-    and talismans), then the set that needs the fewest future rolls: <b>Qurious rolls</b> lets each armor piece take any of
+    and talismans), then (with <b>Saved sets' pieces</b>) sets with the <span class="src plan">planned</span> pieces and talismans
+    of your saved sets, then the set that needs the fewest future rolls: <b>Qurious rolls</b> lets each armor piece take any of
     its next N augments of every option, <b>Talisman rolls</b> any of the next N talismans of every melding method. Only
     the closest sets are shown (equal rolls: the best ${b.sortBy === "score" ? "score" : "defense"} first); decorations go
     in the smallest slot that fits, so the biggest slots stay free.`;
   if (r && r.stale) note += ` <b style="color:var(--gold)">Options changed: press Search again.</b>`;
-  if (r && r.complete === false) note += r.sets && r.sets.length
+  if (r && r.stopped) note += ` <b style="color:var(--gold)">You stopped the search: these are the sets found so far, there may be closer ones.</b>`;
+  else if (r && r.complete === false) note += r.sets && r.sets.length
     ? ` <b style="color:var(--gold)">The search stopped at its time limit: these are the best sets found, there may be closer ones.</b>`
     : ` <b style="color:var(--gold)">The search stopped at its time limit before finding a set: raise the time limit, or use fewer skills or armor ranks.</b>`;
   $("head").innerHTML = `<span class="big">Set builder</span>${b.skills.length ? `<span class="rar">${b.skills.length} skills</span>` : ""}<div class="note">${note}</div>`;
@@ -1886,6 +1926,7 @@ function renderBuildTable() {
   if (!r) { $("table").innerHTML = `<div class="empty">Add the skills you want, then press Search.</div>`; return; }
   if (r.running) { $("table").innerHTML = `<div class="empty">Searching…</div>`; return; }
   if (r.error) { $("table").innerHTML = `<div class="empty" style="color:var(--down)">${esc(r.error)}</div>`; return; }
+  if (!r.sets.length && r.stopped) { $("table").innerHTML = `<div class="empty">Stopped before a set was found.</div>`; return; }
   if (!r.sets.length && r.complete === false) {
     $("table").innerHTML = `<div class="empty">No set found within ${BS().seconds} seconds (the search did not finish). Raise the time limit, or use fewer skills or armor ranks.</div>`;
     return;
@@ -1900,11 +1941,12 @@ function renderBuildTable() {
   const name = (p, i) => p ? `${mask(PARTS[i], "var(--gold)", PARTS[i])}<span class="${p.kind === "roll" ? "rolled" : ""}">${esc(p.name)}</span>` : `<span class="muted">—</span>`;
   const list = `<table class="setlist"><thead><tr><th>#</th><th style="text-align:right">Rolls</th><th style="text-align:right">Defense</th><th style="text-align:right">Score</th><th>Pieces (rolled in gold)</th><th>Talisman</th></tr></thead><tbody>`
     + r.sets.map((s, i) => `<tr class="click ${i === sel ? "match" : ""}" data-bset="${i}"><td class="n">${i + 1}</td>
-      <td class="n">${s.cost ? s.cost.toLocaleString() : "none"}</td><td class="n">${s.defense}</td><td class="sc">${s.score}</td>
+      <td class="n">${s.tier === "planned" ? `<span class="src plan" title="With pieces of your saved sets">saved sets</span>` : s.cost ? s.cost.toLocaleString() : "none"}</td><td class="n">${s.defense}</td><td class="sc">${s.score}</td>
       <td class="pn">${s.pieces.map(name).join(" ")}</td>
       <td class="pn">${s.talisman ? (s.talisman.kind === "roll" ? `<span class="rolled">#${s.talisman.n}</span> ` : "") + s.talisman.skills.map(k => `${esc(k.name)} ${k.level}`).join(", ") : "—"}</td></tr>`).join("")
     + `</tbody></table>`;
-  $("table").innerHTML = setCard(r.sets[sel], { save: sel, title: `Set ${sel + 1}: ${r.sets[sel].cost ? r.sets[sel].cost.toLocaleString() + " rolls" : "no rolls needed"}` })
+  const cs = r.sets[sel];
+  $("table").innerHTML = setCard(cs, { save: sel, title: `Set ${sel + 1}: ${cs.tier === "planned" ? "with your saved sets' pieces" : cs.cost ? cs.cost.toLocaleString() + " rolls" : "no rolls needed"}` })
     + `<div class="cardlabel">${r.sets.length} set${r.sets.length > 1 ? "s" : ""}, fewest rolls first: click one to see it</div>` + list;
 }
 
@@ -1970,8 +2012,10 @@ async function runOptimize() {
   S.opt = { running: true };
   $("orun").disabled = true; $("oprogress").textContent = "Optimizing…";
   renderOptHead(); renderOptTable();
+  const done = watchProgress($("oprogress"), $("ostop"));
   const r = await api().optimize({ loadout: o.loadout, skills: o.keep || [], weapon: o.weapon || [0, 0, 0], preset: optPresetObj(),
     gameArmor: o.gameArmor, ownedDecos: o.ownedDecos, quriousRolls: o.quriousRolls, talismanRolls: o.talismanRolls, planned: o.planned });
+  done();
   if (seq !== optSeq) return;
   $("orun").disabled = false;
   S.opt = { ...r, sel: 0 };
@@ -2091,6 +2135,7 @@ function saveCurrentSet(st) {
 }
 function setupPlanner() {
   $("pmake").addEventListener("click", runPlan);
+  $("pstop").addEventListener("click", () => { api().search_stop(); $("pstop").disabled = true; });
   $("table").addEventListener("click", async e => {
     if (S.mode !== "planner") return;
     const c = e.target.closest("[data-psel]");
@@ -2100,6 +2145,17 @@ function setupPlanner() {
       S.settings.planSel = [...sel]; api().save_settings({ planSel: S.settings.planSel });
       if (S.plan) S.plan.stale = true;
       return renderPlanTable();
+    }
+    const ag = e.target.closest("[data-pagain]");
+    if (ag) {
+      const s = (S.saved || []).find(x => x.id === +ag.dataset.pagain);
+      const q = s.query || {};
+      if (q.skills && q.skills.length) {
+        saveBuild({ skills: q.skills, weapon: q.weapon || [0, 0, 0] });
+        setMode("builder");
+        runBuild();
+      } else status("This set was saved without its skills: search in the Set builder.");
+      return;
     }
     const v = e.target.closest("[data-pview]");
     if (v) { S.planView = S.planView === +v.dataset.pview ? null : +v.dataset.pview; return renderPlanTable(); }
@@ -2123,6 +2179,16 @@ function setupPlanner() {
 async function loadPlanner() {
   S.saved = await api().saved_sets();
   renderPlanHead(); renderPlanTable();
+  // check the saved sets against the save as it is now (only the ones not checked against it yet)
+  if (S.saved.length && !S.checking) {
+    S.checking = true; renderPlanTable();
+    const done = watchProgress($("pinfo"), $("pstop"));
+    const r = await api().check_saved_sets(false);
+    done(); S.checking = false;
+    if (!r.error) S.saved = r.sets;
+    $("pinfo").textContent = "";
+    if (S.mode === "planner") renderPlanTable();
+  }
 }
 let planSeq = 0;
 async function runPlan() {
@@ -2131,7 +2197,9 @@ async function runPlan() {
   const seq = ++planSeq;
   S.plan = { running: true }; $("pmake").disabled = true; $("pinfo").textContent = "Planning…";
   renderPlanTable();
+  const done = watchProgress($("pinfo"), $("pstop"));
   const r = await api().make_plan(ids);
+  done();
   if (seq !== planSeq) return;
   $("pmake").disabled = false;
   S.plan = r; $("pinfo").textContent = r.error ? "" : `${r.seconds}s`;
@@ -2157,21 +2225,33 @@ function renderPlanTable() {
   const saved = S.saved || [], sel = new Set(S.settings.planSel || []);
   let html = `<div class="cardlabel">Saved sets</div>`;
   if (!saved.length) html += `<div class="empty">No saved sets yet: in the Set builder, press Save on a set.</div>`;
-  else html += `<table class="setlist"><thead><tr><th></th><th>Set</th><th>Saved</th><th style="text-align:right">Rolls then</th><th>Pieces (rolled in gold)</th><th>Rolls it needs</th><th></th></tr></thead><tbody>`
+  else html += `<table class="setlist"><thead><tr><th></th><th>Set</th><th>Saved</th><th style="text-align:right">Rolls then</th><th title="Checked against the save as it is now: the qurious augments the planner needs for this set alone (pieces of one sequence augmented one after the other)">Now ⓘ</th><th>Pieces (rolled in gold)</th><th>Rolls it needs</th><th></th></tr></thead><tbody>`
     + saved.map(s => {
       const st = s.set, t = s.targets;
       const needs = t.armor.map(a => `${esc(a.name)} · ${esc(S.types.find(x => x.id === a.type).name)}`)
         .concat(t.talismans.map(x => `talisman #${x.n}`)).join("<br>") || `<span class="muted">none</span>`;
       return `<tr class="${sel.has(s.id) ? "match" : ""}"><td><span class="chip ${sel.has(s.id) ? "on" : ""}" data-psel="${s.id}" title="Include in the plan">${sel.has(s.id) ? "✓" : "&nbsp;"}</span></td>
-        <td class="pn"><b>${esc(s.name)}</b></td><td class="muted">${esc(s.created)}</td><td class="n">${st.cost}</td>
+        <td class="pn"><b>${esc(s.name)}</b></td><td class="muted">${esc(s.created)}</td><td class="n">${st.cost}</td><td>${checkCell(s)}</td>
         <td class="pn">${st.pieces.map((p, i) => p ? `${mask(PARTS[i], "var(--gold)", PARTS[i])}<span class="${p.kind === "roll" ? "rolled" : ""}">${esc(p.name)}</span>` : "").join(" ")}</td>
         <td class="pn">${needs}</td>
         <td style="white-space:nowrap"><button class="btn" data-pview="${s.id}">${S.planView === s.id ? "Hide" : "View"}</button>
+          <button class="btn" data-pagain="${s.id}" title="Open the Set builder with this set's skills and weapon slots and search again">Search again</button>
           <button class="btn" data-pren="${s.id}">Rename</button> <button class="btn" data-pdel="${s.id}">Delete</button></td></tr>`
-        + (S.planView === s.id ? `<tr><td colspan="7">${setCard(st, { title: esc(s.name) })}</td></tr>` : "");
+        + (S.planView === s.id ? `<tr><td colspan="8">${setCard(st, { title: esc(s.name) })}</td></tr>` : "");
     }).join("") + `</tbody></table>`;
   html += renderPlan();
   $("table").innerHTML = html;
+}
+function checkCell(s) {
+  const c = s.check;
+  if (S.checking && !c) return `<span class="muted">checking…</span>`;
+  if (!c) return `<span class="muted">—</span>`;
+  if (c.error) return `<span style="color:var(--down)" title="${esc(c.error)}">error</span>`;
+  if (c.missing) return `<span style="color:var(--down)" title="${c.missing} wanted result(s) do not come again from the save as it is now">${c.missing} not reachable</span>`;
+  const n = c.augments.toLocaleString();
+  if (c.inOrder) return `<span title="The rolls come as saved">${n} augments ✓</span>`;
+  const worse = c.augments > c.savedAugments * 1.5;
+  return `<span style="color:${worse ? "var(--down)" : "var(--gold)"}" title="Saved with ${c.savedAugments.toLocaleString()} augments assuming every piece of a sequence moves it the same way; they do not, so the planner re-finds each result: ${n} augments${worse ? ". Consider Search again" : ""}">${n} augments${worse ? " ⚠" : ""}</span>`;
 }
 function renderPlan() {
   const p = S.plan;

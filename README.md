@@ -99,12 +99,24 @@ Talismans), **My equipment** (Inventory, Build optimizer, Export) and **Set buil
    Melding—Cyclus with any skill it can pick. There is no limit on N (it runs in Rust; very large
    values take longer). **Results** sets are listed (20 by default), fewest rolls first (equal rolls:
    the best defense, or the best score with a Ranking preset); the search stops at the **Time limit**
-   and then says so. Click a wanted skill to change its level. The **Qurious** column shows what
+   and then says so. While it runs it shows what it is doing (augments simulated, combinations tried,
+   the roll budget it reached); **Stop** ends it and lists the sets found so far. With **Saved sets'
+   pieces** the qurious pieces and talismans of every saved set are used too, as they will be once
+   made (tagged *planned*, with the rolls left in that set's roadmap): the list goes from sets with
+   your armor and game armor, to sets with those planned pieces, to sets with new rolls. New rolls
+   never break the saved sets' roadmap: on a sequence it uses, a new augment is either one of the
+   roadmap's own augments put on another piece where that leaves the generator at the same place
+   (*in plan*, the rest of the roadmap unchanged; never one of the augments it keeps), or comes after
+   the roadmap (*after plan*). Talismans likewise. Roll counts are augments from now, roadmap included. Click a wanted skill to change its level. The **Qurious** column shows what
    qurious crafting changes on each piece: the augments it already has, or the one to roll.
    **Exclude** keeps armor pieces out (**Exclude piece**) or every piece, talisman and decoration with
    a skill (**Avoid skill**, for example Dragonheart). A set's rolls are
    counted per sequence: two pieces with the same augment cost and option share one sequence, so
-   augments #3 and #7 of it cost 7 rolls, not 10, and need different roll numbers. Below the set,
+   augments #3 and #7 of it cost 7 rolls, not 10, and need different roll numbers. An augment draws
+   from the generator a different number of times on different pieces, so after the first augment two
+   pieces are often at different places of the same sequence: two pieces of one sequence are only
+   combined when the second piece's augment still comes after the first piece's (checked against the
+   save). Below the set,
    **what to do** lists the pieces to craft, which augment to keep on which piece and which talisman
    to keep.
 10. **Build optimizer**: pick a loadout (what you wear now or any My Set of the save) and a Ranking
@@ -116,10 +128,13 @@ Talismans), **My equipment** (Inventory, Build optimizer, Export) and **Set buil
     plus the free slots; Gain is against the loadout as it is. Without rolls the search is exact;
     with rolls it searches sets one or two changes away from the loadout and from that best set, so
     the list is a set of suggestions, not every possible set. With **Saved sets' pieces** the qurious
-    pieces and talismans your saved sets will get (the ones ticked in Saved sets & planner, or all)
-    are used too, tagged *planned* with the rolls still to make: the list goes from your own pieces,
+    pieces and talismans of every saved set are used too, tagged *planned* with the rolls still to make: the list goes from your own pieces,
     to those planned pieces, to new rolls.
-11. **Saved sets & planner** (under Set builder): **Save set** on a Set builder result keeps it. Tick
+11. **Saved sets & planner** (under Set builder): **Save set** on a Set builder result keeps it.
+    Opening the tab checks every saved set against the save as it is now (again only after the save
+    changed): **Now** shows the augments the planner needs for that set alone, in gold when that
+    differs from what the set was saved with and with ⚠ when it is much more; **Search again** opens
+    the Set builder with the set's skills and weapon slots and searches. Tick
     saved sets and press **Make plan** for a roadmap from the save as it is now: per sequence, which
     piece to augment how many times and which augment to keep, per Qurious Melding sequence how many
     talismans to meld and which to keep, the pieces to craft, and the cost (zenny, Amber Essence

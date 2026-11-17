@@ -12,13 +12,58 @@ How the generators move (see docs/RESEARCH.md):
 
 from __future__ import annotations
 
-import itertools
 import math
 
 from . import engine, melding, search
 
 FIND_LIMIT = 2_000_000          # augments or talismans searched per wanted result
+
+
+class Stopped(Exception):
+    """The app asked the running search to stop."""
+
+
 MAX_ORDERS = 720                # orderings tried per sequence (6 wanted results); more: closest first
+
+
+def _check_stop():
+    if _native().search_progress()[3]:
+        raise Stopped()
+
+
+def best_order(start, targets, find):
+    """The order of ``targets`` on one sequence that gets them all with the fewest rolls: [(target,
+    rolls, state after)], or None when some does not come again. ``find(state, target, limit)`` ->
+    (rolls, state after) or None. Branch and bound over the orders (closest first, a search never
+    goes past the best total found); more than 6 targets: closest first only."""
+    ts = sorted(targets, key=lambda t: t["n"])
+    if math.factorial(len(ts)) > MAX_ORDERS:
+        state, out = start, []
+        for t in ts:
+            f = find(state, t, FIND_LIMIT)
+            if f is None:
+                return None
+            out.append((t, f[0], f[1]))
+            state = f[1]
+        return out
+    best = [None, math.inf]
+
+    def rec(state, rest, steps, total):
+        _check_stop()
+        if not rest:
+            if total < best[1]:
+                best[0], best[1] = steps, total
+            return
+        for i, t in enumerate(rest):
+            limit = FIND_LIMIT if best[0] is None else min(FIND_LIMIT, best[1] - total - 1)
+            if limit <= 0:
+                return
+            f = find(state, t, limit)
+            if f is not None:
+                rec(f[1], rest[:i] + rest[i + 1:], steps + [(t, f[0], f[1])], total + f[0])
+
+    rec(start, ts, [], 0)
+    return best[0]
 
 
 def _native():
@@ -42,7 +87,7 @@ def targets_of(row: dict) -> dict:
         if p["kind"] == "roll":
             q = p.get("qurious") or {}
             armor.append({"id": p["id"], "name": p["name"], "part": p["part"], "type": p["roll"]["type"],
-                          "cost": p["roll"]["cost"], "n": p["roll"]["n"],
+                          "cost": p["roll"]["cost"], "n": p["roll"].get("pos", p["roll"]["n"]),
                           "expected": [q.get("def", 0), q.get("slots", 0), list(q.get("res") or [0] * 5),
                                        sorted([s["id"], s["delta"]] for s in q.get("skills", []))]})
         elif p["kind"] == "game" and not p.get("owned"):
@@ -121,12 +166,13 @@ class Planner:
         for (cost, ty), ts in sorted(groups.items()):
             seq = engine.seed_index(cost, ty)
             start = generators[seq].state()
-            orders = list(itertools.permutations(ts)) if math.factorial(len(ts)) <= MAX_ORDERS else [sorted(ts, key=lambda t: t["n"])]
-            best = None
-            for order in orders:
-                steps = self._walk(start, order, ty)
-                if steps is not None and (best is None or sum(k for _, k, _ in steps) < sum(k for _, k, _ in best)):
-                    best = steps
+            nt = search.native_tables(self.data)
+
+            def find(state, t, limit, ty=ty):
+                table, c, skills = self._piece(t["id"])
+                return _native().augment_find(nt, list(state), table, c, skills, ty, outcome_key(t["expected"]), int(limit))
+
+            best = best_order(start, ts, find)
             if best is None:          # some augment does not come again: plan the others
                 found = []
                 for t in sorted(ts, key=lambda t: t["n"]):
@@ -169,20 +215,13 @@ class Planner:
         groups, missing = [], []
         for gen, ts in sorted(rows_by.items()):
             start = generators[gen].state()
-            orders = list(itertools.permutations(ts)) if math.factorial(len(ts)) <= MAX_ORDERS else [sorted(ts, key=lambda t: t["n"])]
-            best = None
-            for order in orders:
-                state, steps = start, []
-                for t in order:
-                    f = _native().meld_find(nt, t["method"], t["target"], list(state),
-                                            [tuple(s) for s in t["skills"]], list(t["slots"]), FIND_LIMIT)
-                    if f is None:
-                        steps = None
-                        break
-                    steps.append((t, f[0]))
-                    state = f[1]
-                if steps is not None and (best is None or sum(k for _, k in steps) < sum(k for _, k in best)):
-                    best = steps
+            def find(state, t, limit):
+                return _native().meld_find(nt, t["method"], t["target"], list(state),
+                                           [tuple(s) for s in t["skills"]], list(t["slots"]), int(limit))
+
+            best = best_order(start, ts, find)
+            if best is not None:
+                best = [(t, k) for t, k, _ in best]
             if best is None:
                 missing += ts
                 continue
@@ -230,30 +269,28 @@ class Planner:
             out[-1] += 1
         return out
 
-    def planned(self, sets: list[dict], generators) -> list[dict]:
-        """Every roll the saved sets need, each with the augments or talismans still to make from the
-        save as it is now (each on its own: the planner orders them); not found again = left out."""
-        out = []
+    def check(self, s: dict, generators, box_armors=()) -> dict:
+        """A saved set against the save as it is now: whether its rolls still come in the order it was
+        saved with (pieces of one sequence augmented one after the other), and what the planner needs."""
         nt = search.native_tables(self.data)
-        mt = melding.native_tables(self.data["melding"])
-        for s in sets:
-            for t in s["targets"]["armor"]:
-                if any(x["what"] == "armor" and x["id"] == t["id"] and outcome_key(x["expected"]) == outcome_key(t["expected"])
-                       for x in out):
-                    continue
-                table, cost, skills = self._piece(t["id"])
-                f = _native().augment_find(nt, list(generators[engine.seed_index(cost, t["type"])].state()), table, cost,
-                                           skills, t["type"], outcome_key(t["expected"]), FIND_LIMIT)
-                if f:
-                    out.append({**t, "what": "armor", "n": f[0], "sets": [s["name"]]})
-            for t in s["targets"]["talismans"]:
-                row = next((r for r in self.meld.targets(t["method"]) if r.skill == t["target"]), None) if t["target"] else None
-                gen = melding.generator_index(t["method"], row)
-                f = _native().meld_find(mt, t["method"], t["target"], list(generators[gen].state()),
-                                        [tuple(x) for x in t["skills"]], list(t["slots"]), FIND_LIMIT)
-                if f:
-                    out.append({**t, "what": "talisman", "n": f[0], "sets": [s["name"]]})
-        return out
+        in_order = True
+        by_seq = {}
+        for t in s["targets"]["armor"]:
+            by_seq.setdefault((t["cost"], t["type"]), []).append(t)
+        for (cost, ty), ts in by_seq.items():
+            state, done = generators[engine.seed_index(cost, ty)].state(), 0
+            for t in sorted(ts, key=lambda t: t["n"]):
+                table, c, skills = self._piece(t["id"])
+                state, last = _native().augment_advance(nt, list(state), table, c, skills, ty, t["n"] - done)
+                done = t["n"]
+                if last is None or outcome_key(last) != outcome_key(t["expected"]):
+                    in_order = False
+        plan = self.plan([s], generators, box_armors)
+        saved = sum(max(t["n"] for t in ts) for ts in by_seq.values())
+        return {"inOrder": in_order, "savedAugments": saved,
+                "augments": plan["totals"]["augments"], "talismans": plan["totals"]["talismans"],
+                "missing": len(plan["missing"]["armor"]) + len(plan["missing"]["talismans"]),
+                "reordered": any(q["reordered"] for q in plan["armor"])}
 
     def plan(self, sets: list[dict], generators, box_armors) -> dict:
         armor_t, tal_t, craft = [], [], {}

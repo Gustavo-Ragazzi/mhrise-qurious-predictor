@@ -377,7 +377,9 @@ fn meld_scan(
 use core::sets;
 
 /// (key, skills, slot levels, defense, sequence, roll)
-type CandTuple = (u32, Vec<(i32, i32)>, [u8; 3], i32, i32, u32);
+type CandTuple = (u32, Vec<(i32, i32)>, [u8; 3], i32, i32, u32, i32);
+/// (per stream: [(from step, group)], per sequence: first step its streams split); see `sets::Sync`
+type SyncArgs = (HashMap<i32, Vec<(u32, i32)>>, HashMap<i32, u32>);
 /// (key, skill, slot level, points, count)
 type DecoTuple = (u32, i32, u8, i32, u32);
 /// (parts, talisman, decos (owner, slot, deco key, extra), skills, free slots, cost, defense, score)
@@ -400,6 +402,7 @@ fn cand(t: CandTuple) -> sets::Cand {
         defense: t.3,
         seq: t.4,
         roll: t.5,
+        stream: t.6,
     }
 }
 
@@ -418,6 +421,7 @@ fn query_of(
     max_cost: u32,
     limit: usize,
     floor: f64,
+    sync: Option<SyncArgs>,
 ) -> PyResult<sets::Query> {
     let value = match value {
         "defense" => sets::Value::Defense,
@@ -457,6 +461,9 @@ fn query_of(
         max_cost,
         limit: limit.max(1),
         floor,
+        sync: sync
+            .map(|(lineage, split)| sets::Sync { lineage, split })
+            .unwrap_or_default(),
     })
 }
 
@@ -487,7 +494,7 @@ fn set_rows(out: sets::Outcome) -> (Vec<SetTuple>, bool) {
 /// The best sets (see `qurious_core::sets::search`) and whether the search finished within `seconds`.
 /// `value` is "defense" or "score".
 #[pyfunction]
-#[pyo3(signature = (parts, talismans, weapon, decos, reqs, max_levels, weights, slot_values, value, cost_first, max_cost, limit, seconds=20.0, floor=0.0))]
+#[pyo3(signature = (parts, talismans, weapon, decos, reqs, max_levels, weights, slot_values, value, cost_first, max_cost, limit, seconds=20.0, floor=0.0, sync=None))]
 #[allow(clippy::too_many_arguments)]
 fn set_search(
     py: Python<'_>,
@@ -505,6 +512,7 @@ fn set_search(
     limit: usize,
     seconds: f64,
     floor: f64,
+    sync: Option<SyncArgs>,
 ) -> PyResult<(Vec<SetTuple>, bool)> {
     let q = query_of(
         parts,
@@ -520,6 +528,7 @@ fn set_search(
         max_cost,
         limit,
         floor,
+        sync,
     )?;
     let t = deadline(seconds);
     Ok(set_rows(py.allow_threads(move || sets::search(&q, t))))
@@ -528,7 +537,7 @@ fn set_search(
 /// Pareto front of rolls and value from local changes of `starts` (see `qurious_core::sets::improve`).
 /// starts = [[talisman, head, chest, arms, waist, legs]] as candidate tuples (None = nothing).
 #[pyfunction]
-#[pyo3(signature = (parts, talismans, weapon, decos, reqs, max_levels, weights, slot_values, value, max_cost, limit, starts, seconds=10.0))]
+#[pyo3(signature = (parts, talismans, weapon, decos, reqs, max_levels, weights, slot_values, value, max_cost, limit, starts, seconds=10.0, sync=None))]
 #[allow(clippy::too_many_arguments)]
 fn set_improve(
     py: Python<'_>,
@@ -545,6 +554,7 @@ fn set_improve(
     limit: usize,
     starts: Vec<[Option<CandTuple>; 6]>,
     seconds: f64,
+    sync: Option<SyncArgs>,
 ) -> PyResult<(Vec<SetTuple>, bool)> {
     let q = query_of(
         parts,
@@ -560,6 +570,7 @@ fn set_improve(
         max_cost,
         limit,
         0.0,
+        sync,
     )?;
     let starts: Vec<[Option<sets::Cand>; 6]> = starts
         .into_iter()
@@ -618,18 +629,75 @@ fn ub(
             .sum::<f64>()
 }
 
-/// (key, augment type, roll, skills, slot levels, defense change, resistance changes, skill changes, slot points)
-type AugTuple = (u32, i32, u32, Vec<(i32, i32)>, [u8; 3], i32, [i32; 5], Vec<(i32, i32)>, i32);
+/// (key, augment type, roll, skills, slot levels, defense change, resistance changes, skill changes, slot
+/// points, stream)
+type AugTuple = (u32, i32, u32, Vec<(i32, i32)>, [u8; 3], i32, [i32; 5], Vec<(i32, i32)>, i32, i32);
 /// (key, table, cost, skills, slot counts per level)
 type PieceArgs = (u32, i32, i32, Vec<(i32, i32)>, Vec<i32>);
+
+/// Augments every stream makes per round of `augment_candidates` before the streams are compared.
+const AUG_ROUND: u32 = 512;
+
+/// Rolls simulated so far by `augment_candidates` (progress for the app).
+static PROGRESS_ROLLS: AtomicU64 = AtomicU64::new(0);
+
+/// Stop the running set search / candidate simulation (they return what they have).
+#[pyfunction]
+fn search_cancel() {
+    sets::CANCEL.store(true, Ordering::Relaxed);
+}
+
+/// Before a new search: clear the stop flag and the progress counters.
+#[pyfunction]
+fn search_reset() {
+    sets::CANCEL.store(false, Ordering::Relaxed);
+    sets::PROGRESS_NODES.store(0, Ordering::Relaxed);
+    sets::PROGRESS_BUDGET.store(0, Ordering::Relaxed);
+    PROGRESS_ROLLS.store(0, Ordering::Relaxed);
+}
+
+/// (augment rolls simulated, combinations tried, current roll budget, stop requested)
+#[pyfunction]
+fn search_progress() -> (u64, u64, u64, bool) {
+    (
+        PROGRESS_ROLLS.load(Ordering::Relaxed),
+        sets::PROGRESS_NODES.load(Ordering::Relaxed),
+        sets::PROGRESS_BUDGET.load(Ordering::Relaxed),
+        sets::CANCEL.load(Ordering::Relaxed),
+    )
+}
+
+/// One piece in `augment_candidates`: per augment type its generator, and the states of this round.
+struct AugJob {
+    key: u32,
+    table: i32,
+    cost: i32,
+    skills: Vec<(i32, i32)>,
+    base_slots: Vec<i32>,
+    base_caps: [i32; 5],
+    base_lv: Vec<i32>,
+    base_ub: f64,
+    /// (augment type, stream index, generator)
+    rngs: Vec<(i32, usize, core::Rng)>,
+    /// per type: the state after each augment of this round
+    trace: Vec<Vec<[u32; 4]>>,
+    kept: Frontier,
+    /// (row without the stream, stream index)
+    out: Vec<(AugTuple, usize)>,
+}
 
 /// The augments of the next `count` rolls of every piece and type that make the piece better: a
 /// `relevant` skill level or slot capacity more, or (with `weights`) a higher score. A later roll is
 /// dropped when an earlier one of the same piece already has at least its relevant levels, slot
 /// capacity and score. `generators` = the 56 saved states.
+///
+/// Also where every piece's stream of each sequence is (see `qurious_core::sets::Sync`): an augment
+/// draws a different number of times on some pieces, so after a roll two pieces of one sequence can
+/// be at different places of it. Returns (rows, lineage per stream, first split step per sequence);
+/// the stream of a row is its group after the last roll (pieces that never split share it).
 #[pyfunction]
 #[pyo3(signature = (tables, pieces, generators, types, count, relevant, weights, slot_values))]
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn augment_candidates(
     py: Python<'_>,
     tables: &Tables,
@@ -640,33 +708,70 @@ fn augment_candidates(
     relevant: Vec<i32>,
     weights: HashMap<i32, f64>,
     slot_values: [f64; 5],
-) -> Vec<AugTuple> {
+) -> (Vec<AugTuple>, HashMap<i32, Vec<(u32, i32)>>, HashMap<i32, u32>) {
     let t = tables.0.clone();
     py.allow_threads(move || {
-        pieces
-            .par_iter()
-            .flat_map_iter(|(key, table, cost, skills, nums)| {
-                let base_slots = core::expand_slots(nums);
-                let base_caps = slot_caps(&base_slots);
-                let level = |list: &[(i32, i32)], r: i32| {
-                    list.iter().filter(|e| e.0 == r).map(|e| e.1).sum::<i32>()
-                };
-                let base_lv: Vec<i32> = relevant.iter().map(|&r| level(skills, r)).collect();
-                let mut rngs: Vec<(i32, core::Rng)> = types
+        let level = |list: &[(i32, i32)], r: i32| list.iter().filter(|e| e.0 == r).map(|e| e.1).sum::<i32>();
+        // streams: (sequence) per (piece, type)
+        let mut stream_seq: Vec<usize> = Vec::new();
+        let mut jobs: Vec<AugJob> = pieces
+            .into_iter()
+            .map(|(key, table, cost, skills, nums)| {
+                let base_slots = core::expand_slots(&nums);
+                let rngs: Vec<(i32, usize, core::Rng)> = types
                     .iter()
                     .filter_map(|&ty| {
-                        generators
-                            .get(core::seed_index(*cost, ty))
-                            .map(|g| (ty, core::Rng::new(*g)))
+                        let seq = core::seed_index(cost, ty);
+                        let g = generators.get(seq)?;
+                        stream_seq.push(seq);
+                        Some((ty, stream_seq.len() - 1, core::Rng::new(*g)))
                     })
                     .collect();
-                let base_ub = ub(&weights, &slot_values, skills, &base_slots);
-                let mut kept = Frontier::default();
-                let mut out = Vec::new();
+                AugJob {
+                    key,
+                    table,
+                    cost,
+                    base_caps: slot_caps(&base_slots),
+                    base_lv: relevant.iter().map(|&r| level(&skills, r)).collect(),
+                    base_ub: ub(&weights, &slot_values, &skills, &base_slots),
+                    trace: vec![Vec::with_capacity(AUG_ROUND as usize); rngs.len()],
+                    base_slots,
+                    skills,
+                    rngs,
+                    kept: Frontier::default(),
+                    out: Vec::new(),
+                }
+            })
+            .collect();
+        // where each stream's state of this round is: (job, type index)
+        let mut place = vec![(0usize, 0usize); stream_seq.len()];
+        for (j, job) in jobs.iter().enumerate() {
+            for (i, r) in job.rngs.iter().enumerate() {
+                place[r.1] = (j, i);
+            }
+        }
+        let mut by_seq: HashMap<usize, Vec<usize>> = HashMap::new();
+        for (s, &seq) in stream_seq.iter().enumerate() {
+            by_seq.entry(seq).or_default().push(s);
+        }
+        // groups start as the sequence (same saved state); a split gives the streams that moved away new ids
+        let mut group: Vec<i32> = stream_seq.iter().map(|&q| q as i32).collect();
+        let mut lineage: Vec<Vec<(u32, i32)>> = group.iter().map(|&g| vec![(0, g)]).collect();
+        let mut split: HashMap<i32, u32> = HashMap::new();
+        let mut fresh = 1_000i32;
+        let mut first = 1u32;
+        while first <= count {
+            let last = count.min(first.saturating_add(AUG_ROUND - 1));
+            jobs.par_iter_mut().for_each(|job| {
+                let AugJob { key, table, cost, skills, base_slots, base_caps, base_lv, base_ub, rngs, trace, kept, out } = job;
                 let mut buf = Vec::with_capacity(8);
-                for n in 1..=count {
-                    for (ty, rng) in rngs.iter_mut() {
+                for tr in trace.iter_mut() {
+                    tr.clear();
+                }
+                for n in first..=last {
+                    for (i, (ty, sidx, rng)) in rngs.iter_mut().enumerate() {
                         core::create_result(rng, &t, *table, *cost, skills, *ty, &mut buf);
+                        trace[i].push(rng.state());
                         let s = core::summarize(&buf);
                         let mut levels = skills.clone();
                         for &(sid, v) in &s.skills {
@@ -677,16 +782,16 @@ fn augment_candidates(
                         }
                         levels.retain(|e| e.1 > 0);
                         let slots_v = if s.slots != 0 {
-                            core::apply_slot_bonus(&base_slots, s.slots)
+                            core::apply_slot_bonus(base_slots, s.slots)
                         } else {
                             base_slots.clone()
                         };
                         let caps = slot_caps(&slots_v);
                         let lv: Vec<i32> = relevant.iter().map(|&r| level(&levels, r)).collect();
                         let value = ub(&weights, &slot_values, &levels, &slots_v);
-                        let better = lv.iter().zip(&base_lv).any(|(a, b)| a > b)
+                        let better = lv.iter().zip(base_lv.iter()).any(|(a, b)| a > b)
                             || (1..=4).any(|l| caps[l] > base_caps[l])
-                            || value > base_ub;
+                            || value > *base_ub;
                         if !better {
                             continue;
                         }
@@ -703,13 +808,68 @@ fn augment_candidates(
                                 }
                             }
                             delta.retain(|e| e.1 != 0);
-                            out.push((*key, *ty, n, levels, slots, s.defense, s.resistances, delta, s.slots));
+                            out.push((
+                                (*key, *ty, n, levels, slots, s.defense, s.resistances, delta, s.slots, -1),
+                                *sidx,
+                            ));
                         }
                     }
                 }
-                out
+            });
+            // compare the streams of each sequence after every augment of the round
+            let mut seqs: Vec<&usize> = by_seq.keys().collect();
+            seqs.sort_unstable();
+            for &seq in seqs {
+                let members = &by_seq[&seq];
+                for k in 0..=(last - first) as usize {
+                    let step = first + k as u32;
+                    let state = |s: usize| {
+                        let (j, i) = place[s];
+                        jobs[j].trace[i][k]
+                    };
+                    let s0 = state(members[0]);
+                    if members.iter().all(|&s| group[s] == group[members[0]] && state(s) == s0) {
+                        continue;
+                    }
+                    let mut seen: HashMap<(i32, [u32; 4]), i32> = HashMap::new();
+                    let mut kept_id: std::collections::HashSet<i32> = std::collections::HashSet::new();
+                    for &s in members {
+                        let g = group[s];
+                        let id = *seen.entry((g, state(s))).or_insert_with(|| {
+                            if kept_id.insert(g) {
+                                g
+                            } else {
+                                fresh += 1;
+                                fresh
+                            }
+                        });
+                        if id != g {
+                            group[s] = id;
+                            lineage[s].push((step, id));
+                            split.entry(seq as i32).or_insert(step);
+                        }
+                    }
+                }
+            }
+            PROGRESS_ROLLS.store(last as u64, Ordering::Relaxed);
+            first = last.saturating_add(1);
+            if last == u32::MAX || sets::CANCEL.load(Ordering::Relaxed) {
+                break;
+            }
+        }
+        let mut lineage_of: HashMap<i32, Vec<(u32, i32)>> = HashMap::new();
+        for (s, l) in lineage.into_iter().enumerate() {
+            lineage_of.entry(group[s]).or_insert(l);
+        }
+        let rows = jobs
+            .into_iter()
+            .flat_map(|j| j.out)
+            .map(|(mut row, s)| {
+                row.9 = group[s];
+                row
             })
-            .collect()
+            .collect();
+        (rows, lineage_of, split)
     })
 }
 
@@ -861,6 +1021,151 @@ fn meld_find(
     .map_err(pyo3::exceptions::PyValueError::new_err)
 }
 
+// ---- the saved sets' plan as a fixed path (Set builder / optimizer with saved sets) -------------------
+
+/// (table, cost, skills, augments) of one stretch of a path
+type Segment = (i32, i32, Vec<(i32, i32)>, u32);
+
+/// The states of one sequence along a path: from `state`, with augment option `buildup_type`, each
+/// segment's piece augmented that many times in turn. Returns the state before the first augment and
+/// after every augment (length = augments + 1).
+#[pyfunction]
+fn augment_path(
+    py: Python<'_>,
+    tables: &Tables,
+    state: [u32; 4],
+    buildup_type: i32,
+    segments: Vec<Segment>,
+) -> Vec<[u32; 4]> {
+    let t = tables.0.clone();
+    py.allow_threads(move || {
+        let mut rng = core::Rng::new(state);
+        let mut buf = Vec::with_capacity(8);
+        let mut out = vec![rng.state()];
+        for (table, cost, skills, count) in &segments {
+            for _ in 0..*count {
+                core::create_result(&mut rng, &t, *table, *cost, skills, buildup_type, &mut buf);
+                out.push(rng.state());
+            }
+        }
+        out
+    })
+}
+
+/// Augments that can be taken from inside a fixed path without changing it: for every piece, each
+/// augment k of the path (1-based, not in `reserved`) where augmenting this piece instead of the
+/// path's piece leaves the generator at the same place (so every later augment of the path comes the
+/// same), when it makes the piece better (as in `augment_candidates`; a later one only if no earlier
+/// one of the piece already has at least its relevant levels, slot capacity and score). `path` comes
+/// from `augment_path`. Rows as `augment_candidates` with roll = k and stream = -1.
+#[pyfunction]
+#[pyo3(signature = (tables, path, reserved, pieces, buildup_type, relevant, weights, slot_values))]
+#[allow(clippy::too_many_arguments)]
+fn path_candidates(
+    py: Python<'_>,
+    tables: &Tables,
+    path: Vec<[u32; 4]>,
+    reserved: Vec<u32>,
+    pieces: Vec<PieceArgs>,
+    buildup_type: i32,
+    relevant: Vec<i32>,
+    weights: HashMap<i32, f64>,
+    slot_values: [f64; 5],
+) -> Vec<AugTuple> {
+    let t = tables.0.clone();
+    py.allow_threads(move || {
+        let level = |list: &[(i32, i32)], r: i32| list.iter().filter(|e| e.0 == r).map(|e| e.1).sum::<i32>();
+        let reserved: std::collections::HashSet<u32> = reserved.into_iter().collect();
+        pieces
+            .par_iter()
+            .flat_map_iter(|(key, table, cost, skills, nums)| {
+                let base_slots = core::expand_slots(nums);
+                let base_caps = slot_caps(&base_slots);
+                let base_lv: Vec<i32> = relevant.iter().map(|&r| level(skills, r)).collect();
+                let base_ub = ub(&weights, &slot_values, skills, &base_slots);
+                let mut kept = Frontier::default();
+                let mut out = Vec::new();
+                let mut buf = Vec::with_capacity(8);
+                for k in 1..path.len() {
+                    if reserved.contains(&(k as u32)) {
+                        continue;
+                    }
+                    let mut rng = core::Rng::new(path[k - 1]);
+                    core::create_result(&mut rng, &t, *table, *cost, skills, buildup_type, &mut buf);
+                    if rng.state() != path[k] {
+                        continue;
+                    }
+                    let s = core::summarize(&buf);
+                    let mut levels = skills.clone();
+                    for &(sid, v) in &s.skills {
+                        match levels.iter_mut().find(|(x, _)| *x == sid) {
+                            Some(e) => e.1 += v,
+                            None => levels.push((sid, v)),
+                        }
+                    }
+                    levels.retain(|e| e.1 > 0);
+                    let slots_v = if s.slots != 0 {
+                        core::apply_slot_bonus(&base_slots, s.slots)
+                    } else {
+                        base_slots.clone()
+                    };
+                    let caps = slot_caps(&slots_v);
+                    let lv: Vec<i32> = relevant.iter().map(|&r| level(&levels, r)).collect();
+                    let value = ub(&weights, &slot_values, &levels, &slots_v);
+                    let better = lv.iter().zip(&base_lv).any(|(a, b)| a > b)
+                        || (1..=4).any(|l| caps[l] > base_caps[l])
+                        || value > base_ub;
+                    if !better || !kept.admit(lv, caps, value) {
+                        continue;
+                    }
+                    let mut slots = [0u8; 3];
+                    for (o, v) in slots.iter_mut().zip(&slots_v) {
+                        *o = (*v).clamp(0, 4) as u8;
+                    }
+                    let mut delta: Vec<(i32, i32)> = Vec::new();
+                    for &(sid, v) in &s.skills {
+                        match delta.iter_mut().find(|e| e.0 == sid) {
+                            Some(e) => e.1 += v,
+                            None => delta.push((sid, v)),
+                        }
+                    }
+                    delta.retain(|e| e.1 != 0);
+                    out.push((*key, buildup_type, k as u32, levels, slots, s.defense, s.resistances, delta, s.slots, -1));
+                }
+                out
+            })
+            .collect()
+    })
+}
+
+/// (skills, slot levels, unsure) of a talisman
+type PathTal = (Vec<(i32, i32)>, [i32; 3], bool);
+
+/// The talismans of a melding path: from `state`, each segment's (method, target) melded that many
+/// times in turn. Returns every talisman and the state after the last one.
+#[pyfunction]
+fn meld_path(
+    py: Python<'_>,
+    tables: &MeldTables,
+    state: [u32; 4],
+    segments: Vec<(i32, Option<i32>, u32)>,
+) -> PyResult<(Vec<PathTal>, [u32; 4])> {
+    let tables = tables.0.clone();
+    py.allow_threads(move || -> Result<(Vec<PathTal>, [u32; 4]), String> {
+        let mut rng = core::Rng::new(state);
+        let mut out = Vec::new();
+        for (method, target, count) in segments {
+            let mut m = meld::Melder::new(&tables, method, target, [None, None])?;
+            for _ in 0..count {
+                let t = m.talisman(&mut rng);
+                out.push((t.skills.clone(), t.slots, t.unsure));
+            }
+        }
+        Ok((out, rng.state()))
+    })
+    .map_err(pyo3::exceptions::PyValueError::new_err)
+}
+
 impl Drop for Scan {
     fn drop(&mut self) {
         self.0.cancel.store(true, Ordering::Relaxed);
@@ -879,6 +1184,12 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(set_search, m)?)?;
     m.add_function(wrap_pyfunction!(set_improve, m)?)?;
     m.add_function(wrap_pyfunction!(augment_candidates, m)?)?;
+    m.add_function(wrap_pyfunction!(search_cancel, m)?)?;
+    m.add_function(wrap_pyfunction!(augment_path, m)?)?;
+    m.add_function(wrap_pyfunction!(path_candidates, m)?)?;
+    m.add_function(wrap_pyfunction!(meld_path, m)?)?;
+    m.add_function(wrap_pyfunction!(search_reset, m)?)?;
+    m.add_function(wrap_pyfunction!(search_progress, m)?)?;
     m.add_function(wrap_pyfunction!(meld_candidates, m)?)?;
     m.add_function(wrap_pyfunction!(augment_advance, m)?)?;
     m.add_function(wrap_pyfunction!(augment_find, m)?)?;

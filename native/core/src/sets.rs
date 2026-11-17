@@ -4,7 +4,10 @@
 //! talisman → head → chest → arms → waist → legs, keeping the N best sets. Here a candidate piece
 //! can also be a future qurious augment or a future talisman: it then costs rolls of one generator
 //! (a "sequence"). Two pieces taken from the same sequence need different roll numbers, and a set
-//! costs, per sequence, its highest roll number (the rolls before it can be spent on any piece).
+//! costs, per sequence, its highest roll number. An augment can draw from the generator a different
+//! number of times on different pieces, so each piece has its own "stream" of a sequence: two pieces'
+//! rolls fit in one set only when, after the earlier roll, both streams are still at the same place
+//! (see `Sync`); the rolls before the first one are then spent on the first piece.
 //!
 //! Prunes:
 //! - dominance per part before the search (same or fewer rolls, at least the requested skill
@@ -26,6 +29,14 @@ use std::time::Instant;
 use rayon::prelude::*;
 
 pub const MAX_REQ: usize = 24;
+
+/// Set by the app to stop the running search (it then returns what it found, as if the deadline came).
+pub static CANCEL: AtomicBool = AtomicBool::new(false);
+/// Progress of the running search, for the app to show: combinations tried and the roll budget.
+pub static PROGRESS_NODES: AtomicU64 = AtomicU64::new(0);
+pub static PROGRESS_BUDGET: AtomicU64 = AtomicU64::new(0);
+/// Nodes counted locally before they are added to `PROGRESS_NODES`.
+const PROGRESS_EVERY: u64 = 4096;
 const DEPTH: usize = 6; // talisman + 5 armor parts
 /// Rolled dominators (with different rolls) needed to drop a candidate; see `prune_dominated`.
 const SAFE_DOMINATORS: usize = 2;
@@ -48,6 +59,8 @@ pub struct Cand {
     /// Generator the rolls come from (-1: nothing to roll) and the roll number in it (1-based).
     pub seq: i32,
     pub roll: u32,
+    /// Stream of the sequence (see `Sync`; -1: the same for every piece).
+    pub stream: i32,
 }
 
 impl Cand {
@@ -79,6 +92,50 @@ pub enum Value {
     Score,
 }
 
+/// Where each piece's stream of a sequence is: augments draw from the generator a different number
+/// of times on different pieces (cost 10 armor), so after some rolls two pieces can be at different
+/// places of the same sequence, and then one piece's roll is never reached after the other's.
+#[derive(Clone, Debug, Default)]
+pub struct Sync {
+    /// Per stream: (from step, group). Two streams are at the same place after `k` augments when their
+    /// groups at `k` are equal; groups only split, so equal at `k` means equal at every step before.
+    pub lineage: HashMap<i32, Vec<(u32, i32)>>,
+    /// Per sequence: the first step after which its streams are not all at the same place.
+    pub split: HashMap<i32, u32>,
+}
+
+impl Sync {
+    fn group(&self, stream: i32, step: u32) -> Option<i32> {
+        let l = self.lineage.get(&stream)?;
+        l.iter().take_while(|e| e.0 <= step).last().map(|e| e.1)
+    }
+
+    /// Rolls `a` and `b` (sequence, roll, stream) of two pieces can both be made.
+    pub fn fits(&self, a: (i32, u32, i32), b: (i32, u32, i32)) -> bool {
+        if a.0 != b.0 {
+            return true;
+        }
+        if a.1 == b.1 {
+            return false;
+        }
+        if a.2 == b.2 || a.2 < 0 || b.2 < 0 {
+            return true;
+        }
+        let m = a.1.min(b.1);
+        matches!((self.group(a.2, m), self.group(b.2, m)), (Some(x), Some(y)) if x == y)
+    }
+
+    /// Streams `a` and `b` are at the same place for the first `step` augments.
+    fn together(&self, a: i32, b: i32, step: u32) -> bool {
+        a == b || matches!((self.group(a, step), self.group(b, step)), (Some(x), Some(y)) if x == y)
+    }
+
+    /// Roll `r` of `seq` fits with every other roll of it but the same one, whatever the piece.
+    fn universal(&self, seq: i32, r: u32) -> bool {
+        self.split.get(&seq).is_none_or(|&s| r < s)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Query {
     pub parts: [Vec<Cand>; 5],
@@ -100,6 +157,7 @@ pub struct Query {
     pub limit: usize,
     /// Only sets worth at least this much (score x 1, defense x 1); 0 = any.
     pub floor: f64,
+    pub sync: Sync,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -128,6 +186,7 @@ struct P {
     defense: i32,
     seq: i32,
     roll: u32,
+    stream: i32,
     cost: u32,
     /// Upper bound of what it adds to the value.
     ub: i64,
@@ -287,6 +346,7 @@ impl<'a> Ctx<'a> {
             defense: c.defense,
             seq: c.seq,
             roll: c.roll,
+            stream: c.stream,
             cost: c.cost(),
             ub,
             offer: 0,
@@ -315,6 +375,7 @@ impl<'a> Ctx<'a> {
             defense: 0,
             seq: -1,
             roll: 0,
+            stream: -1,
             cost: 0,
             ub: 0,
             offer: 0,
@@ -345,7 +406,7 @@ impl<'a> Ctx<'a> {
                 .map(|c| Self::prepare(q, c, k, &best_slot, &widx))
                 .collect();
             ps.push(Self::empty(&best_slot, q.value));
-            prune_dominated(ps, k, cost_first)
+            prune_dominated(ps, k, cost_first, &q.sync)
         };
         let mut deco_opts: Vec<Vec<(usize, u8, i32, u32)>> = vec![Vec::new(); k];
         for (j, d) in q.decos.iter().enumerate() {
@@ -776,7 +837,7 @@ impl<'a> Ctx<'a> {
         &self,
         d: usize,
         picks: &mut [usize; DEPTH],
-        rolls: &mut Vec<(i32, u32)>,
+        rolls: &mut Vec<(i32, u32, i32)>,
         cost: u32,
         value: i64,
         pts: [i32; MAX_REQ],
@@ -809,6 +870,13 @@ impl<'a> Ctx<'a> {
             return;
         }
         let n = self.nodes.fetch_add(1, Ordering::Relaxed);
+        if n.is_multiple_of(PROGRESS_EVERY) {
+            PROGRESS_NODES.fetch_add(PROGRESS_EVERY, Ordering::Relaxed);
+            if CANCEL.load(Ordering::Relaxed) {
+                self.stopped.store(true, Ordering::Relaxed);
+                return;
+            }
+        }
         if let Some(t) = self.deadline {
             if n.is_multiple_of(65536) && Instant::now() > t {
                 self.stopped.store(true, Ordering::Relaxed);
@@ -856,10 +924,10 @@ impl<'a> Ctx<'a> {
             if p.seq >= 0 {
                 let mut top = 0;
                 let mut clash = false;
-                for &(s, r) in rolls.iter() {
-                    if s == p.seq {
-                        clash |= r == p.roll;
-                        top = top.max(r);
+                for &r in rolls.iter() {
+                    if r.0 == p.seq {
+                        clash |= !self.q.sync.fits(r, (p.seq, p.roll, p.stream));
+                        top = top.max(r.1);
                     }
                 }
                 if clash {
@@ -873,7 +941,7 @@ impl<'a> Ctx<'a> {
             add_into(&mut c2, &p.cap);
             picks[d] = c;
             if p.seq >= 0 {
-                rolls.push((p.seq, p.roll));
+                rolls.push((p.seq, p.roll, p.stream));
             }
             let v = match self.q.value {
                 Value::Defense => value + p.defense as i64,
@@ -1002,8 +1070,11 @@ impl<'a> Ctx<'a> {
 ///
 /// A rolled dominator can be unusable in a set (another part took the same roll of its sequence),
 /// so a candidate goes only when a dominator needs no roll or when `DEPTH - 1` dominators with
-/// different rolls exist (the other parts cannot block them all).
-fn prune_dominated(mut ps: Vec<P>, k: usize, cost_first: bool) -> Vec<P> {
+/// different rolls exist (the other parts cannot block them all). A rolled dominator only counts
+/// when no other piece's stream can block it either: it is on the candidate's sequence and its
+/// stream is at the same place as the candidate's until its roll (whatever fits the candidate then
+/// fits it), or its roll comes before the streams of its sequence split.
+fn prune_dominated(mut ps: Vec<P>, k: usize, cost_first: bool, sync: &Sync) -> Vec<P> {
     ps.sort_by_key(|p| {
         (
             p.cost,
@@ -1028,6 +1099,9 @@ fn prune_dominated(mut ps: Vec<P>, k: usize, cost_first: bool) -> Vec<P> {
             }
             if x.seq < 0 {
                 continue 'next;
+            }
+            if !(x.seq == c.seq && sync.together(x.stream, c.stream, x.roll)) && !sync.universal(x.seq, x.roll) {
+                continue;
             }
             if !rolled.contains(&(x.seq, x.roll)) {
                 rolled.push((x.seq, x.roll));
@@ -1071,6 +1145,7 @@ pub fn search(q: &Query, deadline: Option<Instant>) -> Outcome {
     loop {
         let mut step = q.clone();
         step.max_cost = budget.min(top);
+        PROGRESS_BUDGET.store(step.max_cost as u64, Ordering::Relaxed);
         let mut out = run(&step, deadline);
         if !out.complete {
             // the sets of the last finished budget are exact; add what this one found beyond them
@@ -1108,7 +1183,10 @@ fn run(q: &Query, deadline: Option<Instant>) -> Outcome {
             let mut picks = [t, h, 0, 0, 0, 0];
             let mut rolls = Vec::with_capacity(DEPTH);
             let (tp, hp) = (&ctx.cands[0][t], &ctx.cands[1][h]);
-            if tp.seq >= 0 && tp.seq == hp.seq && tp.roll == hp.roll {
+            if tp.seq >= 0
+                && hp.seq >= 0
+                && !q.sync.fits((tp.seq, tp.roll, tp.stream), (hp.seq, hp.roll, hp.stream))
+            {
                 return vec![];
             }
             let mut pts = tp.pts;
@@ -1121,12 +1199,12 @@ fn run(q: &Query, deadline: Option<Instant>) -> Outcome {
                 if p.seq >= 0 {
                     let top = rolls
                         .iter()
-                        .filter(|r: &&(i32, u32)| r.0 == p.seq)
+                        .filter(|r: &&(i32, u32, i32)| r.0 == p.seq)
                         .map(|r| r.1)
                         .max()
                         .unwrap_or(0);
                     cost += p.roll.saturating_sub(top);
-                    rolls.push((p.seq, p.roll));
+                    rolls.push((p.seq, p.roll, p.stream));
                 }
             }
             let value = match q.value {
@@ -1166,27 +1244,28 @@ struct Sol {
 }
 
 impl<'a> Ctx<'a> {
-    /// A complete set: its rolls (None when two pieces need the same roll of a sequence or a request
-    /// cannot be met), value and decorations.
+    /// A complete set: its rolls (None when two pieces' rolls of a sequence do not fit together or a
+    /// request cannot be met), value and decorations.
     fn evaluate(&self, picks: &[usize; DEPTH]) -> Option<Sol> {
         let mut pts = [0i32; MAX_REQ];
         let mut cap = self.weapon_cap;
-        let mut rolls: Vec<(i32, u32)> = Vec::with_capacity(DEPTH);
+        let mut rolls: Vec<(i32, u32, i32)> = Vec::with_capacity(DEPTH);
         let mut defense = 0i64;
         for (d, &c) in picks.iter().enumerate() {
             let p = &self.cands[d][c];
             add_into(&mut pts[..self.k], &p.pts[..self.k]);
             add_into(&mut cap, &p.cap);
             if p.seq >= 0 {
-                if rolls.contains(&(p.seq, p.roll)) {
+                let r = (p.seq, p.roll, p.stream);
+                if rolls.iter().any(|&x| !self.q.sync.fits(x, r)) {
                     return None;
                 }
-                rolls.push((p.seq, p.roll));
+                rolls.push(r);
             }
             defense += p.defense as i64;
         }
         let mut top: Vec<(i32, u32)> = Vec::new();
-        for &(sq, r) in &rolls {
+        for &(sq, r, _) in &rolls {
             match top.iter_mut().find(|e| e.0 == sq) {
                 Some(e) => e.1 = e.1.max(r),
                 None => top.push((sq, r)),
@@ -1274,7 +1353,7 @@ pub fn improve(q: &Query, starts: &[[Option<Cand>; DEPTH]], deadline: Option<Ins
             }
         }
     }
-    let late = || deadline.is_some_and(|t| Instant::now() > t);
+    let late = || deadline.is_some_and(|t| Instant::now() > t) || CANCEL.load(Ordering::Relaxed);
     const PAIR_TOP: usize = 40;
     let mut expanded = 0;
     while let Some(base) = queue.pop() {
@@ -1378,6 +1457,7 @@ mod tests {
             defense,
             seq: -1,
             roll: 0,
+            stream: -1,
         }
     }
 
@@ -1396,6 +1476,7 @@ mod tests {
             max_cost: u32::MAX,
             limit: 5,
             floor: 0.0,
+            sync: Sync::default(),
         }
     }
 
@@ -1447,6 +1528,39 @@ mod tests {
         // roll 3 can only be used once: head roll 3 + chest roll 5 costs 5 rolls of sequence 7
         assert_eq!(r[0].parts[..2], [Some(11), Some(22)]);
         assert_eq!(r[0].cost, 5);
+    }
+
+    #[test]
+    fn rolls_of_split_streams_do_not_mix() {
+        // two pieces of sequence 7: streams 100 and 200 are at the same place for 3 augments, then split
+        let rolled = |key, roll, stream| Cand {
+            seq: 7,
+            roll,
+            stream,
+            ..cand(key, &[(2, 1)], [0, 0, 0], 1)
+        };
+        let parts = [
+            vec![cand(1, &[], [0, 0, 0], 50), rolled(11, 4, 100), rolled(12, 9, 100)],
+            vec![cand(2, &[], [0, 0, 0], 50), rolled(21, 5, 200), rolled(22, 2, 200)],
+            vec![cand(3, &[], [0, 0, 0], 50)],
+            vec![cand(4, &[], [0, 0, 0], 50)],
+            vec![cand(5, &[], [0, 0, 0], 50)],
+        ];
+        let mut q = query(parts, &[(2, 2)], vec![]);
+        q.sync.lineage = [(100, vec![(0, 7), (4, 100)]), (200, vec![(0, 7), (4, 200)])]
+            .into_iter()
+            .collect();
+        q.sync.split = [(7, 4)].into_iter().collect();
+        assert!(!q.sync.fits((7, 4, 100), (7, 5, 200)));
+        assert!(q.sync.fits((7, 3, 100), (7, 5, 200)));
+        let r = search(&q, None).sets;
+        // head 4 + chest 5 split apart after roll 4; chest 2 then head 4 fits (same place after 2)
+        assert_eq!(r[0].parts[..2], [Some(11), Some(22)]);
+        assert_eq!(r[0].cost, 4);
+        assert!(r.iter().all(|s| s.parts[..2] != [Some(11), Some(21)]));
+        let start: [Option<Cand>; 6] = Default::default();
+        let front = improve(&q, &[start], None).sets;
+        assert!(front.iter().all(|s| s.parts[..2] != [Some(11), Some(21)]));
     }
 
     #[test]
@@ -1512,6 +1626,7 @@ mod tests {
                 defense: 50 + r.below(50) as i32,
                 seq,
                 roll,
+                stream: -1,
             }
         };
         let parts: [Vec<Cand>; 5] =
@@ -1551,6 +1666,7 @@ mod tests {
             max_cost: u32::MAX,
             limit: 3,
             floor: 0.0,
+            sync: Sync::default(),
         }
     }
 
@@ -1563,6 +1679,7 @@ mod tests {
             defense: 0,
             seq: -1,
             roll: 0,
+            stream: -1,
         };
         let lists: Vec<Vec<&Cand>> = std::iter::once(&q.talismans)
             .chain(q.parts.iter())
@@ -1574,9 +1691,11 @@ mod tests {
             let set: Vec<&Cand> = (0..6).map(|d| lists[d][idx[d]]).collect();
             let mut rolls: Vec<(i32, u32)> = vec![];
             let mut clash = false;
-            for c in &set {
+            for (i, c) in set.iter().enumerate() {
                 if c.seq >= 0 {
-                    clash |= rolls.contains(&(c.seq, c.roll));
+                    clash |= set[..i].iter().any(|o| {
+                        o.seq >= 0 && !q.sync.fits((o.seq, o.roll, o.stream), (c.seq, c.roll, c.stream))
+                    });
                     rolls.push((c.seq, c.roll));
                 }
             }
@@ -1651,6 +1770,43 @@ mod tests {
             found > 50,
             "too few feasible instances ({found}) to mean anything"
         );
+    }
+
+    #[test]
+    fn matches_brute_force_with_split_streams() {
+        let mut found = 0;
+        for seed in 1..=300 {
+            let mut q = random_query(seed);
+            let mut r = R(seed.wrapping_mul(0xD1B5_4A32_D192_ED03) | 1);
+            // per sequence, streams 10*seq + 0..3 share a place until a random step, then split in two
+            // groups (stream 3 splits from the others one step later)
+            for seq in 0..2 {
+                let at = 1 + r.below(5) as u32;
+                q.sync.split.insert(seq, at);
+                for st in 0..4 {
+                    let id = 10 * seq + st;
+                    let mut l = vec![(0, 100 + seq)];
+                    if st % 2 == 1 {
+                        l.push((at, 200 + id));
+                    }
+                    if st == 2 {
+                        l.push((at + 1, 300 + id));
+                    }
+                    q.sync.lineage.insert(id, l);
+                }
+            }
+            for c in q.parts.iter_mut().flatten().chain(q.talismans.iter_mut()) {
+                if c.seq >= 0 {
+                    c.stream = 10 * c.seq + r.below(4) as i32;
+                }
+            }
+            let want = brute(&q);
+            let got = search(&q, None);
+            assert!(got.complete);
+            assert_eq!(got.sets.first().map(|s| (s.cost, s.defense)), want, "seed {seed}");
+            found += want.is_some() as u32;
+        }
+        assert!(found > 50, "too few feasible instances ({found})");
     }
 
     #[test]

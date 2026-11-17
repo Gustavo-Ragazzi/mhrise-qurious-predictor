@@ -3,7 +3,8 @@
 * Always: the decoration message tags.
 * With game data (MHR_GAME_DIR) and the compiled engine: every set found reaches the wanted skills with
   the decorations it lists, in slots big enough; future augments and talismans are exactly what the
-  engine predicts for that roll; the optimizer front gets better with every step.
+  engine predicts for that roll, also with several pieces of one sequence augmented in turn; the
+  optimizer front gets better with every step.
 """
 
 import os
@@ -11,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from qurious_predictor import builder, engine, gamedata, melding, search
+from qurious_predictor import builder, engine, gamedata, melding, planner, search
 from qurious_predictor.rng import XorShift128
 from qurious_predictor.savedata import ArmorItem, TalismanItem
 
@@ -125,6 +126,20 @@ def test_rolled_pieces_are_the_predicted_augments(data, build):
             rng = XorShift128(g[melding.generator_index(t["method"], row)].state())
             got = [m.talisman(rng, n) for n in range(1, t["n"] + 1)][-1]
             assert [list(x) for x in got.skills] == [list(x) for x in t["skills"]] and list(got.slots) == t["slots"]
+        # pieces of one sequence, augmented one after the other as the steps say, get those augments
+        by_seq = {}
+        for p in f.pieces:
+            if p and p["kind"] == "roll":
+                by_seq.setdefault(p["seq"], []).append(p)
+        for seq, ps in by_seq.items():
+            state, done = g[seq].state(), 0
+            for p in sorted(ps, key=lambda p: p["n"]):
+                a = data["armors"][p["id"]]
+                state, last = search._native.augment_advance(tables, list(state), a["table"], a["cost"],
+                                                             [tuple(x) for x in a["skills"]], p["type"], p["n"] - done)
+                done = p["n"]
+                assert planner.outcome_key(last) == planner.outcome_key(
+                    (p["def"], p["slotPoints"], p["res"], sorted(p["augments"])))
     # the closest set needs no more rolls than any other found
     assert found[0].cost == min(f.cost for f in found)
 
@@ -166,3 +181,26 @@ def test_excluded_pieces_and_avoided_skills(data, build):
         check_set(data, f, reqs, [3, 1, 0])
         assert not banned & {p["id"] for p in f.pieces if p}
         assert not avoid & {s for s, _ in f.skills}
+
+
+@needs_game
+def test_rolls_inside_a_saved_plan_keep_it(data):
+    """An augment taken from inside the saved sets' plan leaves the generator where the plan would,
+    and is the augment it says; the plan's own augments are never offered."""
+    g = gens()
+    nt = search.native_tables(data)
+    ids = [aid for aid, a in data["armors"].items() if a["cost"] == 10][:40]
+    piece = lambda aid: (data["armors"][aid]["table"], 10, [tuple(x) for x in data["armors"][aid]["skills"]])
+    seq = engine.seed_index(10, engine.TYPE_AUGMENT)
+    segments = [(*piece(ids[0]), 30), (*piece(ids[1]), 50)]
+    path = search._native.augment_path(nt, g[seq].state(), engine.TYPE_AUGMENT, segments)
+    assert len(path) == 81
+    pieces = [(int(aid), *piece(aid), list(data["armors"][aid]["slots"])) for aid in ids]
+    rows = search._native.path_candidates(nt, path, [30, 80], pieces, engine.TYPE_AUGMENT,
+                                          [s for s, _ in data["armors"][ids[0]]["skills"]], {}, [0.0] * 5)
+    assert rows
+    for aid, ty, k, _skills, _slots, ddef, res, delta, points, _ in rows:
+        assert k not in (30, 80)
+        after, last = search._native.augment_advance(nt, list(path[k - 1]), *piece(str(aid)), ty, 1)
+        assert tuple(after) == tuple(path[k])
+        assert planner.outcome_key(last) == planner.outcome_key((ddef, points, res, delta))
