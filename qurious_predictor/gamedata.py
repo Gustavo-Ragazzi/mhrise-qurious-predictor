@@ -12,7 +12,7 @@ from mhrise_exporter.pak import open_game_paks
 
 from .engine import Buildup, Tables
 
-CACHE_VERSION = 8
+CACHE_VERSION = 9
 DIR = "data/Define/Player/Equip/CustomBuildup"
 
 # Extra RSZ layouts (v16), from the kvasszn/ree-save-editor type dump.
@@ -74,6 +74,34 @@ rsz.SPECS.update({
         ("_UpVal", "s32", False), ("_Cost", "s32", False), ("_MaxCost", "s32", False),
     ]),
 })
+# Costs of qurious crafting and melding (v16 layouts from the alphazolam/RE_RSZ dump).
+rsz.SPECS.update({
+    "snow.data.CustomBuildupArmorMaterialUserData": (None, [("_Param", "obj", True)]),
+    "snow.data.CustomBuildupArmorMaterialUserData.Param": (None, [
+        ("_Rare", "u8", False), ("_MaterialCategory", "s32", False), ("_MaterialCategoryNum", "u32", False),
+        ("_MaterialCategoryNum_Def", "u32", False), ("_MaterialCategoryNum_Skill", "u32", False),
+        ("_MaterialCategoryNum_Slot", "u32", False), ("_Price", "u32", False),
+    ]),
+    "snow.data.AlchemyPatturnUserData": (None, [("_ParamList", "obj", True)]),
+    "snow.data.AlchemyPatturnUserData.Param": (None, [
+        ("_Patturn", "s32", False), ("_Color", "s32", False), ("_CostVillagePoint", "u32", False),
+        ("_UsableItemList", "u32", True), ("_CostMaterialPoint", "u32", False), ("_RequireTalismanNum", "u32", False),
+        ("_RequireTalismanMinRare", "u8", False), ("_RequireTalismanMaxRare", "u8", False),
+        ("_OutputMinNum", "u32", False), ("_OutputMaxNum", "u32", False), ("_CheatCheckPriority", "s32", False),
+    ]),
+    "snow.data.ItemUserData": (None, [("_Param", "obj", True)]),
+    "snow.data.ItemUserData.Param": (None, [
+        ("_Id", "u32", False), ("_CariableFilter", "s32", False), ("_Type", "s32", False), ("_Rare", "u8", False),
+        ("_PlMaxCount", "u32", False), ("_OtMaxCount", "u32", False), ("_SortId", "u32", False), ("_Supply", "bool", False),
+        ("_CanPutInOtDogPouch", "bool", False), ("_ShowItemWindow", "bool", False), ("_ShowActionWindow", "bool", False),
+        ("_Infinite", "bool", False), ("_Default", "bool", False), ("_IconCanEat", "bool", False),
+        ("_IconItemRank", "s32", False), ("_EffectRare", "bool", False), ("_IconChara", "s32", False),
+        ("_IconColor", "s32", False), ("_SeType", "s32", False), ("_SellPrice", "u32", False), ("_BuyPrice", "u32", False),
+        ("_ItemActionType", "s32", False), ("_RankType", "s32", False), ("_ItemGroup", "s32", False),
+        ("_CategoryWorth", "u32", False), ("_MaterialCategory", "s32", True), ("_EvalutionValue", "u32", False),
+    ]),
+})
+QURIOUS_MELDING = (10, 11)
 WEAPON_TYPES = ["GreatSword", "ShortSword", "Hammer", "Lance", "LongSword", "SlashAxe", "GunLance", "DualBlades",
                 "Horn", "InsectGlaive", "ChargeAxe", "LightBowgun", "HeavyBowgun", "Bow"]
 _W_COMMON = [
@@ -255,12 +283,57 @@ def build(game_dir: Path, log=print) -> dict:
                     continue
                 weapons[str(p["_Id"])] = {"names": names, "type": wtype, "rare": p["_RareType"] + 1,
                                          "slots": (_expand(p["_SlotNumList"]) + [0, 0, 0])[:3]}
+
+        log("Reading crafting costs...")
+        costs = _costs(pak)
     finally:
         pak.close()
-    return {"version": CACHE_VERSION, "decorations": decorations, "weapons": weapons, "base": base, "armor_lots": armor_lots, "category_lots": category_lots,
+    return {"version": CACHE_VERSION, "costs": costs, "decorations": decorations, "weapons": weapons, "base": base, "armor_lots": armor_lots, "category_lots": category_lots,
             "skill_costs": skill_costs, "skills": skills, "max_levels": max_levels, "skill_colors": skill_colors, "armors": armors,
             "all_armors": all_armors,
             "deco_levels": deco_levels, "talisman_skills": talisman_skills, "melding": melding}
+
+
+def _costs(pak) -> dict:
+    """Qurious crafting (armor) and Qurious Melding costs, and the items that pay them.
+
+    armor: per armor rarity, zenny and points of one material category per augment option
+    (engine type ids: 0 Augment, 1 Skills+, 2 Slots+, 3 Stability). melding: per method, Kamura Points,
+    material points and talismans used per talisman made, and the items it takes."""
+    armor = {}
+    for p in rsz.parse_user(pak.read_any(f"{DIR}/CustomBuildupArmorMaterialUserData.user", ["2"]))[0]["_Param"]:
+        armor[str(p["_Rare"] + 1)] = {
+            "category": p["_MaterialCategory"], "zenny": p["_Price"],
+            "points": {"0": p["_MaterialCategoryNum"], "1": p["_MaterialCategoryNum_Skill"],
+                       "2": p["_MaterialCategoryNum_Slot"], "3": p["_MaterialCategoryNum_Def"]},
+        }
+    melding = {}
+    for p in rsz.parse_user(pak.read_any("data/Define/Lobby/Facility/Alchemy/AlchemyPatturnData.user", ["2"]))[0]["_ParamList"]:
+        if p["_Patturn"] in QURIOUS_MELDING:
+            melding[str(p["_Patturn"])] = {
+                "kamura": p["_CostVillagePoint"], "points": p["_CostMaterialPoint"], "items": list(p["_UsableItemList"]),
+                "talismans": p["_RequireTalismanNum"], "talismanRarity": [p["_RequireTalismanMinRare"] + 1,
+                                                                          p["_RequireTalismanMaxRare"] + 1],
+                "perMeld": p["_OutputMaxNum"],
+            }
+    wanted_cats = {a["category"] for a in armor.values()}
+    usable = {i for m in melding.values() for i in m["items"]}
+    names = {}
+    for suffix in ("", "_MR"):
+        names.update(_msg_map(pak, f"data/System/ContentsIdSystem/Item/Normal/ItemName{suffix}"))
+    items = {}
+    for it in rsz.parse_user(pak.read_any("data/System/ContentsIdSystem/Item/Normal/ItemData.user", ["2"]))[0]["_Param"]:
+        iid = it["_Id"]
+        cats = [c for c in it["_MaterialCategory"] if c]
+        if iid not in usable and not wanted_cats.intersection(cats):
+            continue
+        n = _names(names.get(f"I_{iid & 0xFFFF:04}_Name"))
+        if "en" not in n:
+            continue
+        items[str(iid)] = {"names": n, "rare": it["_Rare"] + 1, "categories": cats, "worth": it["_CategoryWorth"],
+                           # melding points of a material (the category worth for afflicted materials)
+                           "meldPoints": it["_EvalutionValue"]}
+    return {"armor": armor, "melding": melding, "items": items}
 
 
 def deco_tag(did: int) -> str:

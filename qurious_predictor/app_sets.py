@@ -10,7 +10,7 @@ from pathlib import Path
 
 from mhrise_exporter.export import Names, _expand_slots, apply_slot_bonus, qurious_lines, talisman_lines
 
-from . import builder, engine, melding
+from . import builder, engine, melding, planner
 
 MAX_ROLLS = 2**31 - 1          # no practical limit: the engine runs them in Rust
 MAX_RESULTS = 1000
@@ -189,7 +189,8 @@ class SetsMixin:
             fresh = " (each on a copy without augments)" if any(p.get("augmented") or p.get("owned") for p in ps) else ""
             others = top - len(ps)
             steps.append(f"{engine.TYPE_NAMES[ps[0]['type']]} on cost {ps[0]['cost']} armor: {top} augment{'s' if top > 1 else ''} "
-                         f"in total. Keep {keep}{fresh}" + (f"; the other {others} can go on any cost {ps[0]['cost']} piece."
+                         f"in total. Keep {keep}{fresh}" + (f"; do the other {others} on that same piece (another piece can change "
+                                                             f"what comes next: save the set and use Saved sets & planner)."
                                                              if others else "."))
         t = f.talisman
         if t and t["kind"] == "roll":
@@ -332,6 +333,70 @@ class SetsMixin:
                     r["changed"].append(5)
             return {"current": current, "sets": rows, "complete": counts["complete"], "proven": counts.get("proven", True),
                     "seconds": round(time.time() - t0, 2)}
+
+    # ---- saved sets and planner -------------------------------------------------------------------
+    def saved_sets(self):
+        return self.settings.get("savedSets") or []
+
+    def save_set(self, row: dict, name: str, query: dict | None = None):
+        """Keep a Set builder result (with the rolls it needs) for the planner."""
+        sets = list(self.saved_sets())
+        sid = max((x["id"] for x in sets), default=0) + 1
+        sets.append({"id": sid, "name": (name or "").strip() or f"Set {sid}", "created": time.strftime("%Y-%m-%d %H:%M"),
+                     "query": query or {}, "set": row, "targets": planner.targets_of(row)})
+        self.save_settings({"savedSets": sets})
+        return {"sets": sets, "id": sid}
+
+    def delete_set(self, sid: int):
+        sets = [x for x in self.saved_sets() if x["id"] != sid]
+        self.save_settings({"savedSets": sets})
+        return {"sets": sets}
+
+    def rename_set(self, sid: int, name: str):
+        sets = [dict(x, name=name.strip() or x["name"]) if x["id"] == sid else x for x in self.saved_sets()]
+        self.save_settings({"savedSets": sets})
+        return {"sets": sets}
+
+    def make_plan(self, ids: list):
+        """Roadmap of the rolls the chosen saved sets need, from the save as it is now, and its cost."""
+        with self._lock:
+            if not self.generators:
+                return {"error": "Select a hunter first."}
+            sets = [x for x in self.saved_sets() if x["id"] in set(ids)]
+            if not sets:
+                return {"error": "Choose at least one saved set."}
+            t0 = time.time()
+            try:
+                plan = planner.Planner(self.data, self.melding).plan(sets, self.generators, self.box[0])
+            except Exception as e:
+                return {"error": f"Planning failed: {e}"}
+            return self._plan_view(plan, time.time() - t0)
+
+    def _outcome_view(self, e) -> dict:
+        d, sl, res, sk = e
+        return {"def": d, "slots": sl, "res": list(res), "skills": [dict(self._skill(int(a)), delta=int(b)) for a, b in sk]}
+
+    def _plan_view(self, plan: dict, seconds: float) -> dict:
+        for seq in plan["armor"]:
+            for st in seq["steps"]:
+                st["result"] = self._outcome_view(st["expected"])
+                st["rarity"] = self.data["all_armors"][st["id"]]["rare"] + 1
+                st["burnName"] = self._armor_name(st["burnOn"]) if st["burnOn"] else None
+        for g in plan["talismans"]:
+            g["gradeName"] = "CBAS"[g["grade"]] if g["grade"] is not None and 0 <= g["grade"] < 4 else None
+            for st in g["steps"]:
+                st["skillRows"] = [dict(self._skill(int(a)), level=int(b)) for a, b in st["skills"]]
+                st["targetName"] = self._skill(st["target"])["name"] if st["target"] else None
+        for t in plan["missing"]["armor"]:
+            t["result"] = self._outcome_view(t["expected"])
+        for c in plan["copies"]:
+            c["name"] = self._armor_name(c["id"])
+        for key in ("amber", "meld"):
+            for m in plan["materials"][key]:
+                m["name"] = self._name(m.pop("names"))
+        plan["materials"]["mixNames"] = [m["name"] for m in plan["materials"]["amber"]]
+        plan["seconds"] = round(seconds, 2)
+        return plan
 
     # ---- export ------------------------------------------------------------------------------------
     def export_kinds(self):

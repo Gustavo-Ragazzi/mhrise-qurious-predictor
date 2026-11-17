@@ -24,7 +24,8 @@ DEFAULT_SETTINGS = {"rolls": 200, "lang": "en", "hunter": None, "armor": None, "
                     "talMethod": 10, "talTargets": {}, "talCount": 1000, "talFilter": None,
                     "talPreset": "builtin:all", "talSort": {"key": "n", "dir": 1},
                     "invView": "armor", "invPreset": "builtin:all", "invSort": {}, "invPart": -1, "invAugOnly": False,
-                    "build": None, "opt": None, "export": None, "lastModes": {}}
+                    "build": None, "opt": None, "export": None, "lastModes": {}, "savedSets": [],
+                    "planSel": []}
 
 
 def _merge_skills(pairs):

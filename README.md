@@ -114,7 +114,19 @@ Talismans), **My equipment** (Inventory, Build optimizer, Export) and **Set buil
     plus the free slots; Gain is against the loadout as it is. Without rolls the search is exact;
     with rolls it searches sets one or two changes away from the loadout and from that best set, so
     the list is a set of suggestions, not every possible set.
-11. **Export**: talismans or qurious armor as wiki-db import lines (the same `ExportedTalismans.txt`
+11. **Saved sets & planner** (under Set builder): **Save set** on a Set builder result keeps it. Tick
+    saved sets and press **Make plan** for a roadmap from the save as it is now: per sequence, which
+    piece to augment how many times and which augment to keep, per Qurious Melding sequence how many
+    talismans to meld and which to keep, the pieces to craft, and the cost (zenny, Amber Essence
+    points, Kamura Points, melding points, talismans used up by Cyclus), with how many of each Amber
+    Essence or melding material would pay it. What moves what: each augment cost and option has its
+    own sequence (Slots+ never moves Skills+; cost 10 never moves cost 12), Vigor has one sequence and
+    Cyclus one per grade of the picked skill. Inside a sequence the order matters: an augment moves it
+    by a different amount depending on what it rolls and sometimes on the piece, so the planner walks
+    each sequence with the pieces really augmented, finds every wanted result again (also after you
+    rolled something else) and picks the order that needs the fewest augments. When a cheaper piece of
+    the same cost gives the same result, the augments before a wanted one go on it.
+12. **Export**: talismans or qurious armor as wiki-db import lines (the same `ExportedTalismans.txt`
     and `ExportedQuriousArmors.txt` MHRiseExporter writes), or talismans, all armor and decorations as
     CSV or JSON; **Copy** or **Save as…**.
 

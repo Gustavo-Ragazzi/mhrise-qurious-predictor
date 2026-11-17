@@ -758,6 +758,109 @@ fn meld_candidates(
     .map_err(pyo3::exceptions::PyValueError::new_err)
 }
 
+
+// ---- planner: walking a sequence with the pieces really augmented ------------------------------------
+
+/// (defense, slot points, resistances, skill changes merged and sorted)
+type Outcome = (i32, i32, [i32; 5], Vec<(i32, i32)>);
+
+fn outcome(s: &core::Summary) -> Outcome {
+    let mut skills: Vec<(i32, i32)> = Vec::new();
+    for &(sid, v) in &s.skills {
+        match skills.iter_mut().find(|e| e.0 == sid) {
+            Some(e) => e.1 += v,
+            None => skills.push((sid, v)),
+        }
+    }
+    skills.retain(|e| e.1 != 0);
+    skills.sort_unstable();
+    (s.defense, s.slots, s.resistances, skills)
+}
+
+/// Augments `count` times one piece (table, cost, skills) with one option from `state`: the state
+/// afterwards and the outcome of the last augment.
+#[pyfunction]
+fn augment_advance(
+    tables: &Tables,
+    state: [u32; 4],
+    table: i32,
+    cost: i32,
+    skills: Vec<(i32, i32)>,
+    buildup_type: i32,
+    count: u32,
+) -> ([u32; 4], Option<Outcome>) {
+    let mut rng = core::Rng::new(state);
+    let mut buf = Vec::with_capacity(8);
+    let mut last = None;
+    for _ in 0..count {
+        core::create_result(&mut rng, &tables.0, table, cost, &skills, buildup_type, &mut buf);
+        last = Some(outcome(&core::summarize(&buf)));
+    }
+    (rng.state(), last)
+}
+
+/// Augments one piece again and again from `state` until an augment gives `expected` (defense, slot
+/// points, resistances and skill changes): (how many augments, state after the last one), or None
+/// within `limit`.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn augment_find(
+    py: Python<'_>,
+    tables: &Tables,
+    state: [u32; 4],
+    table: i32,
+    cost: i32,
+    skills: Vec<(i32, i32)>,
+    buildup_type: i32,
+    expected: Outcome,
+    limit: u64,
+) -> Option<(u64, [u32; 4])> {
+    let t = tables.0.clone();
+    let mut expected = expected;
+    expected.3.sort_unstable();
+    py.allow_threads(move || {
+        let mut rng = core::Rng::new(state);
+        let mut buf = Vec::with_capacity(8);
+        for n in 1..=limit {
+            core::create_result(&mut rng, &t, table, cost, &skills, buildup_type, &mut buf);
+            if outcome(&core::summarize(&buf)) == expected {
+                return Some((n, rng.state()));
+            }
+        }
+        None
+    })
+}
+
+/// Melds talismans of one method (and picked skill) from `state`, reloaded save (empty carried
+/// table), until one has `skills` and `slots`: (how many talismans, state after it), or None.
+#[pyfunction]
+#[pyo3(signature = (tables, method, target, state, skills, slots, limit))]
+#[allow(clippy::too_many_arguments)]
+fn meld_find(
+    py: Python<'_>,
+    tables: &MeldTables,
+    method: i32,
+    target: Option<i32>,
+    state: [u32; 4],
+    skills: Vec<(i32, i32)>,
+    slots: [i32; 3],
+    limit: u64,
+) -> PyResult<Option<(u64, [u32; 4])>> {
+    let tables = tables.0.clone();
+    py.allow_threads(move || -> Result<Option<(u64, [u32; 4])>, String> {
+        let mut m = meld::Melder::new(&tables, method, target, [None, None])?;
+        let mut rng = core::Rng::new(state);
+        for n in 1..=limit {
+            let t = m.talisman(&mut rng);
+            if t.skills == skills && t.slots == slots {
+                return Ok(Some((n, rng.state())));
+            }
+        }
+        Ok(None)
+    })
+    .map_err(pyo3::exceptions::PyValueError::new_err)
+}
+
 impl Drop for Scan {
     fn drop(&mut self) {
         self.0.cancel.store(true, Ordering::Relaxed);
@@ -777,6 +880,9 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(set_improve, m)?)?;
     m.add_function(wrap_pyfunction!(augment_candidates, m)?)?;
     m.add_function(wrap_pyfunction!(meld_candidates, m)?)?;
+    m.add_function(wrap_pyfunction!(augment_advance, m)?)?;
+    m.add_function(wrap_pyfunction!(augment_find, m)?)?;
+    m.add_function(wrap_pyfunction!(meld_find, m)?)?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }
