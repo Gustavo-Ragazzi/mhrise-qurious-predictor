@@ -27,6 +27,8 @@ use rayon::prelude::*;
 
 pub const MAX_REQ: usize = 24;
 const DEPTH: usize = 6; // talisman + 5 armor parts
+/// Rolled dominators (with different rolls) needed to drop a candidate; see `prune_dominated`.
+const SAFE_DOMINATORS: usize = 2;
 const COST_SHIFT: u32 = 40;
 const COST_LIMIT: i64 = 8191;
 /// Slot levels per skill point are kept x12 (deco level / points: 1, 2, 3, 4, 4/3, 3/2...).
@@ -190,6 +192,8 @@ struct Ctx<'a> {
     suf_slot_ub: [i64; DEPTH + 1],
     /// Score mode: candidates of each depth by `ub`, highest first (for the room-aware bound).
     by_ub: Vec<Vec<usize>>,
+    /// Candidates of each depth by `offer`, highest first (for the dynamic skill bound).
+    by_offer: Vec<Vec<usize>>,
     floor: i64,
     best_slot: [i64; 5],
     widx: HashMap<i32, usize>,
@@ -323,7 +327,7 @@ impl<'a> Ctx<'a> {
         let k = q.reqs.len().min(MAX_REQ);
         let best_slot = Self::best_slot(q);
         let cost_first = q.cost_first;
-        let mut wskills: Vec<i32> = if q.value == Value::Score {
+        let mut wskills: Vec<i32> = if q.value == Value::Score && !q.cost_first {
             q.weights
                 .iter()
                 .filter(|(_, w)| **w > 0.0)
@@ -436,6 +440,14 @@ impl<'a> Ctx<'a> {
         for (l, v) in slot_val.iter_mut().enumerate() {
             *v = (q.slot_values[l] * 100.0).round() as i64;
         }
+        let by_offer: Vec<Vec<usize>> = cands
+            .iter()
+            .map(|l| {
+                let mut ix: Vec<usize> = (0..l.len()).collect();
+                ix.sort_by_key(|&i| Reverse(l[i].offer));
+                ix
+            })
+            .collect();
         let by_ub: Vec<Vec<usize>> = if w > 0 {
             cands
                 .iter()
@@ -474,6 +486,7 @@ impl<'a> Ctx<'a> {
                 .collect(),
             wskills,
             by_ub,
+            by_offer,
             best_slot,
             widx,
             floor: match q.value {
@@ -541,7 +554,34 @@ impl<'a> Ctx<'a> {
         let missing: i64 = (0..self.k)
             .map(|s| (self.req[s] - pts[s]).max(0) as i64 * self.unit[s])
             .sum();
-        missing <= UNIT * (1..=4).map(|l| cap[l] as i64).sum::<i64>() + self.suf_offer[d]
+        let slots_now = UNIT * (1..=4).map(|l| cap[l] as i64).sum::<i64>();
+        if missing > slots_now + self.suf_offer[d] {
+            return false;
+        }
+        if missing == 0 || d == DEPTH {
+            return true;
+        }
+        // The same with what is still missing: per remaining depth, the best candidate's points up
+        // to each deficit plus its slots (min(a + b, m) <= min(a, m) + min(b, m) keeps it valid).
+        let deficit: Vec<i64> = (0..self.k).map(|s| (self.req[s] - pts[s]).max(0) as i64).collect();
+        let mut have = slots_now;
+        for dd in d..DEPTH {
+            let mut best = 0i64;
+            for &c in &self.by_offer[dd] {
+                let p = &self.cands[dd][c];
+                if p.offer <= best {
+                    break;
+                }
+                let gain = (0..self.k).map(|s| (p.pts[s] as i64).clamp(0, deficit[s]) * self.unit[s]).sum::<i64>()
+                    + UNIT * (1..=4).map(|l| p.cap[l] as i64).sum::<i64>();
+                best = best.max(gain);
+            }
+            have += best;
+            if have >= missing {
+                return true;
+            }
+        }
+        false
     }
 
     /// Free slots (count per exact level) after placing `chosen`, largest decoration into the
@@ -991,7 +1031,7 @@ fn prune_dominated(mut ps: Vec<P>, k: usize, cost_first: bool) -> Vec<P> {
             }
             if !rolled.contains(&(x.seq, x.roll)) {
                 rolled.push((x.seq, x.roll));
-                if rolled.len() >= DEPTH - 1 {
+                if rolled.len() >= SAFE_DOMINATORS {
                     continue 'next;
                 }
             }
@@ -1014,7 +1054,7 @@ pub struct Outcome {
 }
 
 /// The best `q.limit` sets, best first (none when no set reaches every requested level), searching
-/// until `deadline`. With `cost_first` the roll budget grows step by step (0, 1, 2, 4...) until
+/// until `deadline`. With `cost_first` the roll budget grows step by step (0, 1, 2, 3, 5, 8...) until
 /// `q.limit` sets fit in it: sets that need few rolls are found and proven fast, without searching
 /// every far roll first.
 pub fn search(q: &Query, deadline: Option<Instant>) -> Outcome {
@@ -1027,19 +1067,29 @@ pub fn search(q: &Query, deadline: Option<Instant>) -> Outcome {
         .sum();
     let top = (q.max_cost as u64).min(reach) as u32;
     let mut budget = 0u32;
+    let mut done: Vec<SetResult> = Vec::new();
     loop {
         let mut step = q.clone();
         step.max_cost = budget.min(top);
-        let out = run(&step, deadline);
-        // `limit` sets within the budget are the best `limit` overall: any other needs more rolls
-        if out.sets.len() >= q.limit || !out.complete || budget >= top {
+        let mut out = run(&step, deadline);
+        if !out.complete {
+            // the sets of the last finished budget are exact; add what this one found beyond them
+            let prev = done.len();
+            let have = |s: &SetResult| done.iter().any(|d| d.parts == s.parts && d.talisman == s.talisman);
+            let extra: Vec<SetResult> = out.sets.into_iter().filter(|s| !have(s)).collect();
+            done.extend(extra);
+            done[prev..].sort_by_key(|s| s.cost);
+            done.truncate(q.limit);
+            out.sets = done;
             return out;
         }
-        budget = if budget == 0 {
-            1
-        } else {
-            budget.saturating_mul(2)
-        };
+        // `limit` sets within the budget are the best `limit` overall: any other needs more rolls
+        if out.sets.len() >= q.limit || budget >= top {
+            return out;
+        }
+        done = out.sets;
+        // small steps: each costs several times the one before, so overshooting the rolls needed is expensive
+        budget = if budget < 2 { budget + 1 } else { budget.saturating_add(budget.div_ceil(2)) };
     }
 }
 

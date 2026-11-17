@@ -571,6 +571,23 @@ fn set_improve(
     ))
 }
 
+/// Results of one piece (or one talisman method) kept so far, earliest roll first: a later roll is
+/// only worth keeping if no earlier one has at least its requested levels, slot capacity and score.
+#[derive(Default)]
+struct Frontier(Vec<(Vec<i32>, [i32; 5], f64)>);
+
+impl Frontier {
+    fn admit(&mut self, lv: Vec<i32>, caps: [i32; 5], value: f64) -> bool {
+        let covered = self.0.iter().any(|(l, c, v)| {
+            *v >= value && l.iter().zip(&lv).all(|(a, b)| a >= b) && c.iter().zip(&caps).all(|(a, b)| a >= b)
+        });
+        if !covered {
+            self.0.push((lv, caps, value));
+        }
+        !covered
+    }
+}
+
 fn slot_caps(slots: &[i32]) -> [i32; 5] {
     let mut out = [0; 5];
     for &s in slots {
@@ -607,9 +624,9 @@ type AugTuple = (u32, i32, u32, Vec<(i32, i32)>, [u8; 3], i32, [i32; 5], Vec<(i3
 type PieceArgs = (u32, i32, i32, Vec<(i32, i32)>, Vec<i32>);
 
 /// The augments of the next `count` rolls of every piece and type that make the piece better: a
-/// `relevant` skill level or slot capacity more, or (with `weights`) a higher score. Of results with
-/// the same relevant levels and slots only the earliest roll is kept, or a later one with a higher
-/// score. `generators` = the 56 saved states.
+/// `relevant` skill level or slot capacity more, or (with `weights`) a higher score. A later roll is
+/// dropped when an earlier one of the same piece already has at least its relevant levels, slot
+/// capacity and score. `generators` = the 56 saved states.
 #[pyfunction]
 #[pyo3(signature = (tables, pieces, generators, types, count, relevant, weights, slot_values))]
 #[allow(clippy::too_many_arguments)]
@@ -644,7 +661,7 @@ fn augment_candidates(
                     })
                     .collect();
                 let base_ub = ub(&weights, &slot_values, skills, &base_slots);
-                let mut seen: HashMap<(Vec<i32>, [u8; 3]), f64> = HashMap::new();
+                let mut kept = Frontier::default();
                 let mut out = Vec::new();
                 let mut buf = Vec::with_capacity(8);
                 for n in 1..=count {
@@ -677,9 +694,7 @@ fn augment_candidates(
                         for (o, v) in slots.iter_mut().zip(&slots_v) {
                             *o = (*v).clamp(0, 4) as u8;
                         }
-                        let e = seen.entry((lv, slots)).or_insert(f64::NEG_INFINITY);
-                        if value > *e {
-                            *e = value;
+                        if kept.admit(lv, caps, value) {
                             let mut delta: Vec<(i32, i32)> = Vec::new();
                             for &(sid, v) in &s.skills {
                                 match delta.iter_mut().find(|e| e.0 == sid) {
@@ -722,7 +737,7 @@ fn meld_candidates(
     py.allow_threads(move || -> Result<Vec<MeldCand>, String> {
         let mut m = meld::Melder::new(&tables, method, target, [None, None])?;
         let mut rng = core::Rng::new(state);
-        let mut seen: HashMap<(Vec<i32>, [i32; 3]), f64> = HashMap::new();
+        let mut kept = Frontier::default();
         let mut out = Vec::new();
         for n in 1..=count {
             let t = m.talisman(&mut rng);
@@ -734,9 +749,7 @@ fn meld_candidates(
             if lv.iter().all(|&x| x == 0) && t.slots[0] == 0 && value <= 0.0 {
                 continue;
             }
-            let e = seen.entry((lv, t.slots)).or_insert(f64::NEG_INFINITY);
-            if value > *e {
-                *e = value;
+            if kept.admit(lv, slot_caps(&t.slots), value) {
                 out.push((n, t.skills.clone(), t.slots, t.unsure));
             }
         }

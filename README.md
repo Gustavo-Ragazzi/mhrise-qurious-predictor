@@ -174,8 +174,9 @@ in place and returns only the rows shown; the Python version is the reference it
 The Set builder and the Build optimizer run `native/core/src/sets.rs`, an exact branch and bound
 adapted from mhrise-set-builder: candidates per part (dominated ones dropped), bounds on the wanted
 skill levels (decorations included) and on the value, and an exact decoration placement at each
-complete set. Future augments and talismans are candidates that cost rolls of their sequence; the roll
-budget grows step by step (0, 1, 2, 4...) so a close set is found and proven quickly. Searches stop
+complete set. Future augments and talismans are candidates that cost rolls of their sequence; a later
+roll of a piece is dropped when an earlier one already gives at least the same wanted skills and slots,
+and the roll budget grows step by step (0, 1, 2, 3, 5, 8...) so close sets are found and proven quickly. Searches stop
 after 20 seconds and then say so. Tests compare it with a brute force on random sets and check every
 set found against the engine's own predictions (`tests/test_sets.py`).
 

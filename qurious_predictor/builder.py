@@ -111,7 +111,8 @@ class Builder:
                 if full is None or not in_rank(full) or (o.qurious_owned_only and int(aid) not in owned_ids):
                     continue
                 pieces.append((int(aid), a["table"], a["cost"], [tuple(s) for s in a["skills"]], list(a["slots"])))
-            weights = o.weights if o.value == "score" else {}
+            # with the fewest rolls first, the score only breaks ties: candidates follow the wanted skills
+            weights = o.weights if o.value == "score" and not o.cost_first else {}
             rows = native().augment_candidates(
                 search.native_tables(self.data), pieces, [g.state() for g in generators], list(engine.TYPE_NAMES),
                 int(o.qurious_rolls), [s for s, _ in o.reqs], {int(k): float(v) for k, v in weights.items()},
@@ -142,7 +143,7 @@ class Builder:
                     add({"kind": "owned", "box": it.index, "skills": list(it.skills), "slots": list(it.slots)},
                         it.skills, it.slots)
         if o.talisman_rolls > 0 and generators:
-            weights = {int(k): float(v) for k, v in (o.weights if o.value == "score" else {}).items() if v}
+            weights = {int(k): float(v) for k, v in (o.weights if o.value == "score" and not o.cost_first else {}).items() if v}
             nt = melding.native_tables(self.data["melding"])
             # Qurious Melding only: Vigor (random) and Cyclus with every skill it can pick
             jobs = [(m, row) for m in TALISMAN_METHODS
