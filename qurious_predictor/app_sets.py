@@ -512,20 +512,20 @@ class SetsMixin:
                 except Exception as e:
                     x["check"] = {"error": str(e), "state": state}
                 changed = True
-            # a result not found again for the set alone may come with the other saved sets' pieces
-            # (augments spent on another set's piece before it): look in the roadmap of them all
-            if any((x.get("check") or {}).get("missing") and not x["check"].get("together") for x in sets):
+            # a set saved with pieces inside or after the saved sets' roadmap (augments spent on another
+            # set's piece before them) needs that roadmap: when the set alone needs more, count along it
+            if any("together" not in (x.get("check") or {"together": 1}) and "error" not in x["check"] for x in sets):
                 plan = self._saved_plan()
-                gone = {(t["id"], planner.outcome_key(t["expected"])) for t in plan["missing"]["armor"]} if plan else set()
-                gone_t = {(t["method"], json.dumps(t["skills"])) for t in plan["missing"]["talismans"]} if plan else set()
                 for x in sets:
                     c = x.get("check") or {}
-                    if c.get("missing") and not c.get("together"):
-                        alone = c["missing"]
-                        c["missing"] = (sum((t["id"], planner.outcome_key(t["expected"])) in gone for t in x["targets"]["armor"])
-                                        + sum((t["method"], json.dumps(t["skills"])) in gone_t for t in x["targets"]["talismans"]))
-                        c.update(together=True, missingAlone=alone)
-                        changed = True
+                    if not plan or "together" in c or "error" in c:
+                        continue
+                    t = pl.check(x, self.generators, self.box[0], together=plan)
+                    worse = (c["missing"], c["augments"] + c["talismans"]) > (t["missing"], t["augments"] + t["talismans"])
+                    if worse:
+                        x["check"] = {**c, **t, "aloneAugments": c["augments"], "missingAlone": c["missing"]}
+                    else:
+                        c["together"] = False
         except planner.Stopped:
             pass
         if changed:

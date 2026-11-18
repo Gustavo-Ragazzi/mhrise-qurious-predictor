@@ -72,3 +72,21 @@ def test_two_augments_on_one_sequence():
         assert planner.outcome_key(last) == planner.outcome_key(s["expected"])
     assert plan["totals"]["augments"] == q["total"] and plan["totals"]["zenny"] > 0
     assert plan["materials"]["amber"][0]["count"] * plan["materials"]["amber"][0]["worth"] >= plan["totals"]["amber"]
+
+
+def test_best_order_many_targets_goes_by_rolls_not_saved_n():
+    """More than 6 targets: the next closest from where the plan is, not the ``n`` each set was saved
+    with (a set's ``n`` counts from where its own plan was)."""
+    from qurious_predictor import planner
+    at = {"a": 10, "b": 20, "c": 30, "d": 40, "e": 50, "f": 60, "late": 103, "early": 101}
+    # "late" was saved with n 95 by a set planned alone; along the roadmap it comes at 103, after "early"
+    ns = {**at, "late": 95}
+    targets = [{"id": k, "n": ns[k]} for k in at]
+
+    def find(state, t, limit):
+        k = at[t["id"]] - state
+        return (k, at[t["id"]]) if 0 < k <= limit else None
+
+    order = planner.best_order(0, targets, find)
+    assert [t["id"] for t, *_ in order] == ["a", "b", "c", "d", "e", "f", "early", "late"]
+    assert sum(k for _, k, _ in order) == 103

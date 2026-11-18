@@ -12,6 +12,7 @@ How the generators move (see docs/RESEARCH.md):
 
 from __future__ import annotations
 
+import json
 import math
 
 from . import engine, melding, search
@@ -35,16 +36,27 @@ def best_order(start, targets, find):
     """The order of ``targets`` on one sequence that gets them all with the fewest rolls: [(target,
     rolls, state after)], or None when some does not come again. ``find(state, target, limit)`` ->
     (rolls, state after) or None. Branch and bound over the orders (closest first, a search never
-    goes past the best total found); more than 6 targets: closest first only."""
+    goes past the best total found); more than 6 targets: the next closest each time (by the rolls
+    from where the plan is, not by ``n``: a set's ``n`` counts from where its own plan was)."""
     ts = sorted(targets, key=lambda t: t["n"])
     if math.factorial(len(ts)) > MAX_ORDERS:
-        state, out = start, []
-        for t in ts:
-            f = find(state, t, FIND_LIMIT)
-            if f is None:
+        state, out, rest = start, [], ts
+        while rest:
+            _check_stop()
+            near = None
+            for i, t in enumerate(rest):
+                lim = FIND_LIMIT if near is None else near[1][0] - 1
+                if lim <= 0:
+                    break
+                f = find(state, t, lim)
+                if f is not None:
+                    near = (i, f)
+            if near is None:
                 return None
-            out.append((t, *f))
+            i, f = near
+            out.append((rest[i], *f))
             state = f[1]
+            rest = rest[:i] + rest[i + 1:]
         return out
     best = [None, math.inf]
 
@@ -286,9 +298,12 @@ class Planner:
             out[-1] += 1
         return out
 
-    def check(self, s: dict, generators, box_armors=()) -> dict:
+    def check(self, s: dict, generators, box_armors=(), together: dict | None = None) -> dict:
         """A saved set against the save as it is now: whether its rolls still come in the order it was
-        saved with (pieces of one sequence augmented one after the other), and what the planner needs."""
+        saved with (pieces of one sequence augmented one after the other), and what the planner needs.
+        ``together``: the roadmap of every saved set (``plan``); a set saved with pieces inside or after
+        that roadmap needs it, so its augments are counted along it (up to its last piece on each
+        sequence, the other sets' pieces before that included)."""
         nt = search.native_tables(self.data)
         in_order = True
         by_seq = {}
@@ -302,12 +317,32 @@ class Planner:
                 done = t["n"]
                 if last is None or outcome_key(last) != outcome_key(t["expected"]):
                     in_order = False
-        plan = self.plan([s], generators, box_armors)
         saved = sum(max(t["n"] for t in ts) for ts in by_seq.values())
+        if together is not None:
+            return self._check_together(s, together, in_order, saved)
+        plan = self.plan([s], generators, box_armors)
         return {"inOrder": in_order, "savedAugments": saved,
                 "augments": plan["totals"]["augments"], "talismans": plan["totals"]["talismans"],
                 "missing": len(plan["missing"]["armor"]) + len(plan["missing"]["talismans"]),
                 "reordered": any(q["reordered"] for q in plan["armor"])}
+
+    @staticmethod
+    def _check_together(s: dict, plan: dict, in_order: bool, saved: int) -> dict:
+        tg = s["targets"]
+        mine_a = {(t["id"], t["type"], outcome_key(t["expected"])) for t in tg["armor"]}
+        mine_t = {(t["method"], t["target"], json.dumps(t["skills"]), json.dumps(t["slots"])) for t in tg["talismans"]}
+        augments = sum(max((st["at"] for st in q["steps"] if (st["id"], st["type"], outcome_key(st["expected"])) in mine_a),
+                           default=0) for q in plan["armor"])
+        talismans = sum(max((st["at"] for st in g["steps"]
+                             if (st["method"], st["target"], json.dumps(st["skills"]), json.dumps(st["slots"])) in mine_t),
+                            default=0) for g in plan["talismans"])
+        missing = (sum((t["id"], t["type"], outcome_key(t["expected"])) in mine_a for t in plan["missing"]["armor"])
+                   + sum((t["method"], t["target"], json.dumps(t["skills"]), json.dumps(t["slots"])) in mine_t
+                         for t in plan["missing"]["talismans"]))
+        reordered = any(q["reordered"] and any((st["id"], st["type"], outcome_key(st["expected"])) in mine_a for st in q["steps"])
+                        for q in plan["armor"])
+        return {"inOrder": in_order, "savedAugments": saved, "augments": augments, "talismans": talismans,
+                "missing": missing, "reordered": reordered, "together": True}
 
     def plan(self, sets: list[dict], generators, box_armors) -> dict:
         armor_t, tal_t, craft = [], [], {}

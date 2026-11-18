@@ -2249,7 +2249,7 @@ function checkCell(s) {
   if (c.error) return `<span style="color:var(--down)" title="${esc(c.error)}">error</span>`;
   if (c.missing) return `<span style="color:var(--down)" title="${c.missing} wanted result(s) do not come again from the save as it is now">${c.missing} not reachable</span>`;
   const n = c.augments.toLocaleString();
-  if (c.missingAlone) return `<span style="color:var(--gold)" title="${c.missingAlone} of its results come only with the augments before them spent on another saved set's piece: it needs the other saved sets (see Make plan)">needs the other saved sets</span>`;
+  if (c.together) return `<span style="color:${c.augments > c.savedAugments * 1.5 ? "var(--down)" : "inherit"}" title="Some of its pieces come inside or after the other saved sets' roadmap (the augments before them spent on another saved set's piece): counted along that roadmap, up to its last piece on each sequence${c.aloneAugments != null ? `; without the other saved sets it would need ${c.aloneAugments.toLocaleString()} augments` : ""}${c.missingAlone ? ` and ${c.missingAlone} result(s) would not come` : ""}. Plan it with the other saved sets (Make plan)">${n} augments · needs the other saved sets</span>`;
   if (c.inOrder) return `<span title="The rolls come as saved">${n} augments ✓</span>`;
   const worse = c.augments > c.savedAugments * 1.5;
   return `<span style="color:${worse ? "var(--down)" : "var(--gold)"}" title="Saved with ${c.savedAugments.toLocaleString()} augments assuming every piece of a sequence moves it the same way; they do not, so the planner re-finds each result: ${n} augments${worse ? ". Consider Search again" : ""}">${n} augments${worse ? " ⚠" : ""}</span>`;

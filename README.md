@@ -133,7 +133,10 @@ Talismans), **My equipment** (Inventory, Build optimizer, Export) and **Set buil
 11. **Saved sets & planner** (under Set builder): **Save set** on a Set builder result keeps it.
     Opening the tab checks every saved set against the save as it is now (again only after the save
     changed): **Now** shows the augments the planner needs for that set alone, in gold when that
-    differs from what the set was saved with and with ⚠ when it is much more; **Search again** opens
+    differs from what the set was saved with and with ⚠ when it is much more. A set saved with pieces
+    inside or after the other saved sets' roadmap needs that roadmap: when the set alone would need
+    more, Now counts along the roadmap of every saved set (up to the set's last piece on each
+    sequence) and says *needs the other saved sets*. **Search again** opens
     the Set builder with the set's skills and weapon slots and searches. Tick
     saved sets and press **Make plan** for a roadmap from the save as it is now: per sequence, which
     piece to augment how many times and which augment to keep, per Qurious Melding sequence how many
@@ -144,7 +147,8 @@ Talismans), **My equipment** (Inventory, Build optimizer, Export) and **Set buil
     Cyclus one per grade of the picked skill. Inside a sequence the order matters: an augment moves it
     by a different amount depending on what it rolls and sometimes on the piece, so the planner walks
     each sequence with the pieces really augmented, finds every wanted result again (also after you
-    rolled something else) and picks the order that needs the fewest augments. When a cheaper piece of
+    rolled something else) and picks the order that needs the fewest augments (more than six wanted
+    results on one sequence: the next closest each time, counted from where the roadmap is). When a cheaper piece of
     the same cost gives the same result, the augments before a wanted one go on it.
 12. **Export**: talismans or qurious armor as wiki-db import lines (the same `ExportedTalismans.txt`
     and `ExportedQuriousArmors.txt` MHRiseExporter writes), or talismans, all armor and decorations as
