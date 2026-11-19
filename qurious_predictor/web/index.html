@@ -246,6 +246,32 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
 .setlist td.pn { white-space: normal; }
 .setlist .rolled { color: var(--gold); }
 .setlist td.pn .tint { width: 18px; height: 18px; margin: 0 2px 0 8px; }
+.setlist th.sort { cursor: pointer; user-select: none; }
+.setlist th.sort:hover { color: var(--gold); }
+.setlist th.sort.on { color: var(--gold); }
+/* plan: the route through one sequence */
+.route { display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px 0; padding: 12px; }
+.rnode { border: 1px solid var(--line2); border-radius: 6px; background: var(--panel); padding: 8px 10px; width: 230px;
+  display: flex; flex-direction: column; gap: 4px; }
+.rnode.start { width: auto; min-width: 110px; justify-content: center; align-items: center; background: #1f1a12; border-style: dashed; }
+.rnode .rhead { display: flex; align-items: center; gap: 6px; }
+.rnode .rnum { flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--gold); color: #1b1712; font-weight: 700;
+  font-size: 12px; display: grid; place-items: center; }
+.rnode .rname { font-weight: 700; color: var(--text); line-height: 1.2; }
+.rnode .tint { width: 20px; height: 20px; flex: none; }
+.rnode .rat { font-size: 20px; font-weight: 700; color: var(--gold); line-height: 1.1; }
+.rnode .rat small { font-size: 11.5px; font-weight: 400; color: var(--muted); }
+.rnode .rfor { font-size: 11.5px; color: var(--muted); }
+.rnode .rdo { font-size: 12px; color: var(--text); border-top: 1px solid var(--line); padding-top: 4px; }
+.rnode .rres { display: flex; flex-wrap: wrap; gap: 0 8px; font-size: 12px; }
+.rarrow { display: flex; flex-direction: column; justify-content: center; align-items: center; min-width: 74px; padding: 0 4px;
+  color: var(--gold2); }
+.rarrow b { color: var(--gold); font-size: 15px; }
+.rarrow .ln { font-size: 22px; line-height: 1; }
+.rarrow small { color: var(--muted); font-size: 11px; }
+.rsum { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.rsum .pill { border: 1px solid var(--gold2); border-radius: 12px; padding: 1px 10px; color: var(--gold); }
+.rsum .pill.total { background: var(--gold); color: #1b1712; font-weight: 700; border-color: var(--gold); }
 .qcell .sk { margin-right: 8px; }
 .cardlabel { padding: 14px 12px 0; color: var(--gold2); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
 .exporttext { display: block; width: calc(100% - 20px); height: calc(100% - 20px); margin: 10px; resize: none; background: #120f0b;
@@ -2138,6 +2164,19 @@ function setupPlanner() {
   $("pstop").addEventListener("click", () => { api().search_stop(); $("pstop").disabled = true; });
   $("table").addEventListener("click", async e => {
     if (S.mode !== "planner") return;
+    const so = e.target.closest("[data-psort]");
+    if (so) {
+      const key = so.dataset.psort, cur = S.planSort || {};
+      S.planSort = { key, dir: cur.key === key ? -cur.dir : 1 };
+      return renderPlanTable();
+    }
+    if (e.target.closest("[data-pselall]")) {
+      const all = (S.saved || []).map(s => s.id), sel = new Set(S.settings.planSel || []);
+      S.settings.planSel = all.every(id => sel.has(id)) ? [] : all;
+      api().save_settings({ planSel: S.settings.planSel });
+      if (S.plan) S.plan.stale = true;
+      return renderPlanTable();
+    }
     const c = e.target.closest("[data-psel]");
     if (c) {
       const id = +c.dataset.psel, sel = new Set(S.settings.planSel || []);
@@ -2222,10 +2261,25 @@ function resultCell(r) {
   return bits.join("") || `<span class="muted">nothing</span>`;
 }
 function renderPlanTable() {
-  const saved = S.saved || [], sel = new Set(S.settings.planSel || []);
+  const sel = new Set(S.settings.planSel || []);
+  const sort = S.planSort || { key: null, dir: 1 };
+  const keyOf = {
+    sel: s => sel.has(s.id) ? 0 : 1,
+    name: s => s.name.toLowerCase(),
+    created: s => s.created || "",
+    cost: s => s.set.cost,
+  }[sort.key];
+  const saved = keyOf ? [...(S.saved || [])].sort((a, b) => {
+    const x = keyOf(a), y = keyOf(b);
+    return (x < y ? -1 : x > y ? 1 : a.id - b.id) * sort.dir;
+  }) : (S.saved || []);
+  const allOn = saved.length && saved.every(s => sel.has(s.id));
+  const th = (key, label, style = "") => `<th class="sort ${sort.key === key ? "on" : ""}" data-psort="${key}" style="${style}" title="Sort by this column (again: reverse)">${label}${sort.key === key ? (sort.dir > 0 ? " ▲" : " ▼") : ""}</th>`;
   let html = `<div class="cardlabel">Saved sets</div>`;
   if (!saved.length) html += `<div class="empty">No saved sets yet: in the Set builder, press Save on a set.</div>`;
-  else html += `<table class="setlist"><thead><tr><th></th><th>Set</th><th>Saved</th><th style="text-align:right">Rolls then</th><th title="Checked against the save as it is now: the qurious augments the planner needs for this set alone (pieces of one sequence augmented one after the other)">Now ⓘ</th><th>Pieces (rolled in gold)</th><th>Rolls it needs</th><th></th></tr></thead><tbody>`
+  else html += `<table class="setlist"><thead><tr><th style="white-space:nowrap"><span class="chip ${allOn ? "on" : ""}" data-pselall title="${allOn ? "Untick every set" : "Tick every set"}">${allOn ? "✓" : "&nbsp;"}</span>
+      <span class="sort ${sort.key === "sel" ? "on" : ""}" data-psort="sel" style="cursor:pointer" title="Sort ticked sets first (again: reverse)">${sort.key === "sel" ? (sort.dir > 0 ? "▲" : "▼") : "⇅"}</span></th>
+    ${th("name", "Set")}${th("created", "Saved")}${th("cost", "Rolls then", "text-align:right")}<th title="Checked against the save as it is now: the qurious augments the planner needs for this set alone (pieces of one sequence augmented one after the other)">Now ⓘ</th><th>Pieces (rolled in gold)</th><th>Rolls it needs</th><th></th></tr></thead><tbody>`
     + saved.map(s => {
       const st = s.set, t = s.targets;
       const needs = t.armor.map(a => `${esc(a.name)} · ${esc(S.types.find(x => x.id === a.type).name)}`)
@@ -2259,13 +2313,13 @@ function renderPlan() {
   if (!p) return `<div class="empty">Tick sets and press Make plan.</div>`;
   if (p.running) return `<div class="empty">Planning…</div>`;
   if (p.error) return `<div class="empty" style="color:var(--down)">${esc(p.error)}</div>`;
-  const t = p.totals;
+  const t = p.totals, m = p.materials;
   let h = `<div class="cardlabel">Plan${p.stale ? ` <b style="color:var(--gold)">(sets changed: press Make plan again)</b>` : ""}</div>`;
-  h += `<div class="setcard"><div class="sethead"><span class="big">Total</span>
-    <span>${t.augments.toLocaleString()} qurious augments</span><span>${zenny(t.zenny)}</span>
-    <span>${t.amber.toLocaleString()} Amber Essence points</span>
-    <span>${t.talismans.toLocaleString()} talismans melded</span><span>${t.kamura.toLocaleString()} Kamura Points</span>
-    ${t.meldPoints ? `<span>${t.meldPoints.toLocaleString()} melding points</span>` : ""}
+  h += `<div class="setcard"><div class="sethead"><span class="big">Total</span>${rollsSummary(p)}</div>
+    <div class="sethead" style="background:none">
+    <span>${zenny(t.zenny)}</span>
+    ${m.amber.length ? `<span title="${t.amber.toLocaleString()} Amber Essence points: any one of these (or a mix)">${amberItems(m.amber, t.amber)}</span>` : ""}
+    ${t.meldPoints ? `<span title="Any one of these (or a mix)">${t.meldPoints.toLocaleString()} melding points: ${m.meld.slice(0, 3).map(x => `<b>${x.count.toLocaleString()}</b> ${esc(x.name)}`).join(" or ")}</span>` : ""}
     ${t.talismansUsed ? `<span>${t.talismansUsed.toLocaleString()} talismans used up (rarity 8–10)</span>` : ""}</div></div>`;
   const miss = p.missing.armor.length + p.missing.talismans.length;
   if (miss) h += `<div class="empty" style="color:var(--down);padding:14px">${miss} wanted result${miss > 1 ? "s" : ""} not found again within 2,000,000 rolls from the save as it is now
@@ -2273,48 +2327,65 @@ function renderPlan() {
   if (!p.armor.length && !p.talismans.length && !miss) h += `<div class="empty">These sets need no rolls.</div>`;
   for (const q of p.armor) {
     h += `<div class="setcard"><div class="sethead"><span class="big">${esc(q.typeName)} · cost ${q.cost}</span>
-      <span class="rar">${q.total.toLocaleString()} augments</span><span>${zenny(q.zenny)}</span><span>${q.points.toLocaleString()} Amber Essence points</span>
+      <span class="rar">${q.total.toLocaleString()} augments</span><span>${zenny(q.zenny)}</span>
       ${q.reordered ? `<span class="src roll">order changed to get every result</span>` : ""}</div>
-      <table class="settable"><thead><tr><th>Step</th><th>For</th><th>What to do</th><th>Result to keep</th><th style="text-align:right">Cost</th></tr></thead><tbody>`
-      + q.steps.map((s, i) => `<tr><td class="n">${i + 1}</td><td class="pn">${s.sets.map(esc).join(", ")}</td>
-        <td class="pn">${s.burnName && s.augments > 1
-          ? `Augment <b>${esc(s.burnName)}</b> ${s.augments - 1}× (cheaper, same result), then <b>${esc(s.name)}</b> once`
-          : `Augment <b>${esc(s.name)}</b> ${s.augments}× ${s.augments > 1 ? "(keep the last)" : ""}`}
-          <div class="muted small">augments ${(s.at - s.augments + 1).toLocaleString()}–${s.at.toLocaleString()} of this sequence from now · rarity ${s.rarity}</div></td>
-        <td class="skills">${resultCell(s.result)}</td><td class="n" style="white-space:nowrap">${zenny(s.zenny)}<br>${s.points.toLocaleString()} pts</td></tr>`).join("")
-      + `</tbody></table></div>`;
+      <div class="route">${routeStart()}`
+      + q.steps.map((s, i) => routeArrow(s.augments, i, "augment") + routeNode(i, s.part, s.name, s.sets, s.at,
+          s.burnName && s.augments > 1
+            ? `Augment <b>${esc(s.burnName)}</b> ${s.augments - 1}× (cheaper, same result), then <b>${esc(s.name)}</b> once: keep it`
+            : `Augment <b>${esc(s.name)}</b> ${s.augments}×${s.augments > 1 ? ": keep the last" : ""}`,
+          resultCell(s.result), `${zenny(s.zenny)} · rarity ${s.rarity}`)).join("")
+      + `</div></div>`;
   }
   for (const g of p.talismans) {
     h += `<div class="setcard"><div class="sethead"><span class="big">${esc(g.methodName)}${g.gradeName ? ` · grade ${g.gradeName} skills` : ""}</span>
-      <span class="rar">${g.total.toLocaleString()} talismans</span><span>${g.kamura.toLocaleString()} Kamura Points</span>
+      <span class="rar">${g.total.toLocaleString()} talismans</span>
       ${g.points ? `<span>${g.points.toLocaleString()} melding points</span>` : ""}${g.used ? `<span>${g.used.toLocaleString()} talismans used up</span>` : ""}</div>
-      <table class="settable"><thead><tr><th>Step</th><th>For</th><th>What to do</th><th>Talisman to keep</th></tr></thead><tbody>`
-      + g.steps.map((s, i) => `<tr><td class="n">${i + 1}</td><td class="pn">${s.sets.map(esc).join(", ")}</td>
-        <td class="pn">Save and reload the game, then meld <b>${s.talismans}</b> talisman${s.talismans > 1 ? "s" : ""}${s.targetName ? ` picking <b>${esc(s.targetName)}</b>` : ""}: keep the last
-          <div class="muted small">talismans ${(s.at - s.talismans + 1).toLocaleString()}–${s.at.toLocaleString()} of this sequence from now</div></td>
-        <td class="skills">${s.skillRows.map(k => `<span class="sk">${skillIcon(k.color, k.name)}<span class="nm">${esc(k.name)}</span> <b style="color:var(--gold)">${k.level}</b></span>`).join("")}
-          <span class="slots">${s.slots.map(l => slot(l, false)).join("")}</span></td></tr>`).join("")
-      + `</tbody></table></div>`;
+      <div class="route">${routeStart()}`
+      + g.steps.map((s, i) => routeArrow(s.talismans, i, "talisman") + routeNode(i, null, "Talisman", s.sets, s.at,
+          `Save and reload, then meld <b>${s.talismans}</b>${s.targetName ? ` picking <b>${esc(s.targetName)}</b>` : ""}${s.talismans > 1 ? ": keep the last" : ""}`,
+          s.skillRows.map(k => `<span class="sk">${skillIcon(k.color, k.name)}<span class="nm">${esc(k.name)}</span> <b style="color:var(--gold)">${k.level}</b></span>`).join("")
+          + `<span class="slots">${s.slots.map(l => slot(l, false)).join("")}</span>`, "")).join("")
+      + `</div></div>`;
   }
   if (p.craft.length || p.copies.length) {
     h += `<div class="setcard"><div class="sethead"><span class="big">To craft</span></div><div class="steps" style="list-style:none">`
       + p.craft.map(c => `<div>${esc(c.name)} <span class="muted">(${c.sets.map(esc).join(", ")})</span></div>`).join("")
       + p.copies.map(c => `<div>${c.count} copies of ${esc(c.name)}: one per augment you keep on it</div>`).join("") + `</div></div>`;
   }
-  const m = p.materials;
-  if (m.amber.length) {
-    h += `<div class="setcard"><div class="sethead"><span class="big">Amber Essence</span><span>${t.amber.toLocaleString()} points for every augment above, any mix of:</span></div>
-      <table class="settable"><thead><tr><th>Item</th><th style="text-align:right">Points each</th><th style="text-align:right">Needed alone</th><th style="text-align:right">Fewest items mix</th></tr></thead><tbody>`
-      + m.amber.map((x, i) => `<tr><td class="pn">${esc(x.name)}</td><td class="n">${x.worth}</td><td class="n">${x.count.toLocaleString()}</td><td class="n">${(m.mix[i] || 0).toLocaleString()}</td></tr>`).join("")
-      + `</tbody></table></div>`;
-  }
-  if (m.meld.length) {
-    h += `<div class="setcard"><div class="sethead"><span class="big">Melding materials (Qurious Melding—Vigor)</span><span>${t.meldPoints.toLocaleString()} melding points, any mix of:</span></div>
-      <table class="settable"><thead><tr><th>Item</th><th style="text-align:right">Points each</th><th style="text-align:right">Needed alone</th></tr></thead><tbody>`
-      + m.meld.map(x => `<tr><td class="pn">${esc(x.name)}</td><td class="n">${x.worth}</td><td class="n">${x.count.toLocaleString()}</td></tr>`).join("")
-      + `</tbody></table></div>`;
-  }
   return h;
+}
+const TYPE_SHORT = name => name.replace(/^Augment: /, "");
+function rollsSummary(p) {
+  // rolls per augment option (cost added when one option is planned at more than one cost), then talismans and the total
+  const by = new Map();
+  for (const q of p.armor) by.set(q.typeName, [...(by.get(q.typeName) || []), q]);
+  const pills = [];
+  for (const [name, qs] of by) {
+    if (qs.length > 1) qs.forEach(q => pills.push(`<span class="pill">${q.total.toLocaleString()} ${esc(TYPE_SHORT(name))} (cost ${q.cost})</span>`));
+    else pills.push(`<span class="pill">${qs[0].total.toLocaleString()} ${esc(TYPE_SHORT(name))}</span>`);
+  }
+  for (const g of p.talismans) pills.push(`<span class="pill">${g.total.toLocaleString()} ${esc(g.methodName)}${g.gradeName ? ` ${g.gradeName}` : ""} talismans</span>`);
+  const t = p.totals;
+  const total = [t.augments ? `${t.augments.toLocaleString()} augments` : "", t.talismans ? `${t.talismans.toLocaleString()} talismans` : ""].filter(Boolean).join(" + ");
+  return `<span class="rsum">${pills.join("")}<span class="pill total">total ${total || "0"}</span></span>`;
+}
+function amberItems(amber, points) {
+  return `${points.toLocaleString()} Amber Essence points: ` + amber.map(x => `<b>${x.count.toLocaleString()}</b> ${esc(x.name)}`).join(" or ");
+}
+function routeStart() {
+  return `<div class="rnode start"><span class="rat">Save</span><small class="muted">as it is now</small></div>`;
+}
+function routeArrow(k, i, what) {
+  const from = i ? "the last piece" : "the save";
+  return `<div class="rarrow" title="${k.toLocaleString()} ${what}${k > 1 ? "s" : ""} from ${from}"><b>+${k.toLocaleString()}</b><span class="ln">⟶</span><small>from ${from}</small></div>`;
+}
+function routeNode(i, part, name, sets, at, todo, result, foot) {
+  return `<div class="rnode"><div class="rhead"><span class="rnum">${i + 1}</span>${part != null ? mask(PARTS[part], "var(--gold)", PARTS[part]) : ""}<span class="rname">${esc(name)}</span></div>
+    <div class="rat">#${at.toLocaleString()} <small>from the save</small></div>
+    <div class="rfor">for ${sets.map(esc).join(", ")}</div>
+    <div class="rres">${result}</div>
+    <div class="rdo">${todo}${foot ? `<div class="muted small">${foot}</div>` : ""}</div></div>`;
 }
 
 window.addEventListener("pywebviewready", boot);

@@ -138,10 +138,13 @@ Talismans), **My equipment** (Inventory, Build optimizer, Export) and **Set buil
     more, Now counts along the roadmap of every saved set (up to the set's last piece on each
     sequence) and says *needs the other saved sets*. **Search again** opens
     the Set builder with the set's skills and weapon slots and searches. Tick
-    saved sets and press **Make plan** for a roadmap from the save as it is now: per sequence, which
+    saved sets (the header box ticks them all; click Set, Saved, Rolls then or the tick column to sort) and press
+    **Make plan** for a roadmap from the save as it is now, shown per sequence as a route from the save to
+    each piece (how many rolls from the save and from the previous piece), with the rolls per augment option
+    and the total on top and Amber Essence as items: per sequence, which
     piece to augment how many times and which augment to keep, per Qurious Melding sequence how many
     talismans to meld and which to keep, the pieces to craft, and the cost (zenny, Amber Essence
-    points, Kamura Points, melding points, talismans used up by Cyclus), with how many of each Amber
+    points, melding points, talismans used up by Cyclus), with how many of each Amber
     Essence or melding material would pay it. What moves what: each augment cost and option has its
     own sequence (Slots+ never moves Skills+; cost 10 never moves cost 12), Vigor has one sequence and
     Cyclus one per grade of the picked skill. Inside a sequence the order matters: an augment moves it
