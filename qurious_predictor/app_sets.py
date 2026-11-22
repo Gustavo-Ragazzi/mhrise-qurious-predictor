@@ -588,13 +588,12 @@ class SetsMixin:
                 st["targetName"] = self._skill(st["target"])["name"] if st["target"] else None
         for t in plan["missing"]["armor"]:
             t["result"] = self._outcome_view(t["expected"])
-        for c in plan["craft"]:
-            c["name"] = c.get("name") or self._armor_name(c["id"])
         for d in plan["done"]:
             t = d["target"]
             d["name"] = "Talisman" if d["talisman"] else t["name"]
-        for c in plan["copies"]:
-            c["name"] = self._armor_name(c["id"])
+        for c in plan["newCopies"]:
+            c["name"] = c["name"] or self._armor_name(c["id"])
+            c["rarity"] = self.data["all_armors"][c["id"]]["rare"] + 1
         for key in ("amber", "meld"):
             for m in plan["materials"][key]:
                 m["name"] = self._name(m.pop("names"))

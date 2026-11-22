@@ -72,6 +72,10 @@ def test_two_augments_on_one_sequence():
         assert planner.outcome_key(last) == planner.outcome_key(s["expected"])
     assert plan["totals"]["augments"] == q["total"] and plan["totals"]["zenny"] > 0
     assert plan["materials"]["amber"][0]["count"] * plan["materials"]["amber"][0]["worth"] >= plan["totals"]["amber"]
+    # every piece is rolled on a new copy: one per result kept on it (more if it also takes another's augments)
+    copies = {c["id"]: c for c in plan["newCopies"]}
+    for s in q["steps"]:
+        assert copies[s["id"]]["keep"] >= 1 and copies[s["id"]]["count"] == copies[s["id"]]["keep"] + copies[s["id"]]["burn"]
 
 
 def test_best_order_many_targets_goes_by_rolls_not_saved_n():

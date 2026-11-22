@@ -407,27 +407,28 @@ class Planner:
                     tal_t.append({**t, "sets": [s["name"]]})
             for c in tg["craft"]:
                 craft.setdefault(c["id"], {**c, "sets": []})["sets"].append(s["name"])
-        # pieces augmented for more than one result need one copy each
-        copies = {}
-        for t in armor_t:
-            copies[t["id"]] = copies.get(t["id"], 0) + 1
         armor, miss_a = self.armor_plan(armor_t, generators, box_armors,
                                         [d["target"] for d in done if not d["talisman"]])
         tals, miss_t = self.talisman_plan(tal_t, generators)
         amber = sum(s["points"] for s in armor)
         meld_pts = sum(g["points"] for g in tals)
-        # a piece to augment, or to spend augments on, needs a copy in the box: craft the ones not there
-        have = {str(it.armor_id) for it in box_armors}
+        # every piece is augmented on a new copy, so the pieces in the box are never touched: one copy
+        # per result kept on it, and one more for a piece that takes the augments before another
+        # piece's result (its own result is thrown away each time)
+        new = {}
         for q in armor:
             for st in q["steps"]:
-                for aid, why in ((st["id"], "to augment"), (st["burnOn"], "to spend augments on")):
-                    if aid and aid not in have:
-                        c = craft.setdefault(aid, {"id": aid, "name": None, "sets": [], "why": why})
-                        c["sets"] += [n for n in st["sets"] if n not in c["sets"]]
+                c = new.setdefault(st["id"], {"id": st["id"], "name": st["name"], "keep": 0, "burn": 0, "sets": []})
+                c["keep"] += 1
+                c["sets"] += [n for n in st["sets"] if n not in c["sets"]]
+                if st["burnOn"]:
+                    b = new.setdefault(st["burnOn"], {"id": st["burnOn"], "name": None, "keep": 0, "burn": 0, "sets": []})
+                    b["burn"] = 1
+        for c in new.values():
+            c["count"] = c["keep"] + c["burn"]
         return {
             "armor": armor, "talismans": tals, "missing": {"armor": miss_a, "talismans": miss_t},
-            "craft": list(craft.values()), "done": done,
-            "copies": [{"id": k, "count": v} for k, v in copies.items() if v > 1],
+            "craft": list(craft.values()), "done": done, "newCopies": list(new.values()),
             "totals": {"zenny": sum(s["zenny"] for s in armor), "amber": amber, "augments": sum(s["total"] for s in armor),
                        "kamura": sum(g["kamura"] for g in tals), "meldPoints": meld_pts,
                        "talismansUsed": sum(g["used"] for g in tals), "talismans": sum(g["total"] for g in tals)},

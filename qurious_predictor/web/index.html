@@ -253,7 +253,7 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
 .route { display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px 0; padding: 12px; }
 .rnode { border: 1px solid var(--line2); border-radius: 6px; background: var(--panel); padding: 8px 10px; width: 230px;
   display: flex; flex-direction: column; gap: 4px; }
-.rnode.start { width: auto; min-width: 110px; justify-content: center; align-items: center; background: #1f1a12; border-style: dashed; }
+.rnode.start { width: auto; min-width: 100px; justify-content: center; align-items: center; background: #1f1a12; border-style: dashed; align-self: center; padding: 14px 10px; }
 .rnode .rhead { display: flex; align-items: center; gap: 6px; }
 .rnode .rnum { flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--gold); color: #1b1712; font-weight: 700;
   font-size: 12px; display: grid; place-items: center; }
@@ -262,7 +262,24 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
 .rnode .rat { font-size: 20px; font-weight: 700; color: var(--gold); line-height: 1.1; }
 .rnode .rat small { font-size: 11.5px; font-weight: 400; color: var(--muted); }
 .rnode .rfor { font-size: 11.5px; color: var(--muted); }
-.rnode .rdo { font-size: 12px; color: var(--text); border-top: 1px solid var(--line); padding-top: 4px; }
+.rnode .rlbl { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--gold2); margin-top: 2px; }
+.rnode .rdo { font-size: 12.5px; color: var(--text); margin: 0; padding-left: 18px; }
+.rnode .rdo li { margin: 1px 0; }
+.rnode .x { color: var(--gold); }
+.rnode .tcard { border: 1px solid var(--gold2); border-radius: 5px; background: #1f1a12; padding: 4px 6px; display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; }
+.pstage { display: flex; align-items: flex-start; gap: 10px; margin: 18px 12px 0; font-size: 14px; }
+.pstage .pnum { flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--gold); color: #1b1712; font-weight: 700; display: grid; place-items: center; }
+.pstage b { color: var(--gold); font-size: 15px; }
+.taltab td { vertical-align: middle; padding: 8px 10px; }
+.taltab tbody.tseq { border-top: 2px solid var(--line2); }
+.taltab .tseqcell { background: #1f1a12; min-width: 120px; }
+.taltab .tname { font-weight: 700; color: var(--gold); font-size: 15px; margin-bottom: 4px; }
+.taltab .tbig { font-size: 20px; color: var(--gold); }
+.taltab .rnum, .settable .rnum { display: inline-grid; width: 22px; height: 22px; border-radius: 50%; background: var(--gold); color: #1b1712;
+  font-weight: 700; font-size: 12px; place-items: center; }
+.tcard { border: 1px solid var(--gold2); border-radius: 5px; background: #1f1a12; padding: 4px 8px; display: inline-flex; flex-direction: column; gap: 2px; font-size: 12.5px; }
+.tgrade { border: 1px solid var(--gold); color: var(--gold); border-radius: 12px; padding: 0 10px; font-weight: 700; }
+.crafttab .big2 { font-size: 16px; color: var(--gold); }
 .rnode .rres { display: flex; flex-wrap: wrap; gap: 0 8px; font-size: 12px; }
 .rarrow { display: flex; flex-direction: column; justify-content: center; align-items: center; min-width: 74px; padding: 0 4px;
   color: var(--gold2); }
@@ -2326,37 +2343,63 @@ function renderPlan() {
   if (miss) h += `<div class="empty" style="color:var(--down);padding:14px">${miss} wanted result${miss > 1 ? "s" : ""} not found again within 2,000,000 rolls from the save as it is now
     (already rolled, or the sequence moved past it): ${p.missing.armor.map(a => esc(a.name)).concat(p.missing.talismans.map(x => "talisman")).join(", ")}.</div>`;
   if (!p.armor.length && !p.talismans.length && !miss) h += `<div class="empty">These sets need no rolls.</div>`;
-  for (const q of p.armor) {
-    h += `<div class="setcard"><div class="sethead"><span class="big">${esc(q.typeName)} · cost ${q.cost}</span>
-      <span class="rar">${q.total.toLocaleString()} augments</span><span>${zenny(q.zenny)}</span>
-      ${q.reordered ? `<span class="src roll">order changed to get every result</span>` : ""}</div>
-      <div class="route">${routeStart()}`
-      + q.steps.map((s, i) => routeArrow(s.augments, i, "augment") + routeNode(i, s.part, s.name, s.sets, s.at,
-          s.burnName && s.augments > 1
-            ? `Augment <b>${esc(s.burnName)}</b> ${s.augments - 1}× (cheaper, same result), then <b>${esc(s.name)}</b> once: keep it`
-            : `Augment <b>${esc(s.name)}</b> ${s.augments}×${s.augments > 1 ? ": keep the last" : ""}`,
-          resultCell(s.result), `${zenny(s.zenny)} · rarity ${s.rarity}`)).join("")
-      + `</div></div>`;
+  let n = 0;
+  // 1. craft: every piece is rolled on a new copy, the ones you have are never touched
+  const copies = p.newCopies || [];
+  if (copies.length || p.craft.length) {
+    const total = copies.reduce((a, c) => a + c.count, 0) + p.craft.length;
+    h += `<div class="pstage"><span class="pnum">${++n}</span><div><b>Craft new copies</b><span class="muted"> · ${total} piece${total > 1 ? "s" : ""}: every roll goes on a new copy, the pieces you have and use are never touched</span></div></div>
+      <div class="setcard"><table class="settable crafttab"><thead><tr><th>Piece</th><th style="text-align:right">Copies</th><th>What for</th><th>Sets</th></tr></thead><tbody>`
+      + copies.map(c => `<tr><td class="pn"><b>${esc(c.name)}</b> <span class="muted small">rarity ${c.rarity}</span></td><td class="n"><b class="big2">${c.count}</b></td>
+          <td class="pn">${[c.keep ? `${c.keep} to roll and keep${c.keep > 1 ? " (one per result)" : ""}` : "", c.burn ? `1 to spend augments on (its results are thrown away)` : ""].filter(Boolean).join("<br>")}</td>
+          <td class="pn muted small">${c.sets.map(esc).join(", ")}</td></tr>`).join("")
+      + p.craft.map(c => `<tr><td class="pn"><b>${esc(c.name)}</b></td><td class="n"><b class="big2">1</b></td><td class="pn">worn as it is (no roll)</td><td class="pn muted small">${c.sets.map(esc).join(", ")}</td></tr>`).join("")
+      + `</tbody></table></div>`;
   }
-  for (const g of p.talismans) {
-    h += `<div class="setcard"><div class="sethead"><span class="big">${esc(g.methodName)}${g.gradeName ? ` · grade ${g.gradeName} skills` : ""}</span>
-      <span class="rar">${g.total.toLocaleString()} talismans</span>
-      ${g.points ? `<span>${g.points.toLocaleString()} melding points</span>` : ""}${g.used ? `<span>${g.used.toLocaleString()} talismans used up</span>` : ""}</div>
-      <div class="route">${routeStart()}`
-      + g.steps.map((s, i) => routeArrow(s.talismans, i, "talisman") + routeNode(i, null, "Talisman", s.sets, s.at,
-          `Save and reload, then meld <b>${s.talismans}</b>${s.targetName ? ` picking <b>${esc(s.targetName)}</b>` : ""}${s.talismans > 1 ? ": keep the last" : ""}`,
-          s.skillRows.map(k => `<span class="sk">${skillIcon(k.color, k.name)}<span class="nm">${esc(k.name)}</span> <b style="color:var(--gold)">${k.level}</b></span>`).join("")
-          + `<span class="slots">${s.slots.map(l => slot(l, false)).join("")}</span>`, "")).join("")
-      + `</div></div>`;
+  // 2. armor
+  if (p.armor.length) {
+    h += `<div class="pstage"><span class="pnum">${++n}</span><div><b>Augment armor</b><span class="muted"> · always on the new copies from step 1. One route per sequence: follow it left to right; sequences do not move each other, so any can go first.
+      After each piece: save in game, press Reload save and Make plan again.</span></div></div>`;
+    for (const q of p.armor) {
+      h += `<div class="setcard"><div class="sethead"><span class="big">${esc(TYPE_SHORT(q.typeName))} · cost ${q.cost}</span>
+        <span class="rar">${q.total.toLocaleString()} augments</span><span>${zenny(q.zenny)}</span>
+        ${q.reordered ? `<span class="src roll">order changed to get every result</span>` : ""}</div>
+        <div class="route">${routeStart()}`
+        + q.steps.map((s, i) => routeArrow(s.augments, i, "augment") + routeNode(i, s.part, s.name, s.sets, s.at,
+            s.burnName && s.augments > 1
+              ? [`Augment <b>${esc(s.burnName)}</b> <b class="x">${s.augments - 1}×</b> <span class="muted">(throw the results away)</span>`,
+                 `Augment <b>${esc(s.name)}</b> <b class="x">1×</b>: keep it`]
+              : [`Augment <b>${esc(s.name)}</b> <b class="x">${s.augments}×</b>${s.augments > 1 ? ": keep only the last" : ": keep it"}`],
+            resultCell(s.result), `${zenny(s.zenny)} · rarity ${s.rarity}`)).join("")
+        + `</div></div>`;
+    }
+  }
+  // 3. talismans
+  if (p.talismans.length) {
+    h += `<div class="pstage"><span class="pnum">${++n}</span><div><b>Meld talismans</b><span class="muted"> · Qurious Melding. Cyclus has one sequence per grade (C, B, A, S) of the skill you pick:
+      picking a grade C skill moves only grade C. Save in game before each line, so a wrong pick can be undone by reloading.</span></div></div>
+      <div class="setcard"><table class="settable taltab"><thead><tr><th>Sequence</th><th>Step</th><th>Meld</th><th>Pick this skill</th><th>Keep this talisman</th><th>For</th></tr></thead>`;
+    for (const g of p.talismans) {
+      const per = g.total ? g.used / g.total : 0;
+      h += `<tbody class="tseq">` + g.steps.map((s, i) => `<tr>
+        ${i ? "" : `<td rowspan="${g.steps.length}" class="tseqcell"><div class="tname">${esc(g.methodName.replace(/^Qurious Melding\W*/, ""))}</div>
+          ${g.gradeName ? `<span class="tgrade">grade ${g.gradeName}</span>` : ""}
+          <div class="muted small">${g.total.toLocaleString()} meld${g.total > 1 ? "s" : ""}${g.used ? `<br>uses ${g.used.toLocaleString()} talismans` : ""}${g.points ? `<br>${g.points.toLocaleString()} melding points` : ""}</div></td>`}
+        <td class="n"><span class="rnum">${i + 1}</span></td>
+        <td><b class="tbig">${s.talismans.toLocaleString()}×</b>
+          <div class="muted small">${i ? `${s.talismans.toLocaleString()} after step ${i} · ` : ""}#${s.at.toLocaleString()} from the save${per ? ` · uses ${(s.talismans * per).toLocaleString()} talismans` : ""}</div>
+          <div class="small">${s.talismans > 1 ? `keep only the last one (meld ${s.talismans.toLocaleString()})` : "keep it"}</div></td>
+        <td>${s.targetName ? `<b>${esc(s.targetName)}</b>` : `<span class="muted">—</span>`}</td>
+        <td><div class="tcard">${s.skillRows.map(k => `<div class="sk">${skillIcon(k.color, k.name)}<span class="nm">${esc(k.name)}</span> <b style="color:var(--gold)">Lv ${k.level}</b></div>`).join("")}
+          <div class="slots">${s.slots.map(l => slot(l, false)).join("")}</div></div></td>
+        <td class="pn muted small">${s.sets.map(esc).join(", ")}</td></tr>`).join("") + `</tbody>`;
+    }
+    h += `</table></div>`;
   }
   if ((p.done || []).length) {
-    h += `<div class="setcard"><div class="sethead"><span class="big">Already rolled</span><span class="muted">in your box with the wanted augment: not looked for again</span></div><div class="steps" style="list-style:none">`
+    h += `<div class="pstage"><span class="pnum" style="background:var(--up)">✓</span><div><b>Already rolled</b><span class="muted"> · in your box with the wanted result: not looked for again</span></div></div>
+      <div class="setcard"><div class="steps" style="list-style:none">`
       + p.done.map(d => `<div><span style="color:var(--up)">✓</span> ${esc(d.name)} <span class="muted">(${d.sets.map(esc).join(", ")})</span></div>`).join("") + `</div></div>`;
-  }
-  if (p.craft.length || p.copies.length) {
-    h += `<div class="setcard"><div class="sethead"><span class="big">To craft</span></div><div class="steps" style="list-style:none">`
-      + p.craft.map(c => `<div>${esc(c.name)}${c.why ? ` <b style="color:var(--gold)">${c.why}</b>` : ""} <span class="muted">(${c.sets.map(esc).join(", ")})</span></div>`).join("")
-      + p.copies.map(c => `<div>${c.count} copies of ${esc(c.name)}: one per augment you keep on it</div>`).join("") + `</div></div>`;
   }
   return h;
 }
@@ -2382,15 +2425,15 @@ function routeStart() {
   return `<div class="rnode start"><span class="rat">Save</span><small class="muted">as it is now</small></div>`;
 }
 function routeArrow(k, i, what) {
-  const from = i ? "the last piece" : "the save";
+  const from = !i ? "the save" : what === "meld" ? "the last talisman" : "the last piece";
   return `<div class="rarrow" title="${k.toLocaleString()} ${what}${k > 1 ? "s" : ""} from ${from}"><b>+${k.toLocaleString()}</b><span class="ln">⟶</span><small>from ${from}</small></div>`;
 }
 function routeNode(i, part, name, sets, at, todo, result, foot) {
   return `<div class="rnode"><div class="rhead"><span class="rnum">${i + 1}</span>${part != null ? mask(PARTS[part], "var(--gold)", PARTS[part]) : ""}<span class="rname">${esc(name)}</span></div>
     <div class="rat">#${at.toLocaleString()} <small>from the save</small></div>
-    <div class="rfor">for ${sets.map(esc).join(", ")}</div>
-    <div class="rres">${result}</div>
-    <div class="rdo">${todo}${foot ? `<div class="muted small">${foot}</div>` : ""}</div></div>`;
+    <div class="rlbl">Do</div><ol class="rdo">${todo.map(x => `<li>${x}</li>`).join("")}</ol>
+    <div class="rlbl">Keep</div><div class="rres">${result}</div>
+    <div class="rfor">for ${sets.map(esc).join(", ")}${foot ? ` · ${foot}` : ""}</div></div>`;
 }
 
 window.addEventListener("pywebviewready", boot);
