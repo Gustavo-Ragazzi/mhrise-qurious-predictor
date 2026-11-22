@@ -1672,7 +1672,7 @@ function renderInvTable() {
 /* ---- main tabs: groups of modes ------------------------------------------------------------------ */
 const GROUPS = [
   { id: "pred", name: "Predictions", modes: [["piece", "Selected piece"], ["all", "Search all listed armor"], ["rank", "Ranking"], ["talisman", "Talismans"]] },
-  { id: "equip", name: "My equipment", modes: [["inventory", "Inventory"], ["optimizer", "Build optimizer"], ["export", "Export"]] },
+  { id: "equip", name: "My equipment", modes: [["inventory", "Inventory"], ["optimizer", "My Loadouts"], ["export", "Export"]] },
   { id: "build", name: "Set builder", modes: [["builder", "Set builder"], ["planner", "Saved sets & planner"]] },
 ];
 const ALL_MODES = GROUPS.flatMap(g => g.modes.map(m => m[0]));
@@ -1999,12 +1999,9 @@ function setupOptimizer() {
     if (S.mode !== "optimizer" || !e.target.closest("#lagain")) return;
     const c = S.optCurrent;
     if (!c || c.error) return;
-    // the loadout's skills (up to each skill's max) and its weapon's slots, searched in the Set builder
-    const skills = c.current.skills.map(sk => ({ id: sk.id, level: Math.min(sk.level, sk.max || sk.level) })).filter(sk => sk.level > 0);
-    if (!skills.length) { status("This loadout has no skills to search for."); return; }
-    saveBuild({ skills, weapon: c.weapon || [0, 0, 0] });
+    // only fills the Set builder: every skill of the loadout at its level, and its weapon's slots (no search)
+    saveBuild({ skills: c.current.skills.map(sk => ({ id: sk.id, level: sk.level })), weapon: c.weapon || [0, 0, 0] });
     setMode("builder");
-    runBuild();
   });
 }
 function renderLoadList() {
@@ -2029,10 +2026,10 @@ async function loadOptimizer() {
 }
 function renderOptHead() {
   const c = S.optCurrent, cur = c && !c.error && c.current;
-  $("head").innerHTML = `<span class="big">${cur ? esc(cur.name) : "Build optimizer"}</span>${cur && cur.weaponName ? `<span class="muted">${esc(cur.weaponName)}</span>` : ""}
-    ${cur ? `<span class="spacer" style="flex:1"></span><button class="btn gold" id="lagain" title="Open the Set builder with this loadout's skills and weapon slots and search">Search again</button>` : ""}
+  $("head").innerHTML = `<span class="big">${cur ? esc(cur.name) : "My Loadouts"}</span>${cur && cur.weaponName ? `<span class="muted">${esc(cur.weaponName)}</span>` : ""}
+    ${cur ? `<span class="spacer" style="flex:1"></span><button class="btn gold" id="lagain" title="Open the Set builder with all this loadout's skills and its weapon slots">Search again</button>` : ""}
     <div class="note">Your loadouts as they are in the save: pick one on the left to see its pieces, decorations and skills.
-    <b>Search again</b> opens the Set builder with its skills and weapon slots and searches.</div>`;
+    <b>Search again</b> opens the Set builder with all its skills (each at its level) and its weapon slots.</div>`;
 }
 function renderOptTable() {
   const c = S.optCurrent;
@@ -2148,10 +2145,10 @@ function setupPlanner() {
       const s = (S.saved || []).find(x => x.id === +ag.dataset.pagain);
       const q = s.query || {};
       if (q.skills && q.skills.length) {
+        // only fills the Set builder with the set's skills and weapon slots (no search)
         saveBuild({ skills: q.skills, weapon: q.weapon || [0, 0, 0] });
         setMode("builder");
-        runBuild();
-      } else status("This set was saved without its skills: search in the Set builder.");
+      } else status("This set was saved without its skills.");
       return;
     }
     const v = e.target.closest("[data-pview]");
@@ -2247,7 +2244,7 @@ function renderPlanTable() {
         <td class="pn">${st.pieces.map((p, i) => p ? `${mask(PARTS[i], "var(--gold)", PARTS[i])}<span class="${p.kind === "roll" ? "rolled" : ""}">${esc(p.name)}</span>` : "").join(" ")}</td>
         <td class="pn">${needs}</td>
         <td style="white-space:nowrap"><button class="btn" data-pview="${s.id}">${S.planView === s.id ? "Hide" : "View"}</button>
-          <button class="btn" data-pagain="${s.id}" title="Open the Set builder with this set's skills and weapon slots and search again">Search again</button>
+          <button class="btn" data-pagain="${s.id}" title="Open the Set builder with this set's skills and weapon slots">Search again</button>
           <button class="btn" data-pren="${s.id}">Rename</button> <button class="btn" data-pdel="${s.id}">Delete</button></td></tr>`
         + (S.planView === s.id ? `<tr><td colspan="8">${setCard(st, { title: esc(s.name) })}</td></tr>` : "");
     }).join("") + `</tbody></table>`;

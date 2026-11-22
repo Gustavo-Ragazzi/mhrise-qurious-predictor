@@ -8,7 +8,7 @@ find what you want (skills at a minimum level, with AND/OR, minimum slots, defen
 negative resistance), one search can look through every armor piece at once, and a **Ranking** tab
 scores every piece's next augments with weighted skill presets. A **Talismans** tab predicts the
 next talismans of every Melding Pot method. Under **My equipment**, an **Inventory** ranks the armor
-and talismans you own, a **Build optimizer** shows the loadouts of your save (and searches one again in the Set builder), and **Export** writes
+and talismans you own, **My Loadouts** shows the loadouts of your save (and searches one again in the Set builder), and **Export** writes
 your talismans, armor and decorations (wiki-db import lines, CSV or JSON). The **Set builder** is a
 skill simulator that also counts future qurious augments and talismans: it finds the armor set
 that needs the fewest rolls.
@@ -32,7 +32,7 @@ data and icons from your install (a few seconds) and caches them in
 ## How to use
 
 The window has three main tabs: **Predictions** (Selected piece, Search all listed armor, Ranking,
-Talismans), **My equipment** (Inventory, Build optimizer, Export) and **Set builder**.
+Talismans), **My equipment** (Inventory, My Loadouts, Export) and **Set builder**.
 
 1. Pick your hunter. The list on the left has every qurious-capable armor piece (master rank),
    grouped by rarity; filter by name or skill, part and rarity, or switch on **Crafted only**.
@@ -119,10 +119,10 @@ Talismans), **My equipment** (Inventory, Build optimizer, Export) and **Set buil
    save). Below the set,
    **what to do** lists the pieces to craft, which augment to keep on which piece and which talisman
    to keep.
-10. **Build optimizer**: the loadouts of your save (what you wear now and every My Set) in a list
-    on the left; pick one to see its weapon, pieces, decorations, talisman and skills on the right.
-    **Search again** opens the Set builder with the loadout's skills (each up to its max) and its
-    weapon's slots and searches, as in Saved sets & planner.
+10. **My Loadouts**: the loadouts of your save (what you wear now and every My Set) in a list on
+    the left; pick one to see its weapon, pieces, decorations, talisman and skills on the right.
+    **Search again** opens the Set builder with every skill of the loadout (each at its level) and
+    its weapon's slots, ready for you to search.
 11. **Saved sets & planner** (under Set builder): **Save set** on a Set builder result keeps it.
     Opening the tab checks every saved set against the save as it is now (again only after the save
     changed): **Now** shows the augments the planner needs for that set alone, in gold when that
@@ -130,7 +130,7 @@ Talismans), **My equipment** (Inventory, Build optimizer, Export) and **Set buil
     inside or after the other saved sets' roadmap needs that roadmap: when the set alone would need
     more, Now counts along the roadmap of every saved set (up to the set's last piece on each
     sequence) and says *needs the other saved sets*. **Search again** opens
-    the Set builder with the set's skills and weapon slots and searches. Tick
+    the Set builder with the set's skills and weapon slots, ready for you to search. Tick
     saved sets (the header box ticks them all; click Set, Saved, Rolls then or the tick column to sort) and press
     **Make plan** for a roadmap from the save as it is now, shown per sequence as a route from the save to
     each piece (how many rolls from the save and from the previous piece), with the rolls per augment option
