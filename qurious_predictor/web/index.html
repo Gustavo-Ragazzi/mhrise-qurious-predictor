@@ -279,6 +279,10 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
   font-weight: 700; font-size: 12px; place-items: center; }
 .tcard { border: 1px solid var(--gold2); border-radius: 5px; background: #1f1a12; padding: 4px 8px; display: inline-flex; flex-direction: column; gap: 2px; font-size: 12.5px; }
 .tgrade { border: 1px solid var(--gold); color: var(--gold); border-radius: 12px; padding: 0 10px; font-weight: 700; }
+.crafttab td.pn .tint.picon, .taltab .tint { width: 22px; height: 22px; margin-right: 6px; vertical-align: middle; }
+.taltab .tname { display: flex; align-items: center; }
+.tcard .tchead { display: flex; align-items: center; gap: 2px; }
+.tcard .tchead .tint { width: 18px; height: 18px; }
 .crafttab .big2 { font-size: 16px; color: var(--gold); }
 .rnode .rres { display: flex; flex-wrap: wrap; gap: 0 8px; font-size: 12px; }
 .rarrow { display: flex; flex-direction: column; justify-content: center; align-items: center; min-width: 74px; padding: 0 4px;
@@ -2350,10 +2354,10 @@ function renderPlan() {
     const total = copies.reduce((a, c) => a + c.count, 0) + p.craft.length;
     h += `<div class="pstage"><span class="pnum">${++n}</span><div><b>Craft new copies</b><span class="muted"> · ${total} piece${total > 1 ? "s" : ""}: every roll goes on a new copy, the pieces you have and use are never touched</span></div></div>
       <div class="setcard"><table class="settable crafttab"><thead><tr><th>Piece</th><th style="text-align:right">Copies</th><th>What for</th><th>Sets</th></tr></thead><tbody>`
-      + copies.map(c => `<tr><td class="pn"><b>${esc(c.name)}</b> <span class="muted small">rarity ${c.rarity}</span></td><td class="n"><b class="big2">${c.count}</b></td>
+      + copies.map(c => `<tr><td class="pn">${partIcon(c.part)}<b>${esc(c.name)}</b> <span class="muted small">rarity ${c.rarity}</span></td><td class="n"><b class="big2">${c.count}</b></td>
           <td class="pn">${[c.keep ? `${c.keep} to roll and keep${c.keep > 1 ? " (one per result)" : ""}` : "", c.burn ? `1 to spend augments on (its results are thrown away)` : ""].filter(Boolean).join("<br>")}</td>
           <td class="pn muted small">${c.sets.map(esc).join(", ")}</td></tr>`).join("")
-      + p.craft.map(c => `<tr><td class="pn"><b>${esc(c.name)}</b></td><td class="n"><b class="big2">1</b></td><td class="pn">worn as it is (no roll)</td><td class="pn muted small">${c.sets.map(esc).join(", ")}</td></tr>`).join("")
+      + p.craft.map(c => `<tr><td class="pn">${partIcon(c.part)}<b>${esc(c.name)}</b></td><td class="n"><b class="big2">1</b></td><td class="pn">worn as it is (no roll)</td><td class="pn muted small">${c.sets.map(esc).join(", ")}</td></tr>`).join("")
       + `</tbody></table></div>`;
   }
   // 2. armor
@@ -2382,15 +2386,15 @@ function renderPlan() {
     for (const g of p.talismans) {
       const per = g.total ? g.used / g.total : 0;
       h += `<tbody class="tseq">` + g.steps.map((s, i) => `<tr>
-        ${i ? "" : `<td rowspan="${g.steps.length}" class="tseqcell"><div class="tname">${esc(g.methodName.replace(/^Qurious Melding\W*/, ""))}</div>
+        ${i ? "" : `<td rowspan="${g.steps.length}" class="tseqcell"><div class="tname">${mask("talisman", "var(--gold)", "Talisman")}${esc(g.methodName.replace(/^Qurious Melding\W*/, ""))}</div>
           ${g.gradeName ? `<span class="tgrade">grade ${g.gradeName}</span>` : ""}
           <div class="muted small">${g.total.toLocaleString()} meld${g.total > 1 ? "s" : ""}${g.used ? `<br>uses ${g.used.toLocaleString()} talismans` : ""}${g.points ? `<br>${g.points.toLocaleString()} melding points` : ""}</div></td>`}
         <td class="n"><span class="rnum">${i + 1}</span></td>
         <td><b class="tbig">${s.talismans.toLocaleString()}×</b>
           <div class="muted small">${i ? `${s.talismans.toLocaleString()} after step ${i} · ` : ""}#${s.at.toLocaleString()} from the save${per ? ` · uses ${(s.talismans * per).toLocaleString()} talismans` : ""}</div>
           <div class="small">${s.talismans > 1 ? `keep only the last one (meld ${s.talismans.toLocaleString()})` : "keep it"}</div></td>
-        <td>${s.targetName ? `<b>${esc(s.targetName)}</b>` : `<span class="muted">—</span>`}</td>
-        <td><div class="tcard">${s.skillRows.map(k => `<div class="sk">${skillIcon(k.color, k.name)}<span class="nm">${esc(k.name)}</span> <b style="color:var(--gold)">Lv ${k.level}</b></div>`).join("")}
+        <td>${s.targetName ? `<span class="sk">${skillIcon(s.targetColor, s.targetName)}<b class="nm">${esc(s.targetName)}</b></span>` : `<span class="muted">—</span>`}</td>
+        <td><div class="tcard"><div class="tchead">${mask("talisman", "var(--gold)", "Talisman")}<span class="muted small">Talisman</span></div>${s.skillRows.map(k => `<div class="sk">${skillIcon(k.color, k.name)}<span class="nm">${esc(k.name)}</span> <b style="color:var(--gold)">Lv ${k.level}</b></div>`).join("")}
           <div class="slots">${s.slots.map(l => slot(l, false)).join("")}</div></div></td>
         <td class="pn muted small">${s.sets.map(esc).join(", ")}</td></tr>`).join("") + `</tbody>`;
     }
@@ -2421,6 +2425,7 @@ function rollsSummary(p) {
 function amberItems(amber, points) {
   return `${points.toLocaleString()} Amber Essence points: ` + amber.map(x => `<b>${x.count.toLocaleString()}</b> ${esc(x.name)}`).join(" or ");
 }
+const partIcon = part => part != null ? mask(PARTS[part], "var(--gold)", PARTS[part], "picon") : "";
 function routeStart() {
   return `<div class="rnode start"><span class="rat">Save</span><small class="muted">as it is now</small></div>`;
 }

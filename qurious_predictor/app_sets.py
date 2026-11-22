@@ -586,6 +586,7 @@ class SetsMixin:
             for st in g["steps"]:
                 st["skillRows"] = [dict(self._skill(int(a)), level=int(b)) for a, b in st["skills"]]
                 st["targetName"] = self._skill(st["target"])["name"] if st["target"] else None
+                st["targetColor"] = self._skill(st["target"])["color"] if st["target"] else None
         for t in plan["missing"]["armor"]:
             t["result"] = self._outcome_view(t["expected"])
         for d in plan["done"]:
@@ -594,6 +595,10 @@ class SetsMixin:
         for c in plan["newCopies"]:
             c["name"] = c["name"] or self._armor_name(c["id"])
             c["rarity"] = self.data["all_armors"][c["id"]]["rare"] + 1
+            c["part"] = self.data["all_armors"][c["id"]]["part"]
+        for c in plan["craft"]:
+            a = self.data["all_armors"].get(str(c["id"]))
+            c["part"] = a["part"] if a else None
         for key in ("amber", "meld"):
             for m in plan["materials"][key]:
                 m["name"] = self._name(m.pop("names"))
