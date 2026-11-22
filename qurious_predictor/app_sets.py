@@ -384,6 +384,19 @@ class SetsMixin:
         info = self.data["weapons"].get(str(w.weapon_id)) if w else None
         return list(info["slots"]) if info else [0, 0, 0]
 
+    def loadout_summaries(self):
+        """Every loadout of the save, for the list: name, weapon and the name of each armor piece."""
+        with self._lock:
+            out = []
+            for key, L in enumerate(self.loadout_list or []):
+                _, armor, tal = self._loadout_items(key)
+                w = next((w for w in self.box_weapons if w.index == L.weapon), None)
+                winfo = self.data["weapons"].get(str(w.weapon_id)) if w else None
+                out.append({"key": key, "name": L.name, "weaponName": self._name(winfo["names"]) if winfo else "",
+                            "pieces": [self._armor_name(str(it.armor_id)) if it else None for it in armor],
+                            "talisman": tal is not None})
+            return out
+
     def optimizer_load(self, key: int, preset=None):
         """A loadout as it is in the save: pieces, decorations, skills and score."""
         with self._lock:

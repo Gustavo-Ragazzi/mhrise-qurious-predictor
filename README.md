@@ -8,7 +8,7 @@ find what you want (skills at a minimum level, with AND/OR, minimum slots, defen
 negative resistance), one search can look through every armor piece at once, and a **Ranking** tab
 scores every piece's next augments with weighted skill presets. A **Talismans** tab predicts the
 next talismans of every Melding Pot method. Under **My equipment**, an **Inventory** ranks the armor
-and talismans you own, a **Build optimizer** improves a loadout of your save, and **Export** writes
+and talismans you own, a **Build optimizer** shows the loadouts of your save (and searches one again in the Set builder), and **Export** writes
 your talismans, armor and decorations (wiki-db import lines, CSV or JSON). The **Set builder** is a
 skill simulator that also counts future qurious augments and talismans: it finds the armor set
 that needs the fewest rolls.
@@ -119,17 +119,10 @@ Talismans), **My equipment** (Inventory, Build optimizer, Export) and **Set buil
    save). Below the set,
    **what to do** lists the pieces to craft, which augment to keep on which piece and which talisman
    to keep.
-10. **Build optimizer**: pick a loadout (what you wear now or any My Set of the save) and a Ranking
-    preset. **Keep** starts with the loadout's skills the preset weighs (edit it to drop or add
-    skills); the weapon slots come from the loadout's weapon. **Optimize** lists the best set
-    without rolls (your armor, talismans and decorations; also game armor to craft with **Other game
-    armor**) and then sets that need more rolls and score more, so you can decide whether a few more
-    augments or melds are worth it. Score = preset weight x level of every skill (capped at its max)
-    plus the free slots; Gain is against the loadout as it is. Without rolls the search is exact;
-    with rolls it searches sets one or two changes away from the loadout and from that best set, so
-    the list is a set of suggestions, not every possible set. With **Saved sets' pieces** the qurious
-    pieces and talismans of every saved set are used too, tagged *planned* with the rolls still to make: the list goes from your own pieces,
-    to those planned pieces, to new rolls.
+10. **Build optimizer**: the loadouts of your save (what you wear now and every My Set) in a list
+    on the left; pick one to see its weapon, pieces, decorations, talisman and skills on the right.
+    **Search again** opens the Set builder with the loadout's skills (each up to its max) and its
+    weapon's slots and searches, as in Saved sets & planner.
 11. **Saved sets & planner** (under Set builder): **Save set** on a Set builder result keeps it.
     Opening the tab checks every saved set against the save as it is now (again only after the save
     changed): **Now** shows the augments the planner needs for that set alone, in gold when that
@@ -216,7 +209,7 @@ and `LotFunc`) on the melding tables read from your install. The Talismans tab r
 (`native/core/src/melding.rs`, about 5 million talismans per second), which filters, scores and sorts
 in place and returns only the rows shown; the Python version is the reference it is tested against.
 
-The Set builder and the Build optimizer run `native/core/src/sets.rs`, an exact branch and bound
+The Set builder runs `native/core/src/sets.rs`, an exact branch and bound
 adapted from mhrise-set-builder: candidates per part (dominated ones dropped), bounds on the wanted
 skill levels (decorations included) and on the value, and an exact decoration placement at each
 complete set. Future augments and talismans are candidates that cost rolls of their sequence; a later

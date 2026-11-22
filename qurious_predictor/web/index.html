@@ -48,6 +48,14 @@ main { flex: 1; display: grid; grid-template-columns: 440px minmax(0, 1fr); gap:
   color: var(--muted); }
 .chip.on { border-color: var(--gold); color: var(--gold); background: #2e2517; }
 .list { overflow: auto; flex: 1; }
+.armor.loadrow { display: block; cursor: pointer; border-bottom: 1px solid var(--line); }
+.loadrow .nm { font-size: 14px; color: var(--gold); }
+.loadrow .sub { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; }
+.loadrow .sub .tint { width: 16px; height: 16px; }
+.loadrow .lpieces { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 12px; margin-top: 3px; }
+.loadrow .lp { display: inline-flex; align-items: center; gap: 3px; }
+.loadrow .lp.none { color: var(--dim); }
+.loadrow .lp .tint { width: 15px; height: 15px; }
 .armor { display: grid; grid-template-columns: 28px 1fr auto; align-items: start; gap: 8px; padding: 7px 10px;
   border-bottom: 1px solid #2c251a; cursor: pointer; }
 .armor > .tint { margin-top: 1px; }
@@ -324,6 +332,11 @@ input.rollsin { width: 84px; }
     </div>
     <div class="list" id="armors"></div>
   </section>
+  <section class="frame col" id="loadcol" style="display:none">
+    <h2>Loadouts</h2>
+    <div class="filters"><input id="lfilter" type="text" placeholder="Search loadout, weapon or armor…"></div>
+    <div class="list" id="loadlist"></div>
+  </section>
   <section class="frame col" id="presetcol" style="display:none">
     <h2>Search presets</h2>
     <div class="filters">
@@ -465,37 +478,6 @@ input.rollsin { width: 84px; }
         <span id="pinfo" class="muted"></span>
         <button class="btn" id="pstop" style="display:none" title="Stop">Stop</button>
         <button class="btn gold" id="pmake">Make plan</button>
-      </div>
-    </div>
-    <div class="filterbar" id="optbar" style="display:none">
-      <div class="frow">
-        <span class="flabel">Loadout</span>
-        <div class="picker" id="oload" style="width:300px"></div>
-        <span class="flabel">Score with</span>
-        <div class="picker" id="opreset" style="width:250px" title="Skill weights of a Ranking preset"></div>
-        <span class="flabel">Weapon slots</span>
-        <div class="picker slotpick" id="ow0"></div><div class="picker slotpick" id="ow1"></div><div class="picker slotpick" id="ow2"></div>
-      </div>
-      <div class="frow">
-        <span class="flabel">Keep</span>
-        <span id="owanted" class="wantlist"></span>
-        <div class="picker" id="oskill" style="width:240px"></div>
-        <div class="picker" id="olevel" style="width:78px"></div>
-        <button class="btn" id="oadd">Add</button>
-        <button class="btn" id="oreset" title="The loadout's skills that the preset weighs, and its weapon slots">Reset to the loadout</button>
-      </div>
-      <div class="frow">
-        <label class="toggle" title="Also armor you do not have yet (to craft), and qurious rolls on it"><input type="checkbox" id="ogame"><span></span>Other game armor</label>
-        <label class="toggle" title="Only as many decorations as you have"><input type="checkbox" id="odeco"><span></span>Only my decorations</label>
-        <label class="toggle" title="Also the qurious pieces and talismans of every saved set: tried after your own and before new rolls"><input type="checkbox" id="oplanned"><span></span>Saved sets' pieces</label>
-        <span class="flabel">Qurious rolls</span>
-        <input id="oqrolls" class="rollsin" type="number" min="0" step="100" title="Future qurious augments. Every qurious-capable armor piece of the ranks chosen (master rank) can take any of its next N augments of each of the 4 options: Augment, Augment: Stability, Augment: Skills+ and Augment: Slots+. The augment goes on a copy without augments (yours, or crafted). Counted from the save as it is now. 0 = no augments. Large values take longer (the simulation runs in Rust). Without Other game armor, only pieces you have.">
-        <span class="flabel">Talisman rolls</span>
-        <input id="otrolls" class="rollsin" type="number" min="0" step="100" title="Future talismans of Qurious Melding only: any of the next N talismans of Qurious Melding—Vigor, and of Qurious Melding—Cyclus with any skill it can pick. Counted from the save as it is now. 0 = no talismans.">
-        <span class="spacer"></span>
-        <span id="oprogress" class="muted"></span>
-        <button class="btn" id="ostop" style="display:none" title="Stop and show what was found so far">Stop</button>
-        <button class="btn gold" id="orun">Optimize</button>
       </div>
     </div>
     <div class="filterbar" id="expbar" style="display:none">
@@ -771,8 +753,8 @@ async function loadHunter() {
   status(`${S.armors.length} qurious-capable armor pieces in the game, ${owned} crafted. Predictions follow the save as it is now: after augmenting, save in game and press Reload save.`);
   const info = await api().builder_info();
   if (!info.error) { S.bskills = info.skills; S.loadouts = info.loadouts; S.barmors = info.armors; }
-  S.build = null; S.opt = null; S.optCurrent = null;
-  syncBuildUi(); syncOptUi();
+  S.build = null; S.optCurrent = null; S.loadSum = null;
+  syncBuildUi();
   if (S.mode === "all") return showMode();
   if (S.mode === "talisman") { showMode(); return runTal(); }
   if (S.mode === "inventory") { showMode(); return loadInventory(); }
@@ -840,14 +822,15 @@ function renderModes() {
   const rank = S.mode === "rank", full = FULL_WIDTH.has(S.mode);
   renderGroups();
   $("tabs").style.display = S.mode === "piece" ? "" : "none";
-  $("listcol").style.display = rank || full ? "none" : "";
+  $("listcol").style.display = rank || full || S.mode === "optimizer" ? "none" : "";
+  $("loadcol").style.display = S.mode === "optimizer" ? "" : "none";
   $("presetcol").style.display = rank ? "" : "none";
-  $("filterbar").style.display = full ? "none" : "";
+  $("filterbar").style.display = full || S.mode === "optimizer" ? "none" : "";
   $("rankbar").style.display = rank ? "" : "none";
-  for (const [bar, mode] of [["talbar", "talisman"], ["invbar", "inventory"], ["buildbar", "builder"], ["planbar", "planner"], ["optbar", "optimizer"], ["expbar", "export"]])
+  for (const [bar, mode] of [["talbar", "talisman"], ["invbar", "inventory"], ["buildbar", "builder"], ["planbar", "planner"], ["expbar", "export"]])
     $(bar).style.display = S.mode === mode ? "" : "none";
   document.querySelector("main").style.gridTemplateColumns = full ? "minmax(0, 1fr)" : "";
-  $("rolls").style.display = document.querySelector('label[for="rolls"]').style.display = full ? "none" : "";
+  $("rolls").style.display = document.querySelector('label[for="rolls"]').style.display = full || S.mode === "optimizer" ? "none" : "";
 }
 
 async function setMode(mode) {
@@ -860,7 +843,7 @@ async function setMode(mode) {
   if (mode === "talisman") { syncTalUi(); runTal(); }
   if (mode === "inventory") { syncInvUi(); loadInventory(); }
   if (mode === "builder") syncBuildUi();
-  if (mode === "optimizer") { syncOptUi(); loadOptimizer(); }
+  if (mode === "optimizer") loadOptimizer();
   if (mode === "export") loadExport();
   if (mode === "planner") loadPlanner();
 }
@@ -1691,7 +1674,7 @@ const GROUPS = [
 ];
 const ALL_MODES = GROUPS.flatMap(g => g.modes.map(m => m[0]));
 const groupOf = mode => GROUPS.find(g => g.modes.some(m => m[0] === mode)) || GROUPS[0];
-const FULL_WIDTH = new Set(["talisman", "inventory", "optimizer", "export", "builder", "planner"]);
+const FULL_WIDTH = new Set(["talisman", "inventory", "export", "builder", "planner"]);
 
 function renderGroups() {
   const g = groupOf(S.mode);
@@ -1860,7 +1843,6 @@ function setupBuilder() {
     $(id).addEventListener("change", () => { $(id).value = clampRolls($(id).value); saveBuild({ [key]: clampRolls($(id).value) }); });
   $("bsearch").addEventListener("click", runBuild);
   $("bstop").addEventListener("click", () => { api().search_stop(); $("bstop").disabled = true; });
-  $("ostop").addEventListener("click", () => { api().search_stop(); $("ostop").disabled = true; });
   buildExArmor = makePicker($("bexarmor"), { search: true, placeholder: "Armor piece…" });
   buildExSkill = makePicker($("bexskill"), { search: true, placeholder: "Skill…" });
   $("bexadd").addEventListener("click", () => {
@@ -1997,117 +1979,63 @@ function renderBuildTable() {
     + `<div class="cardlabel">${r.sets.length} set${r.sets.length > 1 ? "s" : ""}, fewest rolls first: click one to see it</div>` + list;
 }
 
-/* ---- build optimizer --------------------------------------------------------------------------------- */
-const OPT_DEFAULTS = { loadout: 0, preset: "builtin:all", weapon: null, keep: null, gameArmor: false, ownedDecos: true, quriousRolls: 0, talismanRolls: 0, planned: true };
+/* ---- build optimizer: the loadouts of the save, one at a time ------------------------------------------- */
+const OPT_DEFAULTS = { loadout: 0 };
 const OS = () => S.settings.opt;
-let optWant, optLoad, optPreset, optWeapon;
-function saveOpt(patch, stale = true) {
-  S.settings.opt = { ...OS(), ...patch };
-  api().save_settings({ opt: S.settings.opt });
-  if (stale && S.opt) S.opt.stale = true;
-  syncOptUi();
-  if (S.mode === "optimizer") renderOptHead();
-}
-const optPresetObj = () => allPresets().find(p => p.id === OS().preset) || allPresets()[0];
-const usefulSkills = (st, preset) => st.skills.filter(s => (preset.weights || {})[s.id] > 0).map(s => ({ id: s.id, level: s.level }));
 function setupOptimizer() {
   S.settings.opt = { ...OPT_DEFAULTS, ...(S.settings.opt || {}) };
-  optWant = wantEditor("o", () => OS().keep || [], keep => saveOpt({ keep }));
-  optLoad = makePicker($("oload"), { search: true, onChange: v => { saveOpt({ loadout: v, keep: null, weapon: null }); loadOptimizer(); } });
-  optPreset = makePicker($("opreset"), { search: true, onChange: v => { saveOpt({ preset: v }); loadOptimizer(); } });
-  optWeapon = [0, 1, 2].map(i => makePicker($("ow" + i), { onChange: v => { const w = [...(OS().weapon || [0, 0, 0])]; w[i] = v; saveOpt({ weapon: w }); } }));
-  $("ogame").addEventListener("change", () => saveOpt({ gameArmor: $("ogame").checked }));
-  $("odeco").addEventListener("change", () => saveOpt({ ownedDecos: $("odeco").checked }));
-  $("oplanned").addEventListener("change", () => saveOpt({ planned: $("oplanned").checked }));
-  for (const [id, key] of [["oqrolls", "quriousRolls"], ["otrolls", "talismanRolls"]])
-    $(id).addEventListener("change", () => { $(id).value = clampRolls($(id).value); saveOpt({ [key]: clampRolls($(id).value) }); });
-  $("oreset").addEventListener("click", () => {
-    if (S.optCurrent) saveOpt({ keep: usefulSkills(S.optCurrent.current, optPresetObj()), weapon: S.optCurrent.weapon });
+  $("lfilter").addEventListener("input", renderLoadList);
+  $("loadlist").addEventListener("click", e => {
+    const r = e.target.closest("[data-lkey]");
+    if (!r) return;
+    S.settings.opt = { ...OS(), loadout: +r.dataset.lkey };
+    api().save_settings({ opt: S.settings.opt });
+    loadOptimizer();
   });
-  $("orun").addEventListener("click", runOptimize);
-  $("table").addEventListener("click", e => {
-    const o = e.target.closest("[data-oset]");
-    if (!o || S.mode !== "optimizer") return;
-    S.opt.sel = +o.dataset.oset; renderOptTable();
+  $("head").addEventListener("click", e => {
+    if (S.mode !== "optimizer" || !e.target.closest("#lagain")) return;
+    const c = S.optCurrent;
+    if (!c || c.error) return;
+    // the loadout's skills (up to each skill's max) and its weapon's slots, searched in the Set builder
+    const skills = c.current.skills.map(sk => ({ id: sk.id, level: Math.min(sk.level, sk.max || sk.level) })).filter(sk => sk.level > 0);
+    if (!skills.length) { status("This loadout has no skills to search for."); return; }
+    saveBuild({ skills, weapon: c.weapon || [0, 0, 0] });
+    setMode("builder");
+    runBuild();
   });
 }
-function syncOptUi() {
-  const o = OS();
-  optWant.sync();
-  optLoad.setItems((S.loadouts || []).map(l => ({ value: l.key, text: l.name, html: `<span>${esc(l.name)}</span>` })), o.loadout);
-  optPreset.setItems(allPresets().map(p => ({ value: p.id, text: p.name, html: `<span>${esc(p.name)}</span>` })), optPresetObj().id);
-  optWeapon.forEach((p, i) => p.setItems(weaponSlotItems(), (o.weapon || [0, 0, 0])[i] || 0));
-  $("ogame").checked = o.gameArmor; $("odeco").checked = o.ownedDecos; $("oplanned").checked = o.planned;
-  $("oqrolls").value = o.quriousRolls; $("otrolls").value = o.talismanRolls;
+function renderLoadList() {
+  const list = S.loadSum || [], q = ($("lfilter").value || "").trim().toLowerCase(), sel = OS().loadout;
+  const rows = list.filter(l => !q || [l.name, l.weaponName, ...l.pieces].some(x => x && x.toLowerCase().includes(q)));
+  $("loadlist").innerHTML = rows.map(l => `<div class="armor loadrow ${l.key === sel ? "sel" : ""}" data-lkey="${l.key}">
+      <div class="nm">${esc(l.name)}</div>
+      ${l.weaponName ? `<div class="sub">${mask("weapon", "var(--gold)", "Weapon")}<span>${esc(l.weaponName)}</span></div>` : ""}
+      <div class="lpieces">${l.pieces.map((n, i) => `<span class="lp ${n ? "" : "none"}">${mask(PARTS[i], n ? "var(--gold)" : "var(--dim)", PARTS[i])}${n ? esc(n) : "—"}</span>`).join("")}</div>
+    </div>`).join("") || `<div class="empty">${list.length ? "No loadout matches." : "No loadouts in this save."}</div>`;
 }
 async function loadOptimizer() {
-  if (!(S.loadouts || []).length) { S.optCurrent = null; renderOptHead(); renderOptTable(); return; }
-  const r = await api().optimizer_load(OS().loadout, optPresetObj());
+  if (!(S.loadouts || []).length) { S.optCurrent = null; S.loadSum = []; renderLoadList(); renderOptHead(); renderOptTable(); return; }
+  if (!S.loadSum) S.loadSum = await api().loadout_summaries();
+  if (!S.loadSum.some(l => l.key === OS().loadout)) S.settings.opt = { ...OS(), loadout: S.loadSum[0].key };
+  renderLoadList();
+  const key = OS().loadout;
+  const r = await api().optimizer_load(key, allPresets()[0]);
+  if (key !== OS().loadout) return;           // another loadout was picked meanwhile
   S.optCurrent = r;
-  if (!r.error) {
-    const patch = {};
-    if (OS().keep === null) patch.keep = usefulSkills(r.current, optPresetObj());
-    if (OS().weapon === null) patch.weapon = r.weapon;
-    if (Object.keys(patch).length) saveOpt(patch, false);
-  }
-  S.opt = null;
-  renderOptHead(); renderOptTable();
-}
-let optSeq = 0;
-async function runOptimize() {
-  const o = OS(), seq = ++optSeq;
-  S.opt = { running: true };
-  $("orun").disabled = true; $("oprogress").textContent = "Optimizing…";
-  renderOptHead(); renderOptTable();
-  const done = watchProgress($("oprogress"), $("ostop"));
-  const r = await api().optimize({ loadout: o.loadout, skills: o.keep || [], weapon: o.weapon || [0, 0, 0], preset: optPresetObj(),
-    gameArmor: o.gameArmor, ownedDecos: o.ownedDecos, quriousRolls: o.quriousRolls, talismanRolls: o.talismanRolls, planned: o.planned });
-  done();
-  if (seq !== optSeq) return;
-  $("orun").disabled = false;
-  S.opt = { ...r, sel: 0 };
-  if (!r.error) S.optCurrent = { ...S.optCurrent, current: r.current };
-  $("oprogress").textContent = r.error ? "" : `${r.seconds}s`;
   renderOptHead(); renderOptTable();
 }
 function renderOptHead() {
-  const r = S.opt;
-  let note = `Starts from a loadout of your save and keeps the skills under <b>Keep</b> (by default the ones the preset
-    weighs). In order: the best set with your own pieces, then (if better) with the pieces and talismans your saved sets
-    will get (<span class="src plan">planned</span>, with the rolls still to make), then sets with new rolls. The first set is the best one without rolls (your armor, talismans${OS().gameArmor ? ", game armor to craft" : ""}
-    and ${OS().ownedDecos ? "your" : "any"} decorations); each next one needs more rolls (qurious augments of ${OS().gameArmor ? "any" : "your"}
-    armor, future talismans) and scores more. <b>Score</b>: preset weights of every skill (capped at its max) plus the
-    free slots; <b>Gain</b> is against the loadout as it is. With rolls, sets one or two changes away from these are
-    searched, so the list is a set of suggestions, not every possible set.`;
-  if (r && r.stale) note += ` <b style="color:var(--gold)">Options changed: press Optimize again.</b>`;
-  if (r && r.proven === false) note += ` <b style="color:var(--gold)">The search without rolls stopped at its time limit.</b>`;
-  const cur = S.optCurrent && S.optCurrent.current;
-  $("head").innerHTML = `<span class="big">Build optimizer</span>${cur ? `<span class="rar">${esc(cur.name)}</span>${cur.weaponName ? `<span class="muted">${esc(cur.weaponName)}</span>` : ""}` : ""}<div class="note">${note}</div>`;
+  const c = S.optCurrent, cur = c && !c.error && c.current;
+  $("head").innerHTML = `<span class="big">${cur ? esc(cur.name) : "Build optimizer"}</span>${cur && cur.weaponName ? `<span class="muted">${esc(cur.weaponName)}</span>` : ""}
+    ${cur ? `<span class="spacer" style="flex:1"></span><button class="btn gold" id="lagain" title="Open the Set builder with this loadout's skills and weapon slots and search">Search again</button>` : ""}
+    <div class="note">Your loadouts as they are in the save: pick one on the left to see its pieces, decorations and skills.
+    <b>Search again</b> opens the Set builder with its skills and weapon slots and searches.</div>`;
 }
 function renderOptTable() {
-  const c = S.optCurrent, r = S.opt;
-  if (!c) { $("table").innerHTML = `<div class="empty">No equipment found in this save.</div>`; return; }
+  const c = S.optCurrent;
+  if (!c) { $("table").innerHTML = `<div class="empty">No loadouts found in this save.</div>`; return; }
   if (c.error) { $("table").innerHTML = `<div class="empty" style="color:var(--down)">${esc(c.error)}</div>`; return; }
-  let html = "";
-  if (r && r.running) html = `<div class="empty">Optimizing…</div>`;
-  else if (r && r.error) html = `<div class="empty" style="color:var(--down)">${esc(r.error)}</div>`;
-  else if (r && !r.sets.length) html = `<div class="empty">No set keeps every skill under Keep (check the decorations option and the weapon slots).</div>`;
-  else if (r) {
-    const sel = Math.min(r.sel || 0, r.sets.length - 1);
-    const changes = st => st.changed.map(i => i === 5 ? (st.talisman ? `Talisman ${talSource(st.talisman)}` : "no talisman")
-      : st.pieces[i] ? `${mask(PARTS[i], "var(--gold)", PARTS[i])} ${esc(st.pieces[i].name)} ${pieceSource(st.pieces[i])}` : `${PARTS[i]}: nothing`).join("<br>");
-    const gained = st => {
-      const before = new Map(c.current.skills.map(s => [s.id, s.level]));
-      return st.skills.filter(s => s.level > (before.get(s.id) || 0)).map(s => `<span class="sk">${skillIcon(s.color, s.name)}<span class="nm">${esc(s.name)}</span> ${signed(s.level - (before.get(s.id) || 0))}</span>`).join("");
-    };
-    html = `<table><thead><tr><th style="text-align:right">Rolls</th><th style="text-align:right">Score</th><th style="text-align:right">Gain</th><th>Changes</th><th>Skills up</th></tr></thead><tbody>`
-      + r.sets.map((st, i) => `<tr class="click ${i === sel ? "match" : ""}" data-oset="${i}"><td class="n">${
-        st.tier === "owned" ? `<span class="src own">yours</span>` : st.tier === "planned" ? `<span class="src plan">saved sets</span>` : st.cost.toLocaleString()}</td>
-        <td class="sc">${st.score.toLocaleString()}</td><td class="gn">${signed(st.gain)}</td>
-        <td class="pn">${changes(st) || `<span class="muted">same pieces, other decorations</span>`}</td><td class="skills">${gained(st)}</td></tr>`).join("")
-      + `</tbody></table>` + setCard(r.sets[sel], { changed: r.sets[sel].changed });
-  } else html = `<div class="empty">Press Optimize to look for better sets.</div>`;
-  $("table").innerHTML = html + `<div class="cardlabel">${esc(c.current.name)}, as it is in the save</div>` + setCard(c.current, { title: "Current" });
+  $("table").innerHTML = setCard(c.current, { title: esc(c.current.name) });
 }
 
 /* ---- export ------------------------------------------------------------------------------------------ */
