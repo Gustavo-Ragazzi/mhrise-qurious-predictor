@@ -98,6 +98,7 @@ class SetsMixin:
             owned_decos=bool(p.get("ownedDecos", False)),
             exclude_armor=frozenset(str(x) for x in p.get("excludeArmor") or []),
             avoid_skills=frozenset(int(x) for x in p.get("avoidSkills") or []),
+            marginal=bool(p.get("marginal", False)),
             weights=weights, slot_values=slot_values, **extra)
 
     # ---- set rows ----------------------------------------------------------------------------------

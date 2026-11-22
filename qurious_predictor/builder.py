@@ -82,6 +82,9 @@ class Options:
     # the saved sets' plan as fixed paths (see ``plan_paths``): new rolls on its sequences come from
     # inside it without changing it, or after it
     plan: dict | None = None
+    # count only the rolls past the saved sets' plan on each of its sequences (what this set adds to
+    # the plan of every saved set), not the rolls from now
+    marginal: bool = False
 
 
 class Builder:
@@ -316,9 +319,18 @@ class Builder:
             on_search()
         rows, complete = native().set_search(
             parts, tals, *self._common(o, owned_decos), bool(o.cost_first), int(min(o.max_cost, NO_LIMIT)),
-            int(o.limit), float(o.seconds), float(o.floor), sync)
+            int(o.limit), float(o.seconds), float(o.floor), sync, self._base(o))
         counts = {"armor": [len(p) for p in parts], "talismans": len(tals), "complete": complete}
         return [Found(ainfo, tinfo, r) for r in rows], counts
+
+    @staticmethod
+    def _base(o: Options) -> dict | None:
+        """With ``marginal``: per sequence, the rolls the saved sets' plan makes anyway."""
+        if not (o.marginal and o.plan):
+            return None
+        base = {int(seq): int(pa["total"]) for seq, pa in (o.plan.get("armor") or {}).items()}
+        base.update({TALISMAN_SEQ + int(gen): int(pa["total"]) for gen, pa in (o.plan.get("talismans") or {}).items()})
+        return base
 
     def improve(self, o: Options, starts, box_armors=(), box_talismans=(), generators=None, owned_decos=None):
         """Pareto front (fewest rolls first, each next set worth more) of sets reached from ``starts`` by
@@ -333,7 +345,7 @@ class Builder:
             start_tuples.append(row)
         rows, complete = native().set_improve(
             parts, tals, *self._common(o, owned_decos), int(min(o.max_cost, NO_LIMIT)), int(o.limit),
-            start_tuples, float(o.seconds), sync)
+            start_tuples, float(o.seconds), sync, self._base(o))
         counts = {"armor": [len(p) for p in parts], "talismans": len(tals), "complete": complete}
         return [Found(ainfo, tinfo, r) for r in rows], counts
 

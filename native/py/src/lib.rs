@@ -422,6 +422,7 @@ fn query_of(
     limit: usize,
     floor: f64,
     sync: Option<SyncArgs>,
+    base: Option<HashMap<i32, u32>>,
 ) -> PyResult<sets::Query> {
     let value = match value {
         "defense" => sets::Value::Defense,
@@ -464,6 +465,7 @@ fn query_of(
         sync: sync
             .map(|(lineage, split)| sets::Sync { lineage, split })
             .unwrap_or_default(),
+        base: base.unwrap_or_default(),
     })
 }
 
@@ -494,7 +496,7 @@ fn set_rows(out: sets::Outcome) -> (Vec<SetTuple>, bool) {
 /// The best sets (see `qurious_core::sets::search`) and whether the search finished within `seconds`.
 /// `value` is "defense" or "score".
 #[pyfunction]
-#[pyo3(signature = (parts, talismans, weapon, decos, reqs, max_levels, weights, slot_values, value, cost_first, max_cost, limit, seconds=20.0, floor=0.0, sync=None))]
+#[pyo3(signature = (parts, talismans, weapon, decos, reqs, max_levels, weights, slot_values, value, cost_first, max_cost, limit, seconds=20.0, floor=0.0, sync=None, base=None))]
 #[allow(clippy::too_many_arguments)]
 fn set_search(
     py: Python<'_>,
@@ -513,6 +515,7 @@ fn set_search(
     seconds: f64,
     floor: f64,
     sync: Option<SyncArgs>,
+    base: Option<HashMap<i32, u32>>,
 ) -> PyResult<(Vec<SetTuple>, bool)> {
     let q = query_of(
         parts,
@@ -529,6 +532,7 @@ fn set_search(
         limit,
         floor,
         sync,
+        base,
     )?;
     let t = deadline(seconds);
     Ok(set_rows(py.allow_threads(move || sets::search(&q, t))))
@@ -537,7 +541,7 @@ fn set_search(
 /// Pareto front of rolls and value from local changes of `starts` (see `qurious_core::sets::improve`).
 /// starts = [[talisman, head, chest, arms, waist, legs]] as candidate tuples (None = nothing).
 #[pyfunction]
-#[pyo3(signature = (parts, talismans, weapon, decos, reqs, max_levels, weights, slot_values, value, max_cost, limit, starts, seconds=10.0, sync=None))]
+#[pyo3(signature = (parts, talismans, weapon, decos, reqs, max_levels, weights, slot_values, value, max_cost, limit, starts, seconds=10.0, sync=None, base=None))]
 #[allow(clippy::too_many_arguments)]
 fn set_improve(
     py: Python<'_>,
@@ -555,6 +559,7 @@ fn set_improve(
     starts: Vec<[Option<CandTuple>; 6]>,
     seconds: f64,
     sync: Option<SyncArgs>,
+    base: Option<HashMap<i32, u32>>,
 ) -> PyResult<(Vec<SetTuple>, bool)> {
     let q = query_of(
         parts,
@@ -571,6 +576,7 @@ fn set_improve(
         limit,
         0.0,
         sync,
+        base,
     )?;
     let starts: Vec<[Option<sets::Cand>; 6]> = starts
         .into_iter()

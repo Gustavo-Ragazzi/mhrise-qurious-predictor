@@ -158,6 +158,24 @@ pub struct Query {
     /// Only sets worth at least this much (score x 1, defense x 1); 0 = any.
     pub floor: f64,
     pub sync: Sync,
+    /// Rolls already paid for per sequence (default 0): a set costs, per sequence, only the rolls past
+    /// this (another plan rolls that far anyway).
+    pub base: HashMap<i32, u32>,
+}
+
+impl Query {
+    fn base_of(&self, seq: i32) -> u32 {
+        self.base.get(&seq).copied().unwrap_or(0)
+    }
+
+    /// The rolls a candidate costs on its own: its roll number past the sequence's base.
+    fn roll_cost(&self, c: &Cand) -> u32 {
+        if c.seq >= 0 {
+            c.roll.saturating_sub(self.base_of(c.seq))
+        } else {
+            0
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -347,7 +365,7 @@ impl<'a> Ctx<'a> {
             seq: c.seq,
             roll: c.roll,
             stream: c.stream,
-            cost: c.cost(),
+            cost: q.roll_cost(c),
             ub,
             offer: 0,
             wlv: c
@@ -402,7 +420,7 @@ impl<'a> Ctx<'a> {
         let prune = |list: &[Cand]| -> Vec<P> {
             let mut ps: Vec<P> = list
                 .iter()
-                .filter(|c| c.cost() <= q.max_cost)
+                .filter(|c| q.roll_cost(c) <= q.max_cost)
                 .map(|c| Self::prepare(q, c, k, &best_slot, &widx))
                 .collect();
             ps.push(Self::empty(&best_slot, q.value));
@@ -922,7 +940,7 @@ impl<'a> Ctx<'a> {
         for (c, p) in self.cands[d].iter().enumerate() {
             let mut add_cost = 0;
             if p.seq >= 0 {
-                let mut top = 0;
+                let mut top = self.q.base_of(p.seq);
                 let mut clash = false;
                 for &r in rolls.iter() {
                     if r.0 == p.seq {
@@ -1058,7 +1076,7 @@ impl<'a> Ctx<'a> {
             decos: placed,
             skills,
             free_slots,
-            cost: seq_top.values().sum(),
+            cost: seq_top.iter().map(|(sq, t)| t.saturating_sub(self.q.base_of(*sq))).sum(),
             defense: pieces.iter().map(|p| p.defense).sum(),
             score: score as f64 / 100.0,
         }
@@ -1137,7 +1155,7 @@ pub fn search(q: &Query, deadline: Option<Instant>) -> Outcome {
     }
     let reach: u64 = std::iter::once(&q.talismans)
         .chain(q.parts.iter())
-        .map(|l| l.iter().map(|c| c.cost() as u64).max().unwrap_or(0))
+        .map(|l| l.iter().map(|c| q.roll_cost(c) as u64).max().unwrap_or(0))
         .sum();
     let top = (q.max_cost as u64).min(reach) as u32;
     let mut budget = 0u32;
@@ -1202,7 +1220,8 @@ fn run(q: &Query, deadline: Option<Instant>) -> Outcome {
                         .filter(|r: &&(i32, u32, i32)| r.0 == p.seq)
                         .map(|r| r.1)
                         .max()
-                        .unwrap_or(0);
+                        .unwrap_or(0)
+                        .max(q.base_of(p.seq));
                     cost += p.roll.saturating_sub(top);
                     rolls.push((p.seq, p.roll, p.stream));
                 }
@@ -1271,7 +1290,7 @@ impl<'a> Ctx<'a> {
                 None => top.push((sq, r)),
             }
         }
-        let cost: u32 = top.iter().map(|e| e.1).sum();
+        let cost: u32 = top.iter().map(|e| e.1.saturating_sub(self.q.base_of(e.0))).sum();
         if cost > self.q.max_cost {
             return None;
         }
@@ -1477,6 +1496,7 @@ mod tests {
             limit: 5,
             floor: 0.0,
             sync: Sync::default(),
+            base: HashMap::new(),
         }
     }
 
@@ -1528,6 +1548,27 @@ mod tests {
         // roll 3 can only be used once: head roll 3 + chest roll 5 costs 5 rolls of sequence 7
         assert_eq!(r[0].parts[..2], [Some(11), Some(22)]);
         assert_eq!(r[0].cost, 5);
+    }
+
+    #[test]
+    fn base_counts_only_the_rolls_past_it() {
+        let rolled = |key, roll| Cand {
+            seq: 7,
+            roll,
+            ..cand(key, &[(1, 3)], [0, 0, 0], 10)
+        };
+        // head roll 9 (3 points) or head roll 4 (3 points) on a sequence already rolled to 8
+        let mut q = query(
+            [vec![cand(1, &[], [0, 0, 0], 50), rolled(11, 9), rolled(12, 4)], vec![], vec![], vec![], vec![]],
+            &[(1, 3)],
+            vec![],
+        );
+        q.base = [(7, 8)].into_iter().collect();
+        let r = search(&q, None).sets;
+        assert_eq!(r[0].cost, 0);      // roll 4 is inside what is rolled anyway
+        assert_eq!(r[0].parts[0], Some(12));
+        q.base = [(7, 2)].into_iter().collect();
+        assert_eq!(search(&q, None).sets[0].cost, 2);
     }
 
     #[test]
@@ -1667,6 +1708,7 @@ mod tests {
             limit: 3,
             floor: 0.0,
             sync: Sync::default(),
+            base: HashMap::new(),
         }
     }
 
