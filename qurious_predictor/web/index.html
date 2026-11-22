@@ -291,6 +291,9 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
 .taltab .tname { display: flex; align-items: center; }
 .tcard .tchead { display: flex; align-items: center; gap: 2px; }
 .tcard .tchead .tint { width: 18px; height: 18px; }
+.crafttab th.sort:hover, .crafttab th.sort.on { color: var(--gold); }
+.crafttab td.ptd { width: 34px; text-align: center; }
+.crafttab td.ptd .tint.picon { margin-right: 0; }
 .crafttab .big2 { font-size: 16px; color: var(--gold); }
 .rnode .rres { display: flex; flex-wrap: wrap; gap: 0 8px; font-size: 12px; }
 .rarrow { display: flex; flex-direction: column; justify-content: center; align-items: center; min-width: 74px; padding: 0 4px;
@@ -2113,6 +2116,12 @@ function setupPlanner() {
   $("pstop").addEventListener("click", () => { api().search_stop(); $("pstop").disabled = true; });
   $("table").addEventListener("click", async e => {
     if (S.mode !== "planner") return;
+    const cs = e.target.closest("[data-csort]");
+    if (cs) {
+      const key = cs.dataset.csort, cur = S.craftSort || { key: "part", dir: 1 };
+      S.craftSort = { key, dir: cur.key === key ? -cur.dir : 1 };
+      return renderPlanTable();
+    }
     const so = e.target.closest("[data-psort]");
     if (so) {
       const key = so.dataset.psort, cur = S.planSort || {};
@@ -2281,11 +2290,12 @@ function renderPlan() {
   if (copies.length || p.craft.length) {
     const total = copies.reduce((a, c) => a + c.count, 0) + p.craft.length;
     h += `<div class="pstage"><span class="pnum">${++n}</span><div><b>Craft new copies</b><span class="muted"> · ${total} piece${total > 1 ? "s" : ""}: every roll goes on a new copy, the pieces you have and use are never touched</span></div></div>
-      <div class="setcard"><table class="settable crafttab"><thead><tr><th>Piece</th><th style="text-align:right">Copies</th><th>What for</th><th>Sets</th></tr></thead><tbody>`
-      + copies.map(c => `<tr><td class="pn">${partIcon(c.part)}<b>${esc(c.name)}</b> <span class="muted small">rarity ${c.rarity}</span></td><td class="n"><b class="big2">${c.count}</b></td>
-          <td class="pn">${[c.keep ? `${c.keep} to roll and keep${c.keep > 1 ? " (one per result)" : ""}` : "", c.burn ? `1 to spend augments on (its results are thrown away)` : ""].filter(Boolean).join("<br>")}</td>
-          <td class="pn muted small">${c.sets.map(esc).join(", ")}</td></tr>`).join("")
-      + p.craft.map(c => `<tr><td class="pn">${partIcon(c.part)}<b>${esc(c.name)}</b></td><td class="n"><b class="big2">1</b></td><td class="pn">worn as it is (no roll)</td><td class="pn muted small">${c.sets.map(esc).join(", ")}</td></tr>`).join("")
+      <div class="setcard"><table class="settable crafttab"><thead><tr>${craftTh("part", "Part")}${craftTh("name", "Piece")}${craftTh("count", "Copies", "text-align:right")}<th>What for</th><th>Sets</th></tr></thead><tbody>`
+      + craftRows(copies.map(c => ({ part: c.part, name: c.name, count: c.count, rarity: c.rarity, sets: c.sets,
+          why: [c.keep ? `${c.keep} to roll and keep${c.keep > 1 ? " (one per result)" : ""}` : "", c.burn ? `1 to spend augments on (its results are thrown away)` : ""].filter(Boolean).join("<br>") }))
+        .concat(p.craft.map(c => ({ part: c.part, name: c.name, count: 1, rarity: null, sets: c.sets, why: "worn as it is (no roll)" }))))
+        .map(c => `<tr><td class="ptd">${partIcon(c.part)}</td><td class="pn"><b>${esc(c.name)}</b>${c.rarity ? ` <span class="muted small">rarity ${c.rarity}</span>` : ""}</td><td class="n"><b class="big2">${c.count}</b></td>
+          <td class="pn">${c.why}</td><td class="pn muted small">${c.sets.map(esc).join(", ")}</td></tr>`).join("")
       + `</tbody></table></div>`;
   }
   // 2. armor
@@ -2353,7 +2363,20 @@ function rollsSummary(p) {
 function amberItems(amber, points) {
   return `${points.toLocaleString()} Amber Essence points: ` + amber.map(x => `<b>${x.count.toLocaleString()}</b> ${esc(x.name)}`).join(" or ");
 }
-const partIcon = part => part != null ? mask(PARTS[part], "var(--gold)", PARTS[part], "picon") : "";
+// "Craft new copies": sorted by part (head..legs), piece name or copies; clicking the same column again reverses it
+function craftRows(rows) {
+  const s = S.craftSort || { key: "part", dir: 1 };
+  const val = { part: c => c.part ?? 9, name: c => c.name.toLowerCase(), count: c => c.count }[s.key];
+  return rows.sort((a, b) => {
+    const x = val(a), y = val(b);
+    return (x < y ? -1 : x > y ? 1 : a.name.localeCompare(b.name)) * s.dir;
+  });
+}
+function craftTh(key, label, style = "") {
+  const s = S.craftSort || { key: "part", dir: 1 };
+  return `<th class="sort ${s.key === key ? "on" : ""}" data-csort="${key}" style="cursor:pointer;${style}" title="Sort by this column (again: reverse)">${label}${s.key === key ? (s.dir > 0 ? " ▲" : " ▼") : ""}</th>`;
+}
+const partIcon = part =>part != null ? mask(PARTS[part], "var(--gold)", PARTS[part], "picon") : "";
 function routeStart() {
   return `<div class="rnode start"><span class="rat">Save</span><small class="muted">as it is now</small></div>`;
 }
