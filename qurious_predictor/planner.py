@@ -165,7 +165,9 @@ class Planner:
             return 0, 0
         return c["zenny"] * count, c["points"][str(ty)] * count
 
-    def armor_plan(self, targets, generators, box_armors) -> tuple[list, list]:
+    def armor_plan(self, targets, generators, box_armors, rolled_targets=()) -> tuple[list, list]:
+        """``rolled_targets``: results already in the box; their pieces can still take the augments before a
+        wanted one (on another copy), as they did when the roadmap was first made."""
         groups = {}
         for t in targets:
             groups.setdefault((t["cost"], t["type"]), []).append(t)
@@ -179,7 +181,8 @@ class Planner:
             seq = engine.seed_index(cost, ty)
             start = generators[seq].state()
             nt = search.native_tables(self.data)
-            others = sorted({x["id"] for x in ts} | {x["via"] for x in ts if x.get("via")})
+            others = sorted({x["id"] for x in ts} | {x["via"] for x in ts if x.get("via")}
+                            | {x["id"] for x in rolled_targets if (x["cost"], x["type"]) == (cost, ty)})
 
             def find(state, t, limit, ty=ty):
                 """The wanted augment with the augments before it on the piece itself or, when that is
@@ -298,7 +301,7 @@ class Planner:
             out[-1] += 1
         return out
 
-    def check(self, s: dict, generators, box_armors=(), together: dict | None = None) -> dict:
+    def check(self, s: dict, generators, box_armors=(), together: dict | None = None, box_talismans=()) -> dict:
         """A saved set against the save as it is now: whether its rolls still come in the order it was
         saved with (pieces of one sequence augmented one after the other), and what the planner needs.
         ``together``: the roadmap of every saved set (``plan``); a set saved with pieces inside or after
@@ -307,8 +310,10 @@ class Planner:
         nt = search.native_tables(self.data)
         in_order = True
         by_seq = {}
+        rolled = self.rolled(box_armors, box_talismans)
         for t in s["targets"]["armor"]:
-            by_seq.setdefault((t["cost"], t["type"]), []).append(t)
+            if not self.is_rolled(t, rolled):        # already in the box: done
+                by_seq.setdefault((t["cost"], t["type"]), []).append(t)
         for (cost, ty), ts in by_seq.items():
             state, done = generators[engine.seed_index(cost, ty)].state(), 0
             for t in sorted(ts, key=lambda t: t["n"]):
@@ -320,8 +325,8 @@ class Planner:
         saved = sum(max(t["n"] for t in ts) for ts in by_seq.values())
         if together is not None:
             return self._check_together(s, together, in_order, saved)
-        plan = self.plan([s], generators, box_armors)
-        return {"inOrder": in_order, "savedAugments": saved,
+        plan = self.plan([s], generators, box_armors, box_talismans)
+        return {"inOrder": in_order, "savedAugments": saved, "done": len(plan["done"]),
                 "augments": plan["totals"]["augments"], "talismans": plan["totals"]["talismans"],
                 "missing": len(plan["missing"]["armor"]) + len(plan["missing"]["talismans"]),
                 "reordered": any(q["reordered"] for q in plan["armor"])}
@@ -341,14 +346,50 @@ class Planner:
                          for t in plan["missing"]["talismans"]))
         reordered = any(q["reordered"] and any((st["id"], st["type"], outcome_key(st["expected"])) in mine_a for st in q["steps"])
                         for q in plan["armor"])
+        done = sum(1 for d in plan.get("done", []) if s["name"] in d["sets"])
         return {"inOrder": in_order, "savedAugments": saved, "augments": augments, "talismans": talismans,
-                "missing": missing, "reordered": reordered, "together": True}
+                "missing": missing, "reordered": reordered, "together": True, "done": done}
 
-    def plan(self, sets: list[dict], generators, box_armors) -> dict:
-        armor_t, tal_t, craft = [], [], {}
+    @staticmethod
+    def rolled(box_armors=(), box_talismans=()) -> tuple[set, set]:
+        """The results already in the equipment box: armor (id, outcome key) and talismans (skills,
+        slots). A saved set's result found there is done: the plan does not look for it again."""
+        armor = set()
+        for it in box_armors:
+            if not getattr(it, "augmented", False):
+                continue
+            sk = {}
+            for s, v in it.skills or []:
+                sk[s] = sk.get(s, 0) + v
+            armor.add((str(it.armor_id), outcome_key([it.defense, it.slot_points, it.resistances or [0] * 5,
+                                                      [[s, v] for s, v in sk.items() if v]])))
+        tals = {(json.dumps(sorted([int(s), int(l)] for s, l in t.skills)), json.dumps(sorted(t.slots, reverse=True)))
+                for t in box_talismans}
+        return armor, tals
+
+    @staticmethod
+    def is_rolled(t: dict, rolled: tuple[set, set], talisman: bool = False) -> bool:
+        if talisman:
+            return (json.dumps(sorted([int(s), int(l)] for s, l in t["skills"])),
+                    json.dumps(sorted(t["slots"], reverse=True))) in rolled[1]
+        return (t["id"], outcome_key(t["expected"])) in rolled[0]
+
+    def plan(self, sets: list[dict], generators, box_armors, box_talismans=()) -> dict:
+        armor_t, tal_t, craft, done = [], [], {}, []
+        rolled = self.rolled(box_armors, box_talismans)
         for s in sets:
             tg = s["targets"]
+            for t in tg["armor"] + tg["talismans"]:
+                tal = "method" in t
+                if self.is_rolled(t, rolled, tal):
+                    same = next((d for d in done if d["target"] == t), None)
+                    if same:
+                        same["sets"].append(s["name"])
+                    else:
+                        done.append({"target": t, "talisman": tal, "sets": [s["name"]]})
             for t in tg["armor"]:
+                if self.is_rolled(t, rolled):
+                    continue
                 same = next((x for x in armor_t if x["id"] == t["id"] and outcome_key(x["expected"]) == outcome_key(t["expected"])
                              and x["type"] == t["type"]), None)
                 if same:
@@ -356,6 +397,8 @@ class Planner:
                 else:
                     armor_t.append({**t, "sets": [s["name"]]})
             for t in tg["talismans"]:
+                if self.is_rolled(t, rolled, True):
+                    continue
                 same = next((x for x in tal_t if x["skills"] == t["skills"] and x["slots"] == t["slots"]
                              and x["method"] == t["method"] and x["target"] == t["target"]), None)
                 if same:
@@ -368,13 +411,22 @@ class Planner:
         copies = {}
         for t in armor_t:
             copies[t["id"]] = copies.get(t["id"], 0) + 1
-        armor, miss_a = self.armor_plan(armor_t, generators, box_armors)
+        armor, miss_a = self.armor_plan(armor_t, generators, box_armors,
+                                        [d["target"] for d in done if not d["talisman"]])
         tals, miss_t = self.talisman_plan(tal_t, generators)
         amber = sum(s["points"] for s in armor)
         meld_pts = sum(g["points"] for g in tals)
+        # a piece to augment, or to spend augments on, needs a copy in the box: craft the ones not there
+        have = {str(it.armor_id) for it in box_armors}
+        for q in armor:
+            for st in q["steps"]:
+                for aid, why in ((st["id"], "to augment"), (st["burnOn"], "to spend augments on")):
+                    if aid and aid not in have:
+                        c = craft.setdefault(aid, {"id": aid, "name": None, "sets": [], "why": why})
+                        c["sets"] += [n for n in st["sets"] if n not in c["sets"]]
         return {
             "armor": armor, "talismans": tals, "missing": {"armor": miss_a, "talismans": miss_t},
-            "craft": list(craft.values()),
+            "craft": list(craft.values()), "done": done,
             "copies": [{"id": k, "count": v} for k, v in copies.items() if v > 1],
             "totals": {"zenny": sum(s["zenny"] for s in armor), "amber": amber, "augments": sum(s["total"] for s in armor),
                        "kamura": sum(g["kamura"] for g in tals), "meldPoints": meld_pts,

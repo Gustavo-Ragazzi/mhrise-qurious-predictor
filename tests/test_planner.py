@@ -90,3 +90,19 @@ def test_best_order_many_targets_goes_by_rolls_not_saved_n():
     order = planner.best_order(0, targets, find)
     assert [t["id"] for t, *_ in order] == ["a", "b", "c", "d", "e", "f", "early", "late"]
     assert sum(k for _, k, _ in order) == 103
+
+
+def test_results_already_in_the_box_are_done():
+    """A saved set's result already in the equipment box (the same piece with the same augment) is
+    done: the plan does not look for it again."""
+    from qurious_predictor import planner
+    from qurious_predictor.savedata import ArmorItem, TalismanItem
+    t = {"id": "204472750", "expected": [-7, 1, [0, 0, 2, -7, 0], [[104, -1], [140, 1]]]}
+    box = [ArmorItem(204472750, True, -7, [0, 0, 2, -7, 0], 1, [(140, 1), (104, -1)]),
+           ArmorItem(205521402, False)]
+    rolled = planner.Planner.rolled(box, [TalismanItem([(5, 2), (1, 1)], [2, 1, 0])])
+    assert planner.Planner.is_rolled(t, rolled)
+    assert not planner.Planner.is_rolled({**t, "id": "205521402"}, rolled)
+    assert not planner.Planner.is_rolled({**t, "expected": [-7, 2, [0, 0, 2, -7, 0], [[104, -1], [140, 1]]]}, rolled)
+    assert planner.Planner.is_rolled({"skills": [[1, 1], [5, 2]], "slots": [2, 1, 0]}, rolled, True)
+    assert not planner.Planner.is_rolled({"skills": [[1, 1], [5, 2]], "slots": [1, 1, 0]}, rolled, True)

@@ -276,7 +276,7 @@ class SetsMixin:
         cache = getattr(self, "_plan_cache", None)
         if cache and cache[0] == key:
             return cache[1]
-        plan = planner.Planner(self.data, self.melding).plan(sets, self.generators, self.box[0])
+        plan = planner.Planner(self.data, self.melding).plan(sets, self.generators, self.box[0], self.box[1])
         self._plan_cache = (key, plan)
         return plan
 
@@ -505,7 +505,7 @@ class SetsMixin:
                 if not force and (x.get("check") or {}).get("state") == state:
                     continue
                 try:
-                    x["check"] = {**pl.check(x, self.generators, self.box[0]), "state": state,
+                    x["check"] = {**pl.check(x, self.generators, self.box[0], box_talismans=self.box[1]), "state": state,
                                   "when": time.strftime("%Y-%m-%d %H:%M")}
                 except planner.Stopped:
                     raise
@@ -562,7 +562,7 @@ class SetsMixin:
             t0 = time.time()
             self._search_begin("Planning")
             try:
-                plan = planner.Planner(self.data, self.melding).plan(sets, self.generators, self.box[0])
+                plan = planner.Planner(self.data, self.melding).plan(sets, self.generators, self.box[0], self.box[1])
             except planner.Stopped:
                 return {"error": "Stopped."}
             except Exception as e:
@@ -588,6 +588,11 @@ class SetsMixin:
                 st["targetName"] = self._skill(st["target"])["name"] if st["target"] else None
         for t in plan["missing"]["armor"]:
             t["result"] = self._outcome_view(t["expected"])
+        for c in plan["craft"]:
+            c["name"] = c.get("name") or self._armor_name(c["id"])
+        for d in plan["done"]:
+            t = d["target"]
+            d["name"] = "Talisman" if d["talisman"] else t["name"]
         for c in plan["copies"]:
             c["name"] = self._armor_name(c["id"])
         for key in ("amber", "meld"):

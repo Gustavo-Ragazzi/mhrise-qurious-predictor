@@ -141,7 +141,11 @@ Talismans), **My equipment** (Inventory, Build optimizer, Export) and **Set buil
     saved sets (the header box ticks them all; click Set, Saved, Rolls then or the tick column to sort) and press
     **Make plan** for a roadmap from the save as it is now, shown per sequence as a route from the save to
     each piece (how many rolls from the save and from the previous piece), with the rolls per augment option
-    and the total on top and Amber Essence as items: per sequence, which
+    and the total on top and Amber Essence as items. As you roll, save in game, press Reload save
+    and Make plan again: a result already in your box (the piece with the wanted augment, or the
+    talisman) is listed as *Already rolled* and not looked for again, and the rest of the roadmap stays
+    the same; *To craft* lists the pieces the roadmap augments or spends augments on that are not in
+    your box. The roadmap: per sequence, which
     piece to augment how many times and which augment to keep, per Qurious Melding sequence how many
     talismans to meld and which to keep, the pieces to craft, and the cost (zenny, Amber Essence
     points, melding points, talismans used up by Cyclus), with how many of each Amber
