@@ -245,6 +245,13 @@ confirmed in game yet.
 
 ## Skills reference
 
+In the Set builder, **Weapon** selects one of the 14 weapon types and **Weapon name** lists
+all matching weapons from your installed game, including Sunbreak. Selecting a weapon uses
+its decoration slots. Choose **None** to use the three manual slot selectors instead.
+Sharing a saved set or the builder's requirements includes the selected weapon's type, name and
+game ID. Import selects that weapon automatically, including across name languages. Older text
+and sets saved before a weapon was selected retain manual slots.
+
 Share a skill list with **Export skills** in the Set builder or **Share skills** in My Loadouts.
 In **Saved sets & planner**, each saved set also has **Export skills**, which opens a copyable text
 dialog with its original name, chosen skills and weapon slots. Extra skills and levels from the

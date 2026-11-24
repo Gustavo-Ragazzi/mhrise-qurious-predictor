@@ -22,9 +22,20 @@ def _weapon(slots):
     return slots
 
 
-def export_skills(data, skills, weapon, bonuses=None):
+def export_skills(data, skills, weapon, bonuses=None, weapon_id=None):
     names = _skills(data)
+    selected = None
+    if weapon_id is not None:
+        selected = data.get("weapons", {}).get(str(weapon_id))
+        if selected is None:
+            raise ValueError("Selected weapon was not found in the game data.")
+        weapon = list(selected["slots"])
     lines = [HEADER, "weapon " + " ".join(map(str, _weapon(weapon)))]
+    if selected:
+        from .weapon_catalog import WEAPON_TYPES
+        name = selected["names"].get("en") or next(iter(selected["names"].values()))
+        lines.extend([f"# Weapon ID: {weapon_id}", f"# Weapon type: {WEAPON_TYPES[selected['type']]}",
+                      f"# Weapon name: {name}"])
     if not skills:
         raise ValueError("Add skills before exporting.")
     lines.append("# Required skills")
@@ -45,11 +56,19 @@ def import_skills(data, text):
         raise ValueError("Paste a skill list of at most 100,000 characters.")
     lookup = {name.strip().casefold(): sid for sid, names in _skills(data).items() for name in names.values()}
     skills, bonuses, weapon, set_name = {}, {}, None, None
+    weapon_details = {}
     for number, raw in enumerate(text.splitlines(), 1):
         line = raw.strip().lstrip("\ufeff")
         if not line:
             continue
         metadata = line[1:].lstrip() if line.startswith("#") else line
+        field, separator, value = metadata.partition(":")
+        if separator and field.casefold() in ("weapon id", "weapon type", "weapon name"):
+            field = field.casefold()
+            if field in weapon_details or not value.strip():
+                raise ValueError(f"Line {number}: invalid or duplicate weapon details.")
+            weapon_details[field] = value.strip()
+            continue
         if metadata.casefold().startswith("set:"):
             if set_name is not None:
                 raise ValueError("Import one named set at a time.")
@@ -90,7 +109,19 @@ def import_skills(data, text):
         target[sid] = level
     if not skills:
         raise ValueError("No skills found. Paste a skill list exported by this app.")
+    selected_fields = {}
+    if weapon_details:
+        weapon_id = weapon_details.get("weapon id")
+        selected = data.get("weapons", {}).get(weapon_id)
+        if selected is None:
+            raise ValueError("Shared weapon was not found. Update the game data or share with manual slots.")
+        slots = _weapon(list(selected["slots"]))
+        if weapon is not None and weapon != slots:
+            raise ValueError("Shared slots do not match the selected weapon. Export the set again.")
+        weapon = slots
+        selected_fields = {"weaponId": weapon_id, "weaponType": selected["type"]}
     return {"skills": [{"id": sid, "level": lv} for sid, lv in skills.items()],
+            **selected_fields,
             **({"bonuses": [{"id": sid, "level": lv} for sid, lv in bonuses.items()]} if bonuses else {}),
             **({"name": set_name} if set_name is not None else {}),
             **({"weapon": weapon} if weapon is not None else {})}

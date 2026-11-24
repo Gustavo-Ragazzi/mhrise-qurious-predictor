@@ -472,8 +472,12 @@ input.rollsin { width: 84px; }
         <span id="bexcluded" class="wantlist"></span>
       </div>
       <div class="frow">
-        <span class="flabel">Weapon slots</span>
-        <div class="picker slotpick" id="bw0"></div><div class="picker slotpick" id="bw1"></div><div class="picker slotpick" id="bw2"></div>
+        <span class="flabel">Weapon</span>
+        <div class="picker" id="bweapontype" style="width:180px"></div>
+        <span class="flabel">Weapon name</span>
+        <div class="picker" id="bweaponname" style="width:270px"></div>
+        <span id="bmanualslots" style="display:inline-flex;gap:5px"><div class="picker slotpick" id="bw0"></div><div class="picker slotpick" id="bw1"></div><div class="picker slotpick" id="bw2"></div></span>
+        <span id="bweaponslots" title="Selected weapon's decoration slots" style="display:none"></span>
         <span class="flabel">Game armor</span>
         <div class="chips" id="branks"></div>
         <label class="toggle" title="Also use the armor in your box as it is, with the qurious augments it already has (no rolls). Independent of Qurious rolls: those add future augments on top of this."><input type="checkbox" id="bownarm"><span></span>My armor</label>
@@ -645,7 +649,7 @@ function makePicker(el, opts) {
   p.set = v => {
     p.value = v;
     const it = p.items.find(i => i.value === v);
-    btn.innerHTML = it ? it.html : `<span class="ph">${esc(opts.placeholder || "Select…")}</span>`;
+    btn.innerHTML = it ? (it.selectedHtml ?? it.html) : `<span class="ph">${esc(opts.placeholder || "Select…")}</span>`;
   };
   return p;
 }
@@ -782,7 +786,7 @@ async function loadHunter() {
   const owned = S.armors.filter(a => a.count).length;
   status(`${S.armors.length} qurious-capable armor pieces in the game, ${owned} crafted. Predictions follow the save as it is now: after augmenting, save in game and press Reload save.`);
   const info = await api().builder_info();
-  if (!info.error) { S.bskills = info.skills; S.loadouts = info.loadouts; S.barmors = info.armors; }
+  if (!info.error) { S.bskills = info.skills; S.loadouts = info.loadouts; S.barmors = info.armors; S.bweapons = info.weapons; S.bweaponTypes = info.weaponTypes; }
   S.build = null; S.optCurrent = null; S.loadSum = null;
   syncBuildUi();
   if (S.mode === "skills") return showMode();
@@ -1870,15 +1874,18 @@ const BUILD_DEFAULTS = { skills: [], weapon: [0, 0, 0], ranks: ["master"], owned
   quriousRolls: 0, talismanRolls: 0, sortBy: "defense", preset: "builtin:all", limit: 20, seconds: 30, excludeArmor: [], avoidSkills: [],
   planned: true };
 const BS = () => S.settings.build;
-async function shareSkills(skills, weapon) {
-  const r = await api().skills_export(skills, weapon);
+async function shareSkills(skills, weapon, weaponId = null) {
+  const r = await api().skills_export(skills, weapon, weaponId);
   if (r.error) return status(r.error);
   openModal("Share skills", r.text, "Copy", async () => {
     await copyText($("modaltext")); $("modalnote").textContent = "Copied to the clipboard.";
   }, "Share this text. Import skills in the Set builder restores these skill requirements and weapon slots.");
 }
-let buildWant, buildWeapon, buildSort, buildPreset, buildExArmor, buildExSkill;
+let buildWant, buildWeapon, buildWeaponType, buildWeaponName, buildSort, buildPreset, buildExArmor, buildExSkill;
 function saveBuild(patch, stale = true) {
+  // Imports and Search again provide manual slots; clear any previous named weapon.
+  if (Object.hasOwn(patch, "weapon") && !Object.hasOwn(patch, "weaponId"))
+    patch = { ...patch, weaponId: null, weaponType: null, manualWeapon: [...patch.weapon] };
   S.settings.build = { ...BS(), ...patch };
   api().save_settings({ build: S.settings.build });
   if (stale && S.build) S.build.stale = true;
@@ -1888,7 +1895,7 @@ function saveBuild(patch, stale = true) {
 function setupBuilder() {
   S.settings.build = { ...BUILD_DEFAULTS, ...(S.settings.build || {}) };
   buildWant = wantEditor("b", () => BS().skills, skills => saveBuild({ skills }));
-  $("bexportskills").addEventListener("click", () => shareSkills(BS().skills, BS().weapon));
+  $("bexportskills").addEventListener("click", () => shareSkills(BS().skills, BS().weapon, BS().weaponId ?? null));
   $("bimportskills").addEventListener("click", () => openModal("Import skills", "", "Import", async () => {
     const r = await api().skills_import($("modaltext").value);
     if (r.error) { $("modalnote").textContent = r.error; return; }
@@ -1897,6 +1904,14 @@ function setupBuilder() {
     status(`Imported ${r.skills.length} skills${name ? ` from "${name}"` : ""}. Press Search to find sets.`);
   }, "Paste shared skills, or one skill per line: Attack Boost Lv7. Import replaces your wanted skills and any included weapon slots."));
   buildWeapon = [0, 1, 2].map(i => makePicker($("bw" + i), { onChange: v => { const w = [...BS().weapon]; w[i] = v; saveBuild({ weapon: w }); } }));
+  buildWeaponType = makePicker($("bweapontype"), { search: true, onChange: weaponType => {
+    saveBuild({ weaponType, weaponId: null, weapon: [...(BS().manualWeapon || BS().weapon)] });
+  } });
+  buildWeaponName = makePicker($("bweaponname"), { search: true, onChange: weaponId => {
+    const b = BS(), selected = (S.bweapons || []).find(w => w.id === weaponId);
+    saveBuild({ weaponId, manualWeapon: b.weaponId ? b.manualWeapon : [...b.weapon],
+      weapon: [...(selected ? selected.slots : b.manualWeapon || b.weapon)] });
+  } });
   buildSort = makePicker($("bsort"), { onChange: v => saveBuild({ sortBy: v }) });
   buildPreset = makePicker($("bpreset"), { search: true, onChange: v => saveBuild({ preset: v }) });
   $("branks").addEventListener("click", e => {
@@ -1940,6 +1955,20 @@ function setupBuilder() {
     S.build.sel = +o.dataset.bset; renderBuildTable();
   });
 }
+function syncBuildWeapon() {
+  const b = BS();
+  buildWeaponType.setItems([{ value: null, text: "None", html: "<span>None</span>" }]
+    .concat((S.bweaponTypes || []).map(t => ({ value: t.id, text: t.name, html: `<span>${esc(t.name)}</span>` }))), b.weaponType ?? null);
+  const weapons = (S.bweapons || []).filter(w => w.type === b.weaponType);
+  buildWeaponName.setItems([{ value: null, text: "None", html: "<span>None</span>" }]
+    .concat(weapons.map(w => ({ value: w.id, text: w.name,
+      selectedHtml: `<span>${esc(w.name)}</span><span class="hint">R${w.rarity}</span>`,
+      html: `<span>${esc(w.name)}</span><span class="hint">R${w.rarity}</span>${w.slots.filter(Boolean).map(lv => slot(lv, false)).join("")}` }))), b.weaponId ?? null);
+  const selected = weapons.find(w => w.id === b.weaponId);
+  $("bmanualslots").style.display = selected ? "none" : "inline-flex";
+  $("bweaponslots").style.display = selected ? "inline-flex" : "none";
+  $("bweaponslots").innerHTML = selected ? selected.slots.map(lv => slot(lv, false)).join("") : "";
+}
 function syncBuildUi() {
   const b = BS();
   buildWant.sync();
@@ -1949,6 +1978,7 @@ function syncBuildUi() {
     return `${esc(s?.name || "#" + k.id)} +${k.level}`;
   }).join(" · ")}` : "";
   buildWeapon.forEach((p, i) => p.setItems(weaponSlotItems(), b.weapon[i] || 0));
+  syncBuildWeapon();
   buildSort.setItems([{ value: "defense", text: "Defense", html: `${img("defense", "Defense")}<span>Defense</span>` },
     { value: "score", text: "Score", html: `<span>Score (preset)</span>` }], b.sortBy);
   buildPreset.setItems(allPresets().map(p => ({ value: p.id, text: p.name, html: `<span>${esc(p.name)}</span>` })), (allPresets().find(p => p.id === b.preset) || allPresets()[0]).id);
@@ -2180,7 +2210,8 @@ function saveCurrentSet(st) {
     + (b.skills.length > 3 ? ` +${b.skills.length - 3}` : ""));
   openModal("Save set", def, "Save", async () => {
     const name = $("modaltext").value.trim();
-    const r = await api().save_set(st, name, { skills: b.skills, weapon: b.weapon });
+    const r = await api().save_set(st, name, { skills: b.skills, weapon: b.weapon,
+      weaponId: b.weaponId ?? null, weaponType: b.weaponType ?? null });
     S.saved = r.sets; closeModal();
     status(`Saved "${name || "set"}": open Saved sets & planner to plan its rolls.`);
   }, "Name of the set. The planner looks for its rolls again from the save, so it stays valid after you roll.", "line");
@@ -2232,7 +2263,9 @@ function setupPlanner() {
       const q = s.query || {};
       if (q.skills && q.skills.length) {
         // only fills the Set builder with the set's skills and weapon slots (no search)
-        saveBuild({ skills: q.skills, weapon: q.weapon || [0, 0, 0] });
+        const selected = (S.bweapons || []).find(w => w.id === q.weaponId);
+        saveBuild({ skills: q.skills, weapon: selected ? [...selected.slots] : q.weapon || [0, 0, 0],
+          weaponId: selected?.id || null, weaponType: selected?.type ?? null });
         setMode("builder");
       } else status("This set was saved without its skills.");
       return;
