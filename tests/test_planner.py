@@ -144,3 +144,60 @@ def test_borrowed_pieces_are_rolls_of_the_set_too():
     assert t["armor"] == [{"id": "1", "name": "Helm", "part": 0, "type": 0, "cost": 10, "n": 285, "via": None,
                            "expected": [1, 0, [0, 0, 0, 0, 0], [[37, 1]]]}]
     assert t["talismans"] == [{"method": 11, "target": 104, "n": 12, "skills": [[104, 3]], "slots": [3, 2, 0]}]
+
+
+@needs_game
+def test_progress_ticks_off_a_plan_without_planning_again():
+    data = gamedata.load(Path(GAME), log=lambda m: None)
+    gens = [XorShift128((0x5151 + i, 0x2727 * (i + 1), 0x3939 ^ i, 0x4141)) for i in range(56)]
+    nt = search.native_tables(data)
+    ty = engine.TYPE_SKILL
+    pieces = [(aid, a) for aid, a in data["armors"].items() if a["cost"] == 12]
+    (p1, a1), (p2, a2) = pieces[0], pieces[len(pieces) // 2]
+    seq = engine.seed_index(12, ty)
+
+    def nth(a, n):
+        d, sl, res, sk = search._native.rolls(nt, gens[seq].state(), a["table"], a["cost"],
+                                              [tuple(s) for s in a["skills"]], ty, n)[-1]
+        return [d, sl, list(res), sorted([s, v] for s, v in sk if v)]
+
+    sets = [{"name": "A", "targets": {"armor": [{"id": p1, "name": p1, "part": a1["part"], "type": ty, "cost": 12, "n": 9,
+                                                 "expected": nth(a1, 9)}], "talismans": [], "craft": []}},
+            {"name": "B", "targets": {"armor": [{"id": p2, "name": p2, "part": a2["part"], "type": ty, "cost": 12, "n": 25,
+                                                 "expected": nth(a2, 25)}], "talismans": [], "craft": []}}]
+    pl = planner.Planner(data, melding.Tables(data["melding"]))
+    plan = pl.plan(sets, gens, [])
+    (q,) = plan["armor"]
+    assert len(q["steps"]) == 2
+
+    def walk(k):
+        """The generators after the first k augments of the route."""
+        g = [XorShift128(x.state()) for x in gens]
+        state, left = gens[seq].state(), k
+        for s in q["steps"]:
+            for aid, n in ([(s["burnOn"], s["augments"] - 1), (s["id"], 1)] if s["burnOn"] and s["augments"] > 1
+                           else [(s["id"], s["augments"])]):
+                n = min(n, left)
+                if n:
+                    a = data["armors"][aid]
+                    state, _ = search._native.augment_advance(nt, list(state), a["table"], a["cost"],
+                                                              [tuple(x) for x in a["skills"]], ty, n)
+                left -= n
+        g[seq] = XorShift128(state)
+        return g
+
+    first = q["steps"][0]["at"]
+    p = pl.progress(plan, walk(0))
+    assert q["progress"] == {"done": 0, "onRoute": True, "finished": False} and not any(s["done"] for s in q["steps"])
+    p = pl.progress(plan, walk(first))
+    assert q["steps"][0]["done"] and not q["steps"][1]["done"] and p["progress"]["augmentsDone"] == first
+    assert not q["steps"][0]["inBox"]                # rolled, but that result was not put in the box here
+    pl.progress(plan, walk(first + 1))
+    assert q["steps"][1]["doneHere"] == 1
+    pl.progress(plan, walk(q["total"]))
+    assert q["progress"]["finished"] and all(s["done"] for s in q["steps"])
+    # the sequence somewhere the route never passes (something else augmented on it): off the plan
+    g = walk(first)
+    g[seq] = XorShift128((1, 2, 3, 4))
+    p = pl.progress(plan, g)
+    assert p["progress"]["offRoute"] == 1 and not q["progress"]["onRoute"] and not any(s["done"] for s in q["steps"])

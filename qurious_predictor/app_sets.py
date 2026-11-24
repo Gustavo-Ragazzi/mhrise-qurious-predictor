@@ -516,7 +516,7 @@ class SetsMixin:
     def _check_sets(self, force: bool = False) -> list[dict]:
         if not self.generators:
             return self.saved_sets()
-        state = str(hash(tuple(tuple(g.state()) for g in self.generators)))
+        state = self._save_state()
         sets = [dict(x) for x in self.saved_sets()]
         pl = planner.Planner(self.data, self.melding)
         changed = False
@@ -589,7 +589,48 @@ class SetsMixin:
                 return {"error": f"Planning failed: {e}"}
             finally:
                 self._progress = None
-            return self._plan_view(plan, time.time() - t0)
+            view = self._plan_view(plan, time.time() - t0)
+            # kept, so that after rolling (save in game, Reload save) the plan is only ticked off, not made again
+            self.save_settings({"lastPlan": {"hunter": self.settings.get("hunter"), "ids": sorted(ids),
+                                             "sig": self._plan_sig(sets), "plan": view,
+                                             "when": time.strftime("%Y-%m-%d %H:%M")}})
+            return self.planner_progress()["plan"]
+
+    @staticmethod
+    def _plan_sig(sets: list[dict]) -> str:
+        return json.dumps(sorted((x["id"], x["targets"]) for x in sets), sort_keys=True, default=str)
+
+    def plan_progress(self):
+        """The last plan made (``make_plan``), ticked off against the save as it is now: no planning."""
+        with self._lock:
+            return self.planner_progress()
+
+    def _save_state(self) -> str:
+        return str(hash(tuple(tuple(g.state()) for g in self.generators)))
+
+    def planner_progress(self) -> dict:
+        r = self._planner_progress()
+        r["state"] = self._save_state() if self.generators else None
+        return r
+
+    def _planner_progress(self) -> dict:
+        last = self.settings.get("lastPlan")
+        if not last or not self.generators or last.get("hunter") != self.settings.get("hunter"):
+            return {"plan": None}
+        plan = json.loads(json.dumps(last["plan"]))
+        if any("start" not in q for q in plan["armor"] + plan["talismans"]):
+            return {"plan": None}        # made by an older version: make it again
+        try:
+            planner.Planner(self.data, self.melding).progress(plan, self.generators, self.box[0], self.box[1])
+        except Exception as e:
+            return {"plan": None, "error": f"Cannot check the plan: {e}"}
+        saved = self.saved_sets()
+        sets = [x for x in saved if x["id"] in set(last["ids"])]
+        sel = sorted(i for i in self.settings.get("planSel") or [] if any(x["id"] == i for x in saved))
+        plan["stale"] = (sorted(last["ids"]) != sel
+                         or len(sets) != len(last["ids"]) or self._plan_sig(sets) != last["sig"])
+        plan["madeAt"] = last.get("when")
+        return {"plan": plan}
 
     def _outcome_view(self, e) -> dict:
         d, sl, res, sk = e

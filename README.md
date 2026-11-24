@@ -136,10 +136,16 @@ Talismans), **My equipment** (Inventory, My Loadouts, Export) and **Set builder*
     saved sets (the header box ticks them all; click Set, Saved, Rolls then or the tick column to sort) and press
     **Make plan** for a roadmap from the save as it is now, shown per sequence as a route from the save to
     each piece (how many rolls from the save and from the previous piece), with the rolls per augment option
-    and the total on top and Amber Essence as items. As you roll, save in game, press Reload save
-    and Make plan again: a result already in your box (the piece with the wanted augment, or the
-    talisman) is listed as *Already rolled* and not looked for again, and the rest of the roadmap stays
-    the same; *Craft new copies* comes first: every piece is rolled on a new copy (one per result kept on
+    and the total on top and Amber Essence as items. The plan is kept (also when the app is closed).
+    As you roll, save in game and press **Reload save**: nothing is planned again, the plan is ticked off
+    from the save in a moment (each sequence is looked for along the plan's own route: steps passed are
+    *done ✓*, the next one is marked with how many augments are left, a step passed whose result is not
+    in your box is flagged, and a sequence that is nowhere on its route, because something else was
+    augmented on it, says *off the plan: press Make plan again*). The *Now* column of the saved sets
+    is not worked out again on its own while a plan is shown (it plans every saved set together):
+    **Check sets** does it. Make plan again only when the plan says so or the ticked sets change: a
+    result already in your box (the piece with the wanted augment, or the talisman) is then listed as
+    *Already rolled* and not looked for again, and the rest of the roadmap stays the same; *Craft new copies* comes first: every piece is rolled on a new copy (one per result kept on
     it, one more for a piece that takes the augments before another piece's result), so the pieces
     you have and use are never touched. Talismans are a table: per Cyclus grade, how many to meld,
     which skill to pick and the talisman to keep. The roadmap: per sequence, which

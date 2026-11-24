@@ -251,7 +251,7 @@ class Planner:
                 rows.append({**t, "augments": k, "at": done, "burnOn": burn, "zenny": z, "points": pts})
             order_changed = [r["id"] for r in rows] != [t["id"] for t in sorted(ts, key=lambda t: t["n"])]
             sequences.append({"cost": cost, "type": ty, "typeName": engine.TYPE_NAMES[ty], "seed": seq,
-                              "total": done, "steps": rows, "zenny": zenny, "points": points,
+                              "start": list(start), "total": done, "steps": rows, "zenny": zenny, "points": points,
                               "reordered": order_changed and len(rows) > 1})
         return sequences, missing
 
@@ -287,7 +287,7 @@ class Planner:
             method = best[0][0]["method"]
             grade = None if gen == melding.GENERATOR.get(10) else gen - melding.CYCLUS_GENERATOR
             groups.append({"generator": gen, "method": method, "methodName": melding.METHODS[method], "grade": grade,
-                           "total": done, "steps": rows, "kamura": kamura, "points": points, "used": used})
+                           "start": list(start), "total": done, "steps": rows, "kamura": kamura, "points": points, "used": used})
         return groups, missing
 
     # ---- materials -----------------------------------------------------------------------------------
@@ -367,6 +367,57 @@ class Planner:
         done = sum(1 for d in plan.get("done", []) if s["name"] in d["sets"])
         return {"inOrder": in_order, "savedAugments": saved, "augments": augments, "talismans": talismans,
                 "missing": missing, "reordered": reordered, "together": True, "done": done}
+
+    def progress(self, plan: dict, generators, box_armors=(), box_talismans=()) -> dict:
+        """How far each sequence of a plan made earlier has come in the save as it is now, without
+        planning again: the generator now is looked for along the plan's own route (every augment or
+        meld of it, from the state the plan started at). Found after n augments: the steps up to n are
+        done. Not found: something else moved that sequence, the rest of the plan no longer holds.
+        Fills ``progress`` on every sequence and ``done`` / ``inBox`` / ``doneHere`` on every step."""
+        nt = search.native_tables(self.data)
+        rolled = self.rolled(box_armors, box_talismans)
+        done_all = left_all = 0
+        off = 0
+        for q in plan["armor"]:
+            segs = []
+            for st in q["steps"]:
+                k = st["augments"]
+                if st.get("burnOn") and k > 1:
+                    segs += [(*self._piece(st["burnOn"]), k - 1), (*self._piece(st["id"]), 1)]
+                else:
+                    segs.append((*self._piece(st["id"]), k))
+            states = [tuple(x) for x in _native().augment_path(nt, list(q["start"]), q["type"], segs)]
+            now = tuple(generators[q["seed"]].state())
+            n = states.index(now) if now in states else None
+            self._mark(q, n, lambda st: self.is_rolled(st, rolled))
+            off += n is None
+            done_all += n or 0
+            left_all += q["total"] - (n or 0)
+        mt = melding.native_tables(self.data["melding"])
+        for g in plan["talismans"]:
+            # the state after every meld of the route (each step melded in one go, as the plan says)
+            states, state = [tuple(g["start"])], list(g["start"])
+            for st in g["steps"]:
+                for j in range(1, st["talismans"] + 1):
+                    _, after = _native().meld_path(mt, list(state), [(st["method"], st["target"], j)])
+                    states.append(tuple(after))
+                state = list(states[-1])
+            now = tuple(generators[g["generator"]].state())
+            n = states.index(now) if now in states else None
+            self._mark(g, n, lambda st: self.is_rolled(st, rolled, True), "talismans")
+            off += n is None
+        plan["progress"] = {"augmentsDone": done_all, "augmentsLeft": left_all, "offRoute": off}
+        return plan
+
+    @staticmethod
+    def _mark(q: dict, n, in_box, size: str = "augments"):
+        q["progress"] = {"done": n, "onRoute": n is not None,
+                         "finished": n is not None and n >= q["total"]}
+        for st in q["steps"]:
+            first = st["at"] - st[size]
+            st["done"] = n is not None and n >= st["at"]
+            st["inBox"] = bool(in_box(st))
+            st["doneHere"] = max(0, n - first) if n is not None and first < n < st["at"] else 0
 
     @staticmethod
     def rolled(box_armors=(), box_talismans=()) -> tuple[set, set]:

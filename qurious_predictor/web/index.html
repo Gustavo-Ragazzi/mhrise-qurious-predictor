@@ -270,6 +270,9 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
 .rnode .rat { font-size: 20px; font-weight: 700; color: var(--gold); line-height: 1.1; }
 .rnode .rat small { font-size: 11.5px; font-weight: 400; color: var(--muted); }
 .rnode .rfor { font-size: 11.5px; color: var(--muted); }
+.rnode.done { opacity: .55; }
+.rnode.done .rnum { background: var(--up); }
+.rnode.next { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset; }
 .rnode .rlbl { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--gold2); margin-top: 2px; }
 .rnode .rdo { font-size: 12.5px; color: var(--text); margin: 0; padding-left: 18px; }
 .rnode .rdo li { margin: 1px 0; }
@@ -480,6 +483,7 @@ input.rollsin { width: 84px; }
         <span class="spacer"></span>
         <span id="pinfo" class="muted"></span>
         <button class="btn" id="pstop" style="display:none" title="Stop">Stop</button>
+        <button class="btn" id="pcheck" title="Work out the Now column of every saved set again from the save as it is now (it plans every saved set together: can take a while)">Check sets</button>
         <button class="btn gold" id="pmake">Make plan</button>
       </div>
     </div>
@@ -764,7 +768,6 @@ async function loadHunter() {
   if (S.mode === "builder") return showMode();
   if (S.mode === "optimizer") { showMode(); return loadOptimizer(); }
   if (S.mode === "export") { showMode(); return loadExport(); }
-  S.plan = null;
   if (S.mode === "planner") { showMode(); return loadPlanner(); }
   const keep = S.armors.find(a => a.id === S.settings.armor);
   if (keep) await selectArmor(keep.id); else { S.pred = null; showMode(); }
@@ -2110,6 +2113,7 @@ function saveCurrentSet(st) {
 }
 function setupPlanner() {
   $("pmake").addEventListener("click", runPlan);
+  $("pcheck").addEventListener("click", checkSets);
   $("pstop").addEventListener("click", () => { api().search_stop(); $("pstop").disabled = true; });
   $("table").addEventListener("click", async e => {
     if (S.mode !== "planner") return;
@@ -2172,8 +2176,18 @@ function setupPlanner() {
 }
 async function loadPlanner() {
   S.saved = await api().saved_sets();
+  // the last plan, ticked off against the save as it is now (no planning: Reload save after rolling is enough)
+  if (!(S.plan && S.plan.running)) {
+    const pr = await api().plan_progress();
+    S.saveState = pr.state;
+    S.plan = pr.plan || (pr.error ? { error: pr.error } : null);
+  }
   renderPlanHead(); renderPlanTable();
-  // check the saved sets against the save as it is now (only the ones not checked against it yet)
+  // with a plan to follow the Now column is not worked out again on its own (it plans every saved set
+  // together): Check sets does it
+  if (!S.plan) await checkSets();
+}
+async function checkSets() {
   if (S.saved.length && !S.checking) {
     S.checking = true; renderPlanTable();
     const done = watchProgress($("pinfo"), $("pstop"));
@@ -2197,6 +2211,7 @@ async function runPlan() {
   if (seq !== planSeq) return;
   $("pmake").disabled = false;
   S.plan = r; $("pinfo").textContent = r.error ? "" : `${r.seconds}s`;
+  if (!r.error) S.saveState = (await api().plan_progress()).state;
   renderPlanHead(); renderPlanTable();
 }
 function renderPlanHead() {
@@ -2255,6 +2270,8 @@ function checkCell(s) {
   const c = s.check;
   if (S.checking && !c) return `<span class="muted">checking…</span>`;
   if (!c) return `<span class="muted">—</span>`;
+  if (S.saveState && c.state && c.state !== S.saveState && !S.checking)
+    return `<span class="muted" title="Worked out before your last rolls: press Check sets to work it out again">${c.error || c.missing ? "—" : `${c.augments.toLocaleString()} augments`} (before your rolls)</span>`;
   if (c.error) return `<span style="color:var(--down)" title="${esc(c.error)}">error</span>`;
   if (c.missing) return `<span style="color:var(--down)" title="${c.missing} wanted result(s) do not come again from the save as it is now">${c.missing} not reachable</span>`;
   const n = c.augments.toLocaleString();
@@ -2270,7 +2287,15 @@ function renderPlan() {
   if (p.running) return `<div class="empty">Planning…</div>`;
   if (p.error) return `<div class="empty" style="color:var(--down)">${esc(p.error)}</div>`;
   const t = p.totals, m = p.materials;
-  let h = `<div class="cardlabel">Plan${p.stale ? ` <b style="color:var(--gold)">(sets changed: press Make plan again)</b>` : ""}</div>`;
+  const pg = p.progress;
+  let h = `<div class="cardlabel">Plan${p.madeAt ? ` <span class="muted">made ${esc(p.madeAt)}</span>` : ""}${p.stale ? ` <b style="color:var(--gold)">(sets changed: press Make plan again)</b>` : ""}</div>`;
+  if (pg && (p.armor.length || p.talismans.length)) {
+    const all = pg.augmentsDone + pg.augmentsLeft;
+    h += `<div class="setcard"><div class="sethead"><span class="big">Progress</span>
+      <span class="pill">${pg.augmentsDone.toLocaleString()} of ${all.toLocaleString()} augments done</span>
+      <span class="muted">ticked off from the save as it is now (Reload save after rolling: no need to plan again)</span>
+      ${pg.offRoute ? `<b style="color:var(--down)">${pg.offRoute} sequence${pg.offRoute > 1 ? "s" : ""} off the plan: press Make plan again</b>` : ""}</div></div>`;
+  }
   h += `<div class="setcard"><div class="sethead"><span class="big">Total</span>${rollsSummary(p)}</div>
     <div class="sethead" style="background:none">
     <span>${zenny(t.zenny)}</span>
@@ -2298,13 +2323,13 @@ function renderPlan() {
   // 2. armor
   if (p.armor.length) {
     h += `<div class="pstage"><span class="pnum">${++n}</span><div><b>Augment armor</b><span class="muted"> · always on the new copies from step 1. One route per sequence: follow it left to right; sequences do not move each other, so any can go first.
-      After each piece: save in game, press Reload save and Make plan again.</span></div></div>`;
+      After each piece: save in game and press Reload save: the plan ticks off what you rolled.</span></div></div>`;
     for (const q of p.armor) {
       h += `<div class="setcard"><div class="sethead"><span class="big">${esc(TYPE_SHORT(q.typeName))} · cost ${q.cost}</span>
         <span class="rar">${q.total.toLocaleString()} augments</span><span>${zenny(q.zenny)}</span>
-        ${q.reordered ? `<span class="src roll">order changed to get every result</span>` : ""}</div>
+        ${q.reordered ? `<span class="src roll">order changed to get every result</span>` : ""}${seqProgress(q, "augments")}</div>
         <div class="route">${routeStart()}`
-        + q.steps.map((s, i) => routeArrow(s.augments, i, "augment") + routeNode(i, s.part, s.name, s.sets, s.at,
+        + q.steps.map((s, i) => routeArrow(s.augments, i, "augment") + routeNode(i, s.part, s.name, s.sets, s.at, stepState(q, s, i, "augments"),
             s.burnName && s.augments > 1
               ? [`Augment <b>${esc(s.burnName)}</b> <b class="x">${s.augments - 1}×</b> <span class="muted">(throw the results away)</span>`,
                  `Augment <b>${esc(s.name)}</b> <b class="x">1×</b>: keep it`]
@@ -2322,11 +2347,11 @@ function renderPlan() {
       const per = g.total ? g.used / g.total : 0;
       h += `<tbody class="tseq">` + g.steps.map((s, i) => `<tr>
         ${i ? "" : `<td rowspan="${g.steps.length}" class="tseqcell"><div class="tname">${mask("talisman", "var(--gold)", "Talisman")}${esc(g.methodName.replace(/^Qurious Melding\W*/, ""))}</div>
-          ${g.gradeName ? `<span class="tgrade">grade ${g.gradeName}</span>` : ""}
+          ${g.gradeName ? `<span class="tgrade">grade ${g.gradeName}</span>` : ""}${seqProgress(g, "talismans") ? `<div class="small">${seqProgress(g, "talismans")}</div>` : ""}
           <div class="muted small">${g.total.toLocaleString()} meld${g.total > 1 ? "s" : ""}${g.used ? `<br>uses ${g.used.toLocaleString()} talismans` : ""}${g.points ? `<br>${g.points.toLocaleString()} melding points` : ""}</div></td>`}
-        <td class="n"><span class="rnum">${i + 1}</span></td>
+        <td class="n"><span class="rnum">${s.done ? "✓" : i + 1}</span>${(st => st ? `<div class="small">${st.text}</div>` : "")(stepState(g, s, i, "talismans"))}</td>
         <td><b class="tbig">${s.talismans.toLocaleString()}×</b>
-          <div class="muted small">${i ? `${s.talismans.toLocaleString()} after step ${i} · ` : ""}#${s.at.toLocaleString()} from the save${per ? ` · uses ${(s.talismans * per).toLocaleString()} talismans` : ""}</div>
+          <div class="muted small">${i ? `${s.talismans.toLocaleString()} after step ${i} · ` : ""}#${s.at.toLocaleString()} from the plan's start${per ? ` · uses ${(s.talismans * per).toLocaleString()} talismans` : ""}</div>
           <div class="small">${s.talismans > 1 ? `keep only the last one (meld ${s.talismans.toLocaleString()})` : "keep it"}</div></td>
         <td>${s.targetName ? `<span class="sk">${skillIcon(s.targetColor, s.targetName)}<b class="nm">${esc(s.targetName)}</b></span>` : `<span class="muted">—</span>`}</td>
         <td><div class="tcard"><div class="tchead">${mask("talisman", "var(--gold)", "Talisman")}<span class="muted small">Talisman</span></div>${s.skillRows.map(k => `<div class="sk">${skillIcon(k.color, k.name)}<span class="nm">${esc(k.name)}</span> <b style="color:var(--gold)">Lv ${k.level}</b></div>`).join("")}
@@ -2375,15 +2400,33 @@ function craftTh(key, label, style = "") {
 }
 const partIcon = part =>part != null ? mask(PARTS[part], "var(--gold)", PARTS[part], "picon") : "";
 function routeStart() {
-  return `<div class="rnode start"><span class="rat">Save</span><small class="muted">as it is now</small></div>`;
+  return `<div class="rnode start"><span class="rat">Start</span><small class="muted">the save when planned</small></div>`;
 }
 function routeArrow(k, i, what) {
   const from = !i ? "the save" : what === "meld" ? "the last talisman" : "the last piece";
   return `<div class="rarrow" title="${k.toLocaleString()} ${what}${k > 1 ? "s" : ""} from ${from}"><b>+${k.toLocaleString()}</b><span class="ln">⟶</span><small>from ${from}</small></div>`;
 }
-function routeNode(i, part, name, sets, at, todo, result, foot) {
-  return `<div class="rnode"><div class="rhead"><span class="rnum">${i + 1}</span>${part != null ? mask(PARTS[part], "var(--gold)", PARTS[part]) : ""}<span class="rname">${esc(name)}</span></div>
-    <div class="rat">#${at.toLocaleString()} <small>from the save</small></div>
+// progress of one sequence of a plan made earlier (Planner.progress): done, off the plan, or how far
+function seqProgress(q, what) {
+  const g = q.progress;
+  if (!g) return "";
+  if (!g.onRoute) return `<b style="color:var(--down)" title="The save is not anywhere on this route: something else was ${what === "augments" ? "augmented" : "melded"} on this sequence. The rest of it no longer holds">off the plan: press Make plan again</b>`;
+  if (g.finished) return `<span style="color:var(--up)">done ✓</span>`;
+  return g.done ? `<span class="pill">${g.done.toLocaleString()} of ${q.total.toLocaleString()} done</span>` : "";
+}
+function stepState(q, s, i, what) {
+  const g = q.progress;
+  if (!g || !g.onRoute) return null;
+  if (s.done) return { cls: "done", text: s.inBox ? `<span style="color:var(--up)">done ✓</span>` : `<span style="color:var(--down)" title="The sequence went past it, but this result is not in your box (augmented that copy again, or kept another one?)">rolled, but not in your box ⚠</span>` };
+  const next = q.steps.findIndex(x => !x.done) === i;
+  if (!next) return null;
+  const left = s.at - g.done;
+  return { cls: "next", text: `<b style="color:var(--gold)">next</b>${s.doneHere ? ` · ${s.doneHere.toLocaleString()} of ${s[what].toLocaleString()} done` : ""} · ${left.toLocaleString()} to go` };
+}
+function routeNode(i, part, name, sets, at, state, todo, result, foot) {
+  return `<div class="rnode ${state ? state.cls : ""}"><div class="rhead"><span class="rnum">${state && state.cls === "done" ? "✓" : i + 1}</span>${part != null ? mask(PARTS[part], "var(--gold)", PARTS[part]) : ""}<span class="rname">${esc(name)}</span></div>
+    ${state ? `<div class="small">${state.text}</div>` : ""}
+    <div class="rat">#${at.toLocaleString()} <small>from the plan's start</small></div>
     <div class="rlbl">Do</div><ol class="rdo">${todo.map(x => `<li>${x}</li>`).join("")}</ol>
     <div class="rlbl">Keep</div><div class="rres">${result}</div>
     <div class="rfor">for ${sets.map(esc).join(", ")}${foot ? ` · ${foot}` : ""}</div></div>`;
