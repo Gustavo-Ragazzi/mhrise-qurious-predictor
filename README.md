@@ -245,6 +245,15 @@ confirmed in game yet.
 
 ## Skills reference
 
+Share a skill list with **Export skills** in the Set builder or **Share skills** in My Loadouts.
+In **Saved sets & planner**, each saved set also has **Export skills**, which opens a copyable text
+dialog with its original name, all final skills and weapon slots.
+Import preserves that name and suggests it when saving your own search result.
+Paste it into **Import skills** in the Set builder to restore the skill requirements and weapon slots.
+Each player can then search using their own inventory. Import replaces the wanted skills after
+validating every line; it also accepts manual lists such as `Attack Boost Lv7`, one skill per line.
+Sharing includes skill requirements and weapon slots, rather than equipment or save data.
+
 The **Skills** tab lists every equipment skill, its description and the effect at each level.
 Search by name or effect (for example, attack or affinity). Text follows the selected names language,
 with English as a fallback, and comes from your installed game, including Sunbreak updates.

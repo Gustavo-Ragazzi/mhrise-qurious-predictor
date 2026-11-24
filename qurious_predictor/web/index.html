@@ -457,6 +457,8 @@ input.rollsin { width: 84px; }
         <span class="flabel">Lv</span>
         <div class="picker" id="blevel" style="width:78px"></div>
         <button class="btn gold" id="badd" title="Want this skill at this level">Add</button>
+        <button class="btn" id="bimportskills">Import skills</button>
+        <button class="btn" id="bexportskills">Export skills</button>
         <span id="bwanted" class="wantlist"></span>
         <button class="btn" id="bclear" style="display:none">Clear</button>
       </div>
@@ -1867,6 +1869,13 @@ const BUILD_DEFAULTS = { skills: [], weapon: [0, 0, 0], ranks: ["master"], owned
   quriousRolls: 0, talismanRolls: 0, sortBy: "defense", preset: "builtin:all", limit: 20, seconds: 30, excludeArmor: [], avoidSkills: [],
   planned: true };
 const BS = () => S.settings.build;
+async function shareSkills(skills, weapon) {
+  const r = await api().skills_export(skills, weapon);
+  if (r.error) return status(r.error);
+  openModal("Share skills", r.text, "Copy", async () => {
+    await copyText($("modaltext")); $("modalnote").textContent = "Copied to the clipboard.";
+  }, "Share this text. Import skills in the Set builder restores these skill requirements and weapon slots.");
+}
 let buildWant, buildWeapon, buildSort, buildPreset, buildExArmor, buildExSkill;
 function saveBuild(patch, stale = true) {
   S.settings.build = { ...BS(), ...patch };
@@ -1878,6 +1887,14 @@ function saveBuild(patch, stale = true) {
 function setupBuilder() {
   S.settings.build = { ...BUILD_DEFAULTS, ...(S.settings.build || {}) };
   buildWant = wantEditor("b", () => BS().skills, skills => saveBuild({ skills }));
+  $("bexportskills").addEventListener("click", () => shareSkills(BS().skills, BS().weapon));
+  $("bimportskills").addEventListener("click", () => openModal("Import skills", "", "Import", async () => {
+    const r = await api().skills_import($("modaltext").value);
+    if (r.error) { $("modalnote").textContent = r.error; return; }
+    const { name, ...requirements } = r;
+    saveBuild({ ...requirements, sharedName: name || "" }); closeModal(); renderBuildTable();
+    status(`Imported ${r.skills.length} skills${name ? ` from "${name}"` : ""}. Press Search to find sets.`);
+  }, "Paste shared skills, or one skill per line: Attack Boost Lv7. Import replaces your wanted skills and any included weapon slots."));
   buildWeapon = [0, 1, 2].map(i => makePicker($("bw" + i), { onChange: v => { const w = [...BS().weapon]; w[i] = v; saveBuild({ weapon: w }); } }));
   buildSort = makePicker($("bsort"), { onChange: v => saveBuild({ sortBy: v }) });
   buildPreset = makePicker($("bpreset"), { search: true, onChange: v => saveBuild({ preset: v }) });
@@ -2045,6 +2062,11 @@ function setupOptimizer() {
     loadOptimizer();
   });
   $("head").addEventListener("click", e => {
+    if (S.mode === "optimizer" && e.target.closest("#lshareskills")) {
+      const c = S.optCurrent;
+      if (c && !c.error) shareSkills(c.current.skills, c.weapon || [0, 0, 0]);
+      return;
+    }
     if (S.mode !== "optimizer" || !e.target.closest("#lagain")) return;
     const c = S.optCurrent;
     if (!c || c.error) return;
@@ -2076,7 +2098,7 @@ async function loadOptimizer() {
 function renderOptHead() {
   const c = S.optCurrent, cur = c && !c.error && c.current;
   $("head").innerHTML = `<span class="big">${cur ? esc(cur.name) : "My Loadouts"}</span>${cur && cur.weaponName ? `<span class="muted">${esc(cur.weaponName)}</span>` : ""}
-    ${cur ? `<span class="spacer" style="flex:1"></span><button class="btn gold" id="lagain" title="Open the Set builder with all this loadout's skills and its weapon slots">Search again</button>` : ""}
+    ${cur ? `<span class="spacer" style="flex:1"></span><button class="btn" id="lshareskills">Share skills</button><button class="btn gold" id="lagain" title="Open the Set builder with all this loadout's skills and its weapon slots">Search again</button>` : ""}
     <div class="note">Your loadouts as they are in the save: pick one on the left to see its pieces, decorations and skills.
     <b>Search again</b> opens the Set builder with all its skills (each at its level) and its weapon slots.</div>`;
 }
@@ -2148,8 +2170,8 @@ function renderExportTable() {
 const zenny = v => `${v.toLocaleString()} z`;
 function saveCurrentSet(st) {
   const b = BS();
-  const def = b.skills.slice(0, 3).map(w => ((S.bskills || []).find(x => x.id === w.id) || { name: "#" + w.id }).name).join(" + ")
-    + (b.skills.length > 3 ? ` +${b.skills.length - 3}` : "");
+  const def = b.sharedName || (b.skills.slice(0, 3).map(w => ((S.bskills || []).find(x => x.id === w.id) || { name: "#" + w.id }).name).join(" + ")
+    + (b.skills.length > 3 ? ` +${b.skills.length - 3}` : ""));
   openModal("Save set", def, "Save", async () => {
     const name = $("modaltext").value.trim();
     const r = await api().save_set(st, name, { skills: b.skills, weapon: b.weapon });
@@ -2162,6 +2184,15 @@ function setupPlanner() {
   $("pstop").addEventListener("click", () => { api().search_stop(); $("pstop").disabled = true; });
   $("table").addEventListener("click", async e => {
     if (S.mode !== "planner") return;
+    const ex = e.target.closest("[data-pexportskills]");
+    if (ex) {
+      const r = await api().saved_set_skills_export(+ex.dataset.pexportskills);
+      if (r.error) return status(r.error);
+      openModal("Share saved set", r.text, "Copy", async () => {
+        await copyText($("modaltext")); $("modalnote").textContent = "Copied to the clipboard.";
+      }, "Copy this set's name, skills and weapon slots. The recipient can paste it into Import skills in the Set builder.");
+      return;
+    }
     const cs = e.target.closest("[data-csort]");
     if (cs) {
       const key = cs.dataset.csort, cur = S.craftSort || { key: "part", dir: 1 };
@@ -2294,6 +2325,7 @@ function renderPlanTable() {
         <td class="pn">${needs}</td>
         <td style="white-space:nowrap"><button class="btn" data-pview="${s.id}">${S.planView === s.id ? "Hide" : "View"}</button>
           <button class="btn" data-pagain="${s.id}" title="Open the Set builder with this set's skills and weapon slots">Search again</button>
+          <button class="btn" data-pexportskills="${s.id}" title="Copy this saved set's name, skills and weapon slots to share">Export skills</button>
           <button class="btn" data-pren="${s.id}">Rename</button> <button class="btn" data-pdel="${s.id}">Delete</button></td></tr>`
         + (S.planView === s.id ? `<tr><td colspan="8">${setCard(st, { title: esc(s.name) })}</td></tr>` : "");
     }).join("") + `</tbody></table>`;

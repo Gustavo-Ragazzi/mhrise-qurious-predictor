@@ -54,6 +54,20 @@ class SetsMixin:
     box_weapons, _lock, _name, _skill, _talisman_scorer."""
 
     # ---- shared ------------------------------------------------------------------------------------
+    def skills_export(self, skills, weapon):
+        from .skill_share import export_skills
+        try:
+            return {"text": export_skills(self.data, skills, weapon)}
+        except (ValueError, KeyError, TypeError) as error:
+            return {"error": str(error)}
+
+    def skills_import(self, text):
+        from .skill_share import import_skills
+        try:
+            return import_skills(self.data, text)
+        except (ValueError, KeyError, TypeError) as error:
+            return {"error": str(error)}
+
     def _builder(self) -> builder.Builder:
         if getattr(self, "_builder_obj", None) is None or self._builder_obj.data is not self.data:
             self._builder_obj = builder.Builder(self.data, self.melding)
@@ -492,6 +506,26 @@ class SetsMixin:
                     "seconds": round(time.time() - t0, 2)}
 
     # ---- saved sets and planner -------------------------------------------------------------------
+    def saved_set_skills_export(self, sid):
+        """Portable skills of a saved set; no inventory or planner state is shared."""
+        from .skill_share import export_skills
+        entry = next((entry for entry in self.saved_sets() if entry["id"] == sid), None)
+        if entry is None:
+            return {"error": "Saved set not found."}
+        query, row = entry.get("query") or {}, entry.get("set") or {}
+        skills = row.get("skills") or query.get("skills") or []
+        slots = row.get("slots") or {}
+        weapon = query.get("weapon")
+        if weapon is None:
+            weapon = ([slot["lv"] for slot in slots.get("0", slots.get(0, []))] + [0, 0, 0])[:3]
+        try:
+            text = export_skills(self.data, skills, weapon)
+        except (ValueError, KeyError, TypeError) as error:
+            return {"error": str(error)}
+        name = entry["name"]
+        comment = " ".join(name.splitlines())
+        return {"text": f"# Set: {comment}\n{text}\n"}
+
     def saved_sets(self):
         """The saved sets, each with the rolls it needs worked out again from the set itself (so a set
         saved before borrowed pieces counted as its own rolls gets them too)."""
