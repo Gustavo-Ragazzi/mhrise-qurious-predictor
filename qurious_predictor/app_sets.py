@@ -149,7 +149,7 @@ class SetsMixin:
                            unsure=t["unsure"], after=t.get("after", 0), inPlan=bool(t.get("inPlan")), pos=t.get("pos", t["n"]))
             if t["kind"] == "planned":
                 tal.update(method=t["method"], methodName=melding.METHODS[t["method"]], n=t["n"], sets=t["sets"],
-                           targetName=self._skill(t["target"])["name"] if t["target"] else None)
+                           target=t["target"], targetName=self._skill(t["target"])["name"] if t["target"] else None)
         for owner, k, did, extra in f.decos:
             if k < len(slots[owner]):
                 d = self._builder().decos.get(did, {})
@@ -493,7 +493,13 @@ class SetsMixin:
 
     # ---- saved sets and planner -------------------------------------------------------------------
     def saved_sets(self):
-        return self.settings.get("savedSets") or []
+        """The saved sets, each with the rolls it needs worked out again from the set itself (so a set
+        saved before borrowed pieces counted as its own rolls gets them too)."""
+        sets = self.settings.get("savedSets") or []
+        if not sets or not self.data:
+            return sets
+        names = {s["name"]: int(k) for k, s in ((k, self._skill(int(k))) for k in self.data["skills"])}
+        return [dict(x, targets=planner.targets_of(x["set"], names.get)) if x.get("set") else x for x in sets]
 
     def check_saved_sets(self, force: bool = False):
         """Check every saved set against the save as it is now (see ``Planner.check``) and keep the

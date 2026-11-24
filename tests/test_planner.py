@@ -91,7 +91,8 @@ def test_best_order_many_targets_goes_by_rolls_not_saved_n():
         k = at[t["id"]] - state
         return (k, at[t["id"]]) if 0 < k <= limit else None
 
-    order = planner.best_order(0, targets, find)
+    order, gone = planner.best_order(0, targets, find)
+    assert gone == []
     assert [t["id"] for t, *_ in order] == ["a", "b", "c", "d", "e", "f", "early", "late"]
     assert sum(k for _, k, _ in order) == 103
 
@@ -110,3 +111,36 @@ def test_results_already_in_the_box_are_done():
     assert not planner.Planner.is_rolled({**t, "expected": [-7, 2, [0, 0, 2, -7, 0], [[104, -1], [140, 1]]]}, rolled)
     assert planner.Planner.is_rolled({"skills": [[1, 1], [5, 2]], "slots": [2, 1, 0]}, rolled, True)
     assert not planner.Planner.is_rolled({"skills": [[1, 1], [5, 2]], "slots": [1, 1, 0]}, rolled, True)
+
+
+def test_best_order_leaves_out_what_does_not_come_again():
+    """A result that does not come again is reported and left out; the others are still planned."""
+    from qurious_predictor import planner
+    at = {"a": 10, "b": 30, "c": 20}
+    targets = [{"id": k, "n": 1} for k in ("a", "b", "c", "gone")]
+
+    def find(state, t, limit):
+        if t["id"] == "gone":
+            return None
+        k = at[t["id"]] - state
+        return (k, at[t["id"]]) if 0 < k <= limit else None
+
+    order, gone = planner.best_order(0, targets, find)
+    assert [t["id"] for t, *_ in order] == ["a", "c", "b"]
+    assert [t["id"] for t in gone] == ["gone"]
+
+
+def test_borrowed_pieces_are_rolls_of_the_set_too():
+    """A piece taken from another saved set's plan is one of this set's rolls: the plan keeps it even
+    when that other set changes."""
+    from qurious_predictor import planner
+    piece = {"part": 0, "id": "1", "name": "Helm", "kind": "planned",
+             "planned": {"type": 0, "typeName": "Augment", "n": 285, "cost": 10, "sets": ["Other"]},
+             "qurious": {"skills": [{"id": 37, "delta": 1}], "slots": 0, "def": 1, "res": [0, 0, 0, 0, 0]}}
+    tal = {"kind": "planned", "method": 11, "n": 12, "targetName": "Wirebug Whisperer", "sets": ["Other"],
+           "skills": [{"id": 104, "level": 3}]}
+    t = planner.targets_of({"pieces": [piece, None, None, None, None], "talisman": tal,
+                            "slots": [[]] * 6 + [[{"lv": 3}, {"lv": 2}]]}, {"Wirebug Whisperer": 104}.get)
+    assert t["armor"] == [{"id": "1", "name": "Helm", "part": 0, "type": 0, "cost": 10, "n": 285, "via": None,
+                           "expected": [1, 0, [0, 0, 0, 0, 0], [[37, 1]]]}]
+    assert t["talismans"] == [{"method": 11, "target": 104, "n": 12, "skills": [[104, 3]], "slots": [3, 2, 0]}]

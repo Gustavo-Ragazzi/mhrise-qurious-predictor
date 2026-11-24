@@ -124,6 +124,8 @@ Talismans), **My equipment** (Inventory, My Loadouts, Export) and **Set builder*
     **Search again** opens the Set builder with every skill of the loadout (each at its level) and
     its weapon's slots, ready for you to search.
 11. **Saved sets & planner** (under Set builder): **Save set** on a Set builder result keeps it.
+    A piece or talisman a set takes from another saved set's plan (*planned*) counts as one of its
+    own rolls, so it stays in the roadmap when that other set is changed, saved again or deleted.
     Opening the tab checks every saved set against the save as it is now (again only after the save
     changed): **Now** shows the augments the planner needs for that set alone, in gold when that
     differs from what the set was saved with and with ⚠ when it is much more. A set saved with pieces

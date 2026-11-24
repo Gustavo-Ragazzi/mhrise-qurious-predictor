@@ -18,6 +18,9 @@ import math
 from . import engine, melding, search
 
 FIND_LIMIT = 2_000_000          # augments or talismans searched per wanted result
+# augments searched with the ones before a wanted result spent on another piece of the roadmap (a saved
+# set's piece from inside the saved sets' plan): those come early; far ones are searched on the piece itself
+VIA_LIMIT = 20_000
 
 
 class Stopped(Exception):
@@ -33,13 +36,24 @@ def _check_stop():
 
 
 def best_order(start, targets, find):
-    """The order of ``targets`` on one sequence that gets them all with the fewest rolls: [(target,
-    rolls, state after)], or None when some does not come again. ``find(state, target, limit)`` ->
-    (rolls, state after) or None. Branch and bound over the orders (closest first, a search never
-    goes past the best total found); more than 6 targets: the next closest each time (by the rolls
-    from where the plan is, not by ``n``: a set's ``n`` counts from where its own plan was)."""
-    ts = sorted(targets, key=lambda t: t["n"])
-    if math.factorial(len(ts)) > MAX_ORDERS:
+    """The order of ``targets`` on one sequence that gets them with the fewest rolls: ([(target, rolls,
+    state after)], [targets that do not come again within FIND_LIMIT]). ``find(state, target, limit)``
+    -> (rolls, state after) or None. Each target is first looked for once from ``start`` (the ones not
+    found are left out, so no later step searches that far again). Then: branch and bound over the
+    orders (closest first, a search never goes past the best total found); more than 6 targets: the
+    next closest each time, trying them in the order they came from ``start`` (the closest is found
+    first and bounds every other search)."""
+    first, gone = {}, []
+    for t in sorted(targets, key=lambda t: t["n"]):
+        _check_stop()
+        f = find(start, t, FIND_LIMIT)
+        if f is None:
+            gone.append(t)
+        else:
+            first[id(t)] = f[0]
+    ts = sorted((t for t in targets if id(t) in first), key=lambda t: first[id(t)])
+
+    def greedy():
         state, out, rest = start, [], ts
         while rest:
             _check_stop()
@@ -51,13 +65,18 @@ def best_order(start, targets, find):
                 f = find(state, t, lim)
                 if f is not None:
                     near = (i, f)
+                elif near is None:      # not even within FIND_LIMIT from here: it does not come again
+                    gone.append(t)
             if near is None:
-                return None
+                break
             i, f = near
             out.append((rest[i], *f))
             state = f[1]
-            rest = rest[:i] + rest[i + 1:]
+            rest = [t for j, t in enumerate(rest) if j != i and t not in gone]
         return out
+
+    if math.factorial(len(ts)) > MAX_ORDERS:
+        return greedy(), gone
     best = [None, math.inf]
 
     def rec(state, rest, steps, total):
@@ -75,7 +94,7 @@ def best_order(start, targets, find):
                 rec(f[1], rest[:i] + rest[i + 1:], steps + [(t, *f)], total + f[0])
 
     rec(start, ts, [], 0)
-    return best[0]
+    return (best[0], gone) if best[0] is not None else (greedy(), gone)
 
 
 def _native():
@@ -90,24 +109,32 @@ def outcome_key(o) -> tuple:
     return int(d), int(sl), tuple(int(x) for x in res), tuple(sorted((int(a), int(b)) for a, b in sk))
 
 
-def targets_of(row: dict) -> dict:
-    """The rolls a set from the Set builder needs (its pieces to augment and its talisman to meld)."""
+def targets_of(row: dict, skill_id=None) -> dict:
+    """The rolls a set from the Set builder needs (its pieces to augment and its talisman to meld).
+    A piece or talisman taken from another saved set's plan ("planned") is a roll of this set too: the
+    plan keeps it whatever happens to that other set (changed, saved again or deleted); while the other
+    set still wants the same result, both share one roll. ``skill_id``: skill name -> id, for talismans
+    saved before the planned talisman kept its target skill's id."""
     armor, talismans, craft = [], [], []
     for p in row.get("pieces") or []:
         if not p:
             continue
-        if p["kind"] == "roll":
+        if p["kind"] in ("roll", "planned"):
             q = p.get("qurious") or {}
-            armor.append({"id": p["id"], "name": p["name"], "part": p["part"], "type": p["roll"]["type"],
-                          "cost": p["roll"]["cost"], "n": p["roll"].get("pos", p["roll"]["n"]), "via": p["roll"].get("insteadId"),
+            r = p["roll"] if p["kind"] == "roll" else p["planned"]
+            armor.append({"id": p["id"], "name": p["name"], "part": p["part"], "type": r["type"],
+                          "cost": r["cost"], "n": r.get("pos", r["n"]), "via": r.get("insteadId"),
                           "expected": [q.get("def", 0), q.get("slots", 0), list(q.get("res") or [0] * 5),
                                        sorted([s["id"], s["delta"]] for s in q.get("skills", []))]})
         elif p["kind"] == "game" and not p.get("owned"):
             craft.append({"id": p["id"], "name": p["name"]})
     t = row.get("talisman")
-    if t and t["kind"] == "roll":
+    if t and t["kind"] in ("roll", "planned"):
+        target = t.get("target")
+        if target is None and t.get("targetName") and skill_id:
+            target = skill_id(t["targetName"])
         slots = sorted((s["lv"] for s in (row.get("slots") or [[]] * 7)[6]), reverse=True)
-        talismans.append({"method": t["method"], "target": t.get("target"), "n": t.get("pos", t["n"]),
+        talismans.append({"method": t["method"], "target": target, "n": t.get("pos", t["n"]),
                           "skills": [[s["id"], s["level"]] for s in t["skills"]], "slots": (slots + [0, 0, 0])[:3]})
     return {"armor": armor, "talismans": talismans, "craft": craft}
 
@@ -195,7 +222,7 @@ class Planner:
                 for b in [t.get("via")] + [x for x in others if x != t.get("via")]:
                     if not b or b == t["id"]:
                         continue
-                    lim = int(limit) if best is None else best[0] - 1
+                    lim = min(int(limit), VIA_LIMIT) if best is None else min(best[0] - 1, VIA_LIMIT)
                     if lim <= 0:
                         break
                     f = _native().augment_find_via(nt, list(state), self._piece(b), (table, c, skills), ty, key, lim)
@@ -203,16 +230,8 @@ class Planner:
                         best = (*f, b)
                 return best
 
-            best = best_order(start, ts, find)
-            if best is None:          # some augment does not come again: plan the others
-                found = []
-                for t in sorted(ts, key=lambda t: t["n"]):
-                    f = find(start if not found else found[-1][2], t, FIND_LIMIT)
-                    if f is None:
-                        missing.append(t)
-                    else:
-                        found.append((t, *f))
-                best = found
+            best, gone = best_order(start, ts, find)
+            missing += gone           # some augment does not come again: the others are planned
             if not best:
                 continue
             cheap = min(owned.get(cost, ()), key=self._rarity, default=None)
@@ -251,12 +270,11 @@ class Planner:
                 return _native().meld_find(nt, t["method"], t["target"], list(state),
                                            [tuple(s) for s in t["skills"]], list(t["slots"]), int(limit))
 
-            best = best_order(start, ts, find)
-            if best is not None:
-                best = [(t, k) for t, k, _ in best]
-            if best is None:
-                missing += ts
+            best, gone = best_order(start, ts, find)
+            missing += gone
+            if not best:
                 continue
+            best = [(t, k) for t, k, _ in best]
             m = self.costs["melding"]
             rows, done, kamura, points, used = [], 0, 0, 0, 0
             for t, k in best:
