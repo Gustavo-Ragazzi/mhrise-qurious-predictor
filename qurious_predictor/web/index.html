@@ -460,6 +460,7 @@ input.rollsin { width: 84px; }
         <button class="btn" id="bimportskills">Import skills</button>
         <button class="btn" id="bexportskills">Export skills</button>
         <span id="bwanted" class="wantlist"></span>
+        <span id="bsharedbonus" class="muted small" style="display:none"></span>
         <button class="btn" id="bclear" style="display:none">Clear</button>
       </div>
       <div class="frow">
@@ -1891,8 +1892,8 @@ function setupBuilder() {
   $("bimportskills").addEventListener("click", () => openModal("Import skills", "", "Import", async () => {
     const r = await api().skills_import($("modaltext").value);
     if (r.error) { $("modalnote").textContent = r.error; return; }
-    const { name, ...requirements } = r;
-    saveBuild({ ...requirements, sharedName: name || "" }); closeModal(); renderBuildTable();
+    const { name, bonuses, ...requirements } = r;
+    saveBuild({ ...requirements, sharedName: name || "", sharedBonuses: bonuses || [] }); closeModal(); renderBuildTable();
     status(`Imported ${r.skills.length} skills${name ? ` from "${name}"` : ""}. Press Search to find sets.`);
   }, "Paste shared skills, or one skill per line: Attack Boost Lv7. Import replaces your wanted skills and any included weapon slots."));
   buildWeapon = [0, 1, 2].map(i => makePicker($("bw" + i), { onChange: v => { const w = [...BS().weapon]; w[i] = v; saveBuild({ weapon: w }); } }));
@@ -1942,6 +1943,11 @@ function setupBuilder() {
 function syncBuildUi() {
   const b = BS();
   buildWant.sync();
+  $("bsharedbonus").style.display = b.sharedBonuses?.length ? "" : "none";
+  $("bsharedbonus").innerHTML = b.sharedBonuses?.length ? `Shared set bonuses (reference only; not required): ${b.sharedBonuses.map(k => {
+    const s = (S.bskills || []).find(s => s.id === k.id);
+    return `${esc(s?.name || "#" + k.id)} +${k.level}`;
+  }).join(" · ")}` : "";
   buildWeapon.forEach((p, i) => p.setItems(weaponSlotItems(), b.weapon[i] || 0));
   buildSort.setItems([{ value: "defense", text: "Defense", html: `${img("defense", "Defense")}<span>Defense</span>` },
     { value: "score", text: "Score", html: `<span>Score (preset)</span>` }], b.sortBy);

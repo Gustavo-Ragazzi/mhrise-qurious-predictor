@@ -513,13 +513,18 @@ class SetsMixin:
         if entry is None:
             return {"error": "Saved set not found."}
         query, row = entry.get("query") or {}, entry.get("set") or {}
-        skills = row.get("skills") or query.get("skills") or []
+        skills = query.get("skills") or [{"id": skill["id"], "level": skill["wanted"]}
+                                         for skill in row.get("skills", []) if skill.get("wanted")]
+        skills = skills or row.get("skills") or []
+        required = {skill["id"]: skill["level"] for skill in skills}
+        bonuses = [{"id": skill["id"], "level": skill["level"] - required.get(skill["id"], 0)}
+                   for skill in row.get("skills", []) if skill["level"] > required.get(skill["id"], 0)]
         slots = row.get("slots") or {}
         weapon = query.get("weapon")
         if weapon is None:
             weapon = ([slot["lv"] for slot in slots.get("0", slots.get(0, []))] + [0, 0, 0])[:3]
         try:
-            text = export_skills(self.data, skills, weapon)
+            text = export_skills(self.data, skills, weapon, bonuses)
         except (ValueError, KeyError, TypeError) as error:
             return {"error": str(error)}
         name = entry["name"]

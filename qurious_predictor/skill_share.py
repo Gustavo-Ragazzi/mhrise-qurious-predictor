@@ -22,18 +22,21 @@ def _weapon(slots):
     return slots
 
 
-def export_skills(data, skills, weapon):
+def export_skills(data, skills, weapon, bonuses=None):
     names = _skills(data)
     lines = [HEADER, "weapon " + " ".join(map(str, _weapon(weapon)))]
     if not skills:
         raise ValueError("Add skills before exporting.")
-    for skill in skills:
+    lines.append("# Required skills")
+    for skill, bonus in [(skill, False) for skill in skills] + [(skill, True) for skill in bonuses or []]:
         sid, level = skill["id"], skill["level"]
         if sid not in names:
             raise ValueError(f"Unknown skill #{sid}.")
         _level(data, sid, level)
         name = names[sid].get("en") or next(iter(names[sid].values()))
-        lines.append(f"skill {name} = {level}")
+        if bonus and not any(line.startswith("bonus ") for line in lines):
+            lines.append("# Bonus skills (extra levels, reference only)")
+        lines.append(f"{'bonus' if bonus else 'skill'} {name} = {level}")
     return "\n".join(lines)
 
 
@@ -41,20 +44,28 @@ def import_skills(data, text):
     if not isinstance(text, str) or len(text) > 100_000:
         raise ValueError("Paste a skill list of at most 100,000 characters.")
     lookup = {name.strip().casefold(): sid for sid, names in _skills(data).items() for name in names.values()}
-    skills, weapon, set_name = {}, None, None
+    skills, bonuses, weapon, set_name = {}, {}, None, None
     for number, raw in enumerate(text.splitlines(), 1):
-        line = raw.strip()
+        line = raw.strip().lstrip("\ufeff")
         if not line:
             continue
-        if line.startswith("# Set:"):
+        metadata = line[1:].lstrip() if line.startswith("#") else line
+        if metadata.casefold().startswith("set:"):
             if set_name is not None:
                 raise ValueError("Import one named set at a time.")
-            set_name = line[len("# Set:"):].strip()
+            set_name = metadata[len("Set:"):].strip()
             if not set_name or len(set_name) > 500:
                 raise ValueError("The set name must contain between 1 and 500 characters.")
             continue
-        if line.startswith("# MHRise Qurious skills") and line != HEADER:
-            raise ValueError("Unsupported skill sharing format version.")
+        if metadata.casefold().startswith("mhrise qurious skills"):
+            if metadata.casefold() != HEADER[2:].casefold():
+                raise ValueError("Unsupported skill sharing format version.")
+            continue
+        if metadata.casefold() in ("required skills", "bonus skills (extra levels, reference only)"):
+            continue
+        bonus_line = metadata.casefold().startswith("bonus ")
+        if bonus_line:
+            line = metadata[len("bonus "):]
         if line.startswith("#"):
             continue
         if line.lower().startswith("weapon "):
@@ -73,11 +84,13 @@ def import_skills(data, text):
         if sid is None:
             raise ValueError(f"Line {number}: unknown skill '{name}'.")
         _level(data, sid, level)
-        if sid in skills:
+        target = bonuses if bonus_line else skills
+        if sid in target:
             raise ValueError(f"Line {number}: duplicate skill '{name}'.")
-        skills[sid] = level
+        target[sid] = level
     if not skills:
         raise ValueError("No skills found. Paste a skill list exported by this app.")
     return {"skills": [{"id": sid, "level": lv} for sid, lv in skills.items()],
+            **({"bonuses": [{"id": sid, "level": lv} for sid, lv in bonuses.items()]} if bonuses else {}),
             **({"name": set_name} if set_name is not None else {}),
             **({"weapon": weapon} if weapon is not None else {})}

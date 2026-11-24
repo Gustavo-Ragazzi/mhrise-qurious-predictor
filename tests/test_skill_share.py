@@ -44,7 +44,8 @@ def test_saved_set_export_preserves_name_and_final_skills_without_mutation():
     result = SetsMixin.saved_set_skills_export(app, 4)
     assert result["text"].startswith("# Set: Meu set: Espadão\n")
     assert import_skills(DATA, result["text"]) == {
-        "skills": entry["set"]["skills"], "weapon": [4, 2, 0], "name": entry["name"]}
+        "skills": entry["query"]["skills"], "weapon": [4, 2, 0], "name": entry["name"],
+        "bonuses": [{"id": 1, "level": 4}, {"id": 2, "level": 4}]}
     assert entry["query"]["skills"][0]["level"] == 3
     assert "error" in SetsMixin.saved_set_skills_export(app, 999)
 
@@ -64,3 +65,29 @@ def test_import_named_set_and_reject_multiple_sets():
     assert result["name"] == "Meu set de Espadão"
     with pytest.raises(ValueError, match="one named set"):
         import_skills(DATA, "# Set: One\nAttack Boost Lv7\n# Set: Two\nCritical Eye Lv4")
+
+
+@pytest.mark.parametrize("prefix", ["", "# "])
+def test_import_metadata_with_or_without_comment_markers(prefix):
+    text = f"\ufeff{prefix}Set: DragonHearth Build\n{prefix}MHRise Qurious skills v1\nweapon 4 2 0\nskill Attack Boost = 7"
+    assert import_skills(DATA, text) == {
+        "name": "DragonHearth Build", "weapon": [4, 2, 0], "skills": [{"id": 1, "level": 7}]}
+
+
+def test_plain_metadata_still_rejects_unsupported_versions_and_multiple_sets():
+    with pytest.raises(ValueError, match="version"):
+        import_skills(DATA, "MHRise Qurious skills v2\nAttack Boost Lv7")
+    with pytest.raises(ValueError, match="one named set"):
+        import_skills(DATA, "Set: One\nAttack Boost Lv7\n# Set: Two\nCritical Eye Lv4")
+
+
+@pytest.mark.parametrize("strip_comments", [False, True])
+def test_bonus_skills_never_become_search_requirements(strip_comments):
+    chosen = [{"id": 1, "level": 3}]
+    bonuses = [{"id": 1, "level": 4}, {"id": 2, "level": 2}]
+    text = export_skills(DATA, chosen, [4, 0, 0], bonuses)
+    if strip_comments:
+        text = text.replace("# ", "")
+    result = import_skills(DATA, text)
+    assert result["skills"] == chosen
+    assert result["bonuses"] == bonuses

@@ -247,7 +247,8 @@ confirmed in game yet.
 
 Share a skill list with **Export skills** in the Set builder or **Share skills** in My Loadouts.
 In **Saved sets & planner**, each saved set also has **Export skills**, which opens a copyable text
-dialog with its original name, all final skills and weapon slots.
+dialog with its original name, chosen skills and weapon slots. Extra skills and levels from the
+result appear separately as bonuses; importing keeps them as reference rather than search requirements.
 Import preserves that name and suggests it when saving your own search result.
 Paste it into **Import skills** in the Set builder to restore the skill requirements and weapon slots.
 Each player can then search using their own inventory. Import replaces the wanted skills after
