@@ -12,7 +12,7 @@ from mhrise_exporter.pak import open_game_paks
 
 from .engine import Buildup, Tables
 
-CACHE_VERSION = 9
+CACHE_VERSION = 10
 DIR = "data/Define/Player/Equip/CustomBuildup"
 
 # Extra RSZ layouts (v16), from the kvasszn/ree-save-editor type dump.
@@ -152,6 +152,26 @@ def default_cache_dir() -> Path:
     return root / "mhrise-qurious-predictor"
 
 
+def read_skill_details(pak, max_levels: dict, skills: dict) -> dict:
+    """Read the game's localized explanations and 0-based level detail messages.
+
+    Message paths/tags follow mhrice's src/extract/gen_pedia.rs.
+    """
+    root = "data/Define/Player/Skill/PlEquipSkill/PlayerSkill_"
+    explain, explain_mr = (_msg_map(pak, root + "Explain" + suffix) for suffix in ("", "_MR"))
+    detail, detail_mr = (_msg_map(pak, root + "Detail" + suffix) for suffix in ("", "_MR"))
+
+    def localized(base, mr, tag):
+        # Merge by language so a missing translation can fall back to the base game.
+        return {**_names(base.get(tag)), **_names(mr.get(tag)), **_names(mr.get(tag + "_MR"))}
+
+    return {sid: {
+        "description": localized(explain, explain_mr, skill_msg_tag(int(sid)) + "_Explain"),
+        "levels": [localized(detail, detail_mr, f"{skill_msg_tag(int(sid))}_{lv:02}_Detail")
+                   for lv in range(max_levels.get(sid, 0) + 1)],
+    } for sid in skills}
+
+
 def build(game_dir: Path, log=print) -> dict:
     pak = open_game_paks(game_dir)
     try:
@@ -209,6 +229,9 @@ def build(game_dir: Path, log=print) -> dict:
             names = _names(sk_mr.get(f"{tag}_Name_MR") or sk_mr.get(f"{tag}_Name") or sk.get(f"{tag}_Name"))
             if names:
                 skills[str(sid)] = names
+
+        log("Reading skill descriptions and level effects...")
+        skill_details = read_skill_details(pak, max_levels, skills)
 
         log("Reading armor data...")
         armor_msgs = {}
@@ -289,7 +312,7 @@ def build(game_dir: Path, log=print) -> dict:
     finally:
         pak.close()
     return {"version": CACHE_VERSION, "costs": costs, "decorations": decorations, "weapons": weapons, "base": base, "armor_lots": armor_lots, "category_lots": category_lots,
-            "skill_costs": skill_costs, "skills": skills, "max_levels": max_levels, "skill_colors": skill_colors, "armors": armors,
+            "skill_costs": skill_costs, "skills": skills, "skill_details": skill_details, "max_levels": max_levels, "skill_colors": skill_colors, "armors": armors,
             "all_armors": all_armors,
             "deco_levels": deco_levels, "talisman_skills": talisman_skills, "melding": melding}
 

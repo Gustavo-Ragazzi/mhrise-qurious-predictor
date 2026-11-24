@@ -115,6 +115,11 @@ class Api(SetsMixin):
                 "color": self.data["skill_colors"].get(str(sid), 0),
                 "max": self.data["max_levels"].get(str(sid), 0) + 1}  # _MaxLevel is 0-based
 
+    def skill_catalog(self):
+        """All equipment skills and their effects, independent of the selected hunter."""
+        from .skill_catalog import catalog
+        return catalog(self.data, self.settings.get("lang", "en"))
+
     def skills(self):
         """Every skill, for the skill filter (filters also count the piece's own skills, so skills qurious
         never adds, like Blood Awakening, can still be wanted); ``qurious`` tells which ones it adds."""

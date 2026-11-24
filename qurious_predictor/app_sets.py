@@ -54,6 +54,20 @@ class SetsMixin:
     box_weapons, _lock, _name, _skill, _talisman_scorer."""
 
     # ---- shared ------------------------------------------------------------------------------------
+    def skills_export(self, skills, weapon, weapon_id=None):
+        from .skill_share import export_skills
+        try:
+            return {"text": export_skills(self.data, skills, weapon, weapon_id=weapon_id)}
+        except (ValueError, KeyError, TypeError) as error:
+            return {"error": str(error)}
+
+    def skills_import(self, text):
+        from .skill_share import import_skills
+        try:
+            return import_skills(self.data, text)
+        except (ValueError, KeyError, TypeError) as error:
+            return {"error": str(error)}
+
     def _builder(self) -> builder.Builder:
         if getattr(self, "_builder_obj", None) is None or self._builder_obj.data is not self.data:
             self._builder_obj = builder.Builder(self.data, self.melding)
@@ -78,7 +92,8 @@ class SetsMixin:
                         key=lambda s: s["name"].lower())
         armors = sorted(({"id": aid, "name": self._name(a["names"]), "part": a["part"], "rarity": a["rare"] + 1}
                          for aid, a in self.data["all_armors"].items() if a["names"]), key=lambda a: (-a["rarity"], a["name"]))
-        return {"skills": skills, "armors": armors,
+        from .weapon_catalog import catalog as weapon_catalog
+        return {"skills": skills, "armors": armors, **weapon_catalog(self.data, self._name),
                 "loadouts": [{"key": i, "name": l.name} for i, l in enumerate(self.loadout_list)],
                 "decorations": sum(self.owned_decos.values()), "maxRolls": MAX_ROLLS}
 
@@ -492,6 +507,31 @@ class SetsMixin:
                     "seconds": round(time.time() - t0, 2)}
 
     # ---- saved sets and planner -------------------------------------------------------------------
+    def saved_set_skills_export(self, sid):
+        """Portable skills of a saved set; no inventory or planner state is shared."""
+        from .skill_share import export_skills
+        entry = next((entry for entry in self.saved_sets() if entry["id"] == sid), None)
+        if entry is None:
+            return {"error": "Saved set not found."}
+        query, row = entry.get("query") or {}, entry.get("set") or {}
+        skills = query.get("skills") or [{"id": skill["id"], "level": skill["wanted"]}
+                                         for skill in row.get("skills", []) if skill.get("wanted")]
+        skills = skills or row.get("skills") or []
+        required = {skill["id"]: skill["level"] for skill in skills}
+        bonuses = [{"id": skill["id"], "level": skill["level"] - required.get(skill["id"], 0)}
+                   for skill in row.get("skills", []) if skill["level"] > required.get(skill["id"], 0)]
+        slots = row.get("slots") or {}
+        weapon = query.get("weapon")
+        if weapon is None:
+            weapon = ([slot["lv"] for slot in slots.get("0", slots.get(0, []))] + [0, 0, 0])[:3]
+        try:
+            text = export_skills(self.data, skills, weapon, bonuses, weapon_id=query.get("weaponId"))
+        except (ValueError, KeyError, TypeError) as error:
+            return {"error": str(error)}
+        name = entry["name"]
+        comment = " ".join(name.splitlines())
+        return {"text": f"# Set: {comment}\n{text}\n"}
+
     def saved_sets(self):
         """The saved sets, each with the rolls it needs worked out again from the set itself (so a set
         saved before borrowed pieces counted as its own rolls gets them too)."""

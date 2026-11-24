@@ -15,6 +15,22 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Check release versions
+        shell: python
+        run: |
+          import os
+          import pathlib
+          import tomllib
+          def read(path):
+              return tomllib.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+          version = read("pyproject.toml")["project"]["version"]
+          assert read("native/Cargo.toml")["workspace"]["package"]["version"] == version, "Python/Rust version mismatch"
+          for package in read("native/Cargo.lock")["package"]:
+              if package["name"] in ("qurious-core", "qurious-native"):
+                  assert package["version"] == version, "Cargo.lock version mismatch"
+          if os.environ["GITHUB_REF_TYPE"] == "tag":
+              assert os.environ["GITHUB_REF_NAME"] == f"v{version}", "Release tag/version mismatch"
+          print(f"Release version: {version}")
       - uses: dtolnay/rust-toolchain@stable
       - name: Install (builds the Rust engine with maturin)
         run: python -m pip install -e .[dev]

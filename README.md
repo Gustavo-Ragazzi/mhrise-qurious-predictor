@@ -249,6 +249,37 @@ Known gap (armor): every recording used armor with augment cost 10. The generato
 follows the game's enum layout (`CustomBuildup_01_01` … `CustomBuildup_06_04`) but has not been
 confirmed in game yet.
 
+## Skills reference
+
+In the Set builder, **Weapon** selects one of the 14 weapon types and **Weapon name** lists
+all matching weapons from your installed game, including Sunbreak. Selecting a weapon uses
+its decoration slots. Choose **None** to use the three manual slot selectors instead.
+Sharing a saved set or the builder's requirements includes the selected weapon's type, name and
+game ID. Import selects that weapon automatically, including across name languages. Older text
+and sets saved before a weapon was selected retain manual slots.
+
+Share a skill list with **Export skills** in the Set builder or **Share skills** in My Loadouts.
+In **Saved sets & planner**, each saved set also has **Export skills**, which opens a copyable text
+dialog with its original name, chosen skills and weapon slots. Extra skills and levels from the
+result appear separately as bonuses; importing keeps them as reference rather than search requirements.
+Import preserves that name and suggests it when saving your own search result.
+Paste it into **Import skills** in the Set builder to restore the skill requirements and weapon slots.
+Each player can then search using their own inventory. Import replaces the wanted skills after
+validating every line; it also accepts manual lists such as `Attack Boost Lv7`, one skill per line.
+Sharing includes skill requirements and weapon slots, rather than equipment or save data.
+
+The **Skills** tab lists every equipment skill, its description and the effect at each level.
+Search by name or effect (for example, attack or affinity). Text follows the selected names language,
+with English as a fallback, and comes from your installed game, including Sunbreak updates.
+This tab works without a hunter save. Existing game-data caches rebuild once to include the descriptions.
+For skills whose game text omits numbers, **Values** callouts add researched bonuses,
+durations and weapon/scroll differences, with a source link on each supplemented card.
+Callouts are available in English and Portuguese; see [coverage and sources](docs/SKILL_VALUES.md).
+The [full 147-skill audit](docs/SKILL_AUDIT.md) lists every reviewed skill. **Missing / partial values**
+shows the references whose numbers still need verification, with the specific gap explained on the card.
+Available jewels appear beside **Max Lv** using the game's slot icons; hover for the jewel name,
+required slot level and skill points granted.
+
 ## Run from source
 
 Needs Python 3.10+ and a [Rust toolchain](https://rustup.rs) (the install builds the engine with
