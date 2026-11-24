@@ -27,7 +27,7 @@ header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; bord
 header .title { font-size: 18px; font-weight: 700; color: var(--gold); letter-spacing: .04em; margin-right: 10px;
   text-shadow: 0 1px 0 #000; }
 header label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
-select, input[type=text], input[type=number] { background: #120f0b; border: 1px solid var(--line2); border-radius: 4px;
+select, input[type=text], input[type=search], input[type=number] { background: #120f0b; border: 1px solid var(--line2); border-radius: 4px;
   height: 32px; padding: 0 8px; }
 input[type=number] { width: 80px; }
 select:focus, input:focus { outline: 1px solid var(--gold); }
@@ -310,6 +310,20 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
   border: 1px solid var(--line2); border-radius: 4px; color: var(--text); font: 13px/1.45 Consolas, "Cascadia Mono", monospace; padding: 8px; }
 input.rollsin { width: 84px; }
 .pseg { flex: 1; height: 5px; border-radius: 2px; background: linear-gradient(90deg, var(--gold) var(--f), #3a3022 var(--f)); }
+.skillcatalog { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 12px; padding: 12px; align-items: start; }
+.skillcard { border: 1px solid var(--line2); border-radius: 6px; padding: 16px; background: var(--panel); }
+.skillcard h3 { margin: 0 0 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--gold); }
+.skilldecos { display: inline-flex; align-items: center; gap: 5px; }
+.skilldeco { display: inline-flex; align-items: center; }
+.skilldeco > * { pointer-events: none; }
+.skillcard p, .skillcard li { white-space: pre-line; line-height: 1.55; }
+.skillcard p { margin: 0 0 12px; color: var(--muted); }
+.skillcard ul { list-style: none; padding: 0; margin: 0; }
+.skillcard li { padding: 7px 0; border-top: 1px solid var(--line); }
+.skillcard li b { color: var(--gold); }
+.skillvalues { display: block; margin-top: 6px; padding: 7px 9px; border-left: 2px solid var(--gold2); background: #14110d80; }
+.skillcard .valuesource { display: block; margin-top: 12px; color: var(--muted); font-size: 12px; }
+.skillcard .valuesource a { color: var(--gold2); }
 </style>
 </head>
 <body>
@@ -415,6 +429,14 @@ input.rollsin { width: 84px; }
         <div class="picker slotpick" id="talslot1"></div>
         <div class="picker slotpick" id="talslot2"></div>
         <button class="btn" id="talclear" style="display:none">Clear filters</button>
+      </div>
+    </div>
+    <div class="filterbar" id="skillbar" style="display:none">
+      <div class="frow">
+        <label for="catalogfilter">Search skills</label>
+        <input id="catalogfilter" type="search" placeholder="Search name or effect…" style="width:min(420px, 100%)">
+        <label class="toggle"><input id="catalogpending" type="checkbox"><span></span>Missing / partial values</label>
+        <span id="catalogcount" class="muted" aria-live="polite"></span>
       </div>
     </div>
     <div class="filterbar" id="invbar" style="display:none">
@@ -735,11 +757,13 @@ async function boot() {
   setupPlanner();
   S.exportKinds = await api().export_kinds();
   renderParts(); renderModes(); syncFilterUi();
-  if (r.hunters.length) await loadHunter(); else status("No MH Rise save found on this PC.");
+  showMode();
+  if (r.hunters.length) await loadHunter(); else status("No MH Rise save found on this PC. Skills are available without a save.");
 }
 
 async function loadSkills() {
   S.skills = await api().skills();
+  S.catalog = await api().skill_catalog();
   skillPick.setItems(S.skills.map(skillItem), skillPick.value);
   updateLevels();
 }
@@ -758,6 +782,7 @@ async function loadHunter() {
   if (!info.error) { S.bskills = info.skills; S.loadouts = info.loadouts; S.barmors = info.armors; }
   S.build = null; S.optCurrent = null; S.loadSum = null;
   syncBuildUi();
+  if (S.mode === "skills") return showMode();
   if (S.mode === "all") return showMode();
   if (S.mode === "talisman") { showMode(); return runTal(); }
   if (S.mode === "inventory") { showMode(); return loadInventory(); }
@@ -830,7 +855,7 @@ function renderModes() {
   $("presetcol").style.display = rank ? "" : "none";
   $("filterbar").style.display = full || S.mode === "optimizer" ? "none" : "";
   $("rankbar").style.display = rank ? "" : "none";
-  for (const [bar, mode] of [["talbar", "talisman"], ["invbar", "inventory"], ["buildbar", "builder"], ["planbar", "planner"], ["expbar", "export"]])
+  for (const [bar, mode] of [["skillbar", "skills"], ["talbar", "talisman"], ["invbar", "inventory"], ["buildbar", "builder"], ["planbar", "planner"], ["expbar", "export"]])
     $(bar).style.display = S.mode === mode ? "" : "none";
   document.querySelector("main").style.gridTemplateColumns = full ? "minmax(0, 1fr)" : "";
   $("rolls").style.display = document.querySelector('label[for="rolls"]').style.display = full || S.mode === "optimizer" ? "none" : "";
@@ -969,6 +994,11 @@ function showSearchUi() {
 }
 
 function renderHead() {
+  if (S.mode === "skills") {
+    const incomplete = (S.catalog || []).filter(s => ["partial", "pending"].includes(s.referenceStatus)).length;
+    $("head").innerHTML = `<span class="big">Skills</span><span class="rar">${(S.catalog || []).length} skills</span>${incomplete ? `<span class="rar">${incomplete} partial / unverified references</span>` : ""}<div class="note">Equipment skill descriptions and effects at every level. Skill levels add up across your equipment, up to the skill's maximum level. Use Missing / partial values to see the remaining numeric reference gaps.</div>`;
+    return;
+  }
   if (S.mode === "planner") return renderPlanHead();
   if (S.mode === "builder") return renderBuildHead();
   if (S.mode === "optimizer") return renderOptHead();
@@ -1028,6 +1058,7 @@ const MAX_ALL_ROWS = 400;
 
 function renderTable() {
   $("table").classList.remove("all");
+  if (S.mode === "skills") return renderSkillCatalog();
   if (S.mode === "builder") return renderBuildTable();
   if (S.mode === "planner") return renderPlanTable();
   if (S.mode === "optimizer") return renderOptTable();
@@ -1126,6 +1157,7 @@ $("rolls").addEventListener("change", () => {
 $("lang").addEventListener("change", async () => {
   S.settings.lang = $("lang").value; await api().save_settings({ lang: S.settings.lang });
   await loadSkills(); syncFilterUi();
+  if (S.mode === "skills") showMode();
   S.talMethods = await api().talisman_methods(); syncTalUi();
   await loadHunter();
 });
@@ -1674,10 +1706,27 @@ const GROUPS = [
   { id: "pred", name: "Predictions", modes: [["piece", "Selected piece"], ["all", "Search all listed armor"], ["rank", "Ranking"], ["talisman", "Talismans"]] },
   { id: "equip", name: "My equipment", modes: [["inventory", "Inventory"], ["optimizer", "My Loadouts"], ["export", "Export"]] },
   { id: "build", name: "Set builder", modes: [["builder", "Set builder"], ["planner", "Saved sets & planner"]] },
+  { id: "skills", name: "Skills", modes: [["skills", "Skills"]] },
 ];
 const ALL_MODES = GROUPS.flatMap(g => g.modes.map(m => m[0]));
 const groupOf = mode => GROUPS.find(g => g.modes.some(m => m[0] === mode)) || GROUPS[0];
-const FULL_WIDTH = new Set(["talisman", "inventory", "export", "builder", "planner"]);
+const FULL_WIDTH = new Set(["talisman", "inventory", "export", "builder", "planner", "skills"]);
+
+function renderSkillCatalog() {
+  const query = $("catalogfilter").value.trim().toLocaleLowerCase();
+  const rows = (S.catalog || []).filter(s =>
+    (!$("catalogpending").checked || ["partial", "pending"].includes(s.referenceStatus))
+    && [s.name, s.description, ...s.levels.flatMap(l => [l.effect, l.values || ""])].join(" ").toLocaleLowerCase().includes(query));
+  $("catalogcount").textContent = `${rows.length} of ${(S.catalog || []).length} skills`;
+  $("table").innerHTML = rows.length ? `<div class="skillcatalog">${rows.map(s =>
+    `<article class="skillcard"><h3>${skillIcon(s.color, s.name)}${esc(s.name)} <span class="muted small">Max Lv${s.max}</span>${(s.decorations || []).length ? `<span class="skilldecos" aria-label="${S.settings.lang?.startsWith("pt") ? "Joias disponíveis" : "Available decorations"}">${s.decorations.map(d => `<span class="skilldeco" title="${esc(`${d.name} · Slot Lv${d.slot} · ${s.name} +${d.points}`)}" aria-label="${esc(`${d.name}, slot Lv${d.slot}, ${s.name} +${d.points}`)}">${slot(d.slot, false)}</span>`).join("")}</span>` : ""}</h3>
+    <p>${esc(s.description || "Description unavailable.")}</p><ul>${s.levels.map(l =>
+      `<li><b>Level ${l.level}:</b> ${esc(l.effect || "Effect unavailable.")}${l.values ? `<span class="skillvalues"><b>${s.referenceStatus === "pending" ? (S.settings.lang?.startsWith("pt") ? "Pendente" : "Not verified") : (S.settings.lang?.startsWith("pt") ? "Valores" : "Values")}:</b> ${esc(l.values)}</span>` : ""}</li>`).join("")}</ul>
+    ${s.valuesSource ? `<span class="valuesource">${S.settings.lang?.startsWith("pt") ? "Referência dos valores" : "Values reference"}: <a href="${esc(s.valuesSource.url)}" target="_blank" rel="noopener noreferrer">${esc(s.valuesSource.name)}</a></span>` : ""}</article>`).join("")}</div>`
+    : `<div class="empty">No skills match your search.</div>`;
+}
+$("catalogfilter").addEventListener("input", renderSkillCatalog);
+$("catalogpending").addEventListener("change", renderSkillCatalog);
 
 function renderGroups() {
   const g = groupOf(S.mode);

@@ -1,0 +1,830 @@
+{
+  "checked": "2026-11-24",
+  "scope": "All 147 Sunbreak equipment skills. Audit of missing numeric level effects, not every hidden interaction or motion-specific parameter.",
+  "catalog_source": "https://mhrise.kiranico.com/data/skills",
+  "reference_source": "https://kuroyonhon.com/mhrisesb/program/skill.php",
+  "skills": [
+    {
+      "name": "Attack Boost",
+      "max": 7,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Agitator",
+      "max": 5,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Peak Performance",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Resentment",
+      "max": 5,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Resuscitate",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Critical Eye",
+      "max": 7,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Critical Boost",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Weakness Exploit",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Latent Power",
+      "max": 5,
+      "review": "supplemented",
+      "note": "Level bonuses, 165-second base combat timer, attack acceleration and 120-second buff duration checked."
+    },
+    {
+      "name": "Maximum Might",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Critical Element",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Master's Touch",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Fire Attack",
+      "max": 5,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Water Attack",
+      "max": 5,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Ice Attack",
+      "max": 5,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Thunder Attack",
+      "max": 5,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Dragon Attack",
+      "max": 5,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Poison Attack",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Paralysis Attack",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Sleep Attack",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Blast Attack",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Handicraft",
+      "max": 5,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Razor Sharp",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Spare Shot",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Protective Polish",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Mind's Eye",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Ballistics",
+      "max": 3,
+      "review": "pending",
+      "note": "Range changes depend on ammo/arrow type and mods. Exact per-level distances have not been verified for this reference; no universal percentage is assumed."
+    },
+    {
+      "name": "Bludgeoner",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Bow Charge Plus",
+      "max": 1,
+      "review": "supplemented"
+    },
+    {
+      "name": "Focus",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Power Prolonger",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Marathon Runner",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Constitution",
+      "max": 5,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Stamina Surge",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Guard",
+      "max": 5,
+      "review": "supplemented"
+    },
+    {
+      "name": "Guard Up",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Offensive Guard",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Critical Draw",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Punishing Draw",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Quick Sheathe",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Slugger",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Stamina Thief",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Affinity Sliding",
+      "max": 1,
+      "review": "supplemented"
+    },
+    {
+      "name": "Horn Maestro",
+      "max": 1,
+      "review": "supplemented"
+    },
+    {
+      "name": "Artillery",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Load Shells",
+      "max": 2,
+      "review": "supplemented"
+    },
+    {
+      "name": "Special Ammo Boost",
+      "max": 2,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Normal/Rapid Up",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Pierce Up",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Spread Up",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Ammo Up",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Reload Speed",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Recoil Down",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Steadiness",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Rapid Fire Up",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Defense Boost",
+      "max": 7,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Divine Blessing",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Recovery Up",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Recovery Speed",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Speed Eating",
+      "max": 3,
+      "review": "pending",
+      "note": "The game describes faster item consumption, but exact per-level animation timings have not been verified for this reference."
+    },
+    {
+      "name": "Earplugs",
+      "max": 5,
+      "review": "categorical",
+      "note": "Describes an immunity, action permission or unlocked item category; no single numerical stat bonus is required."
+    },
+    {
+      "name": "Windproof",
+      "max": 3,
+      "review": "categorical",
+      "note": "Describes an immunity, action permission or unlocked item category; no single numerical stat bonus is required."
+    },
+    {
+      "name": "Tremor Resistance",
+      "max": 3,
+      "review": "categorical",
+      "note": "Describes an immunity, action permission or unlocked item category; no single numerical stat bonus is required."
+    },
+    {
+      "name": "Bubbly Dance",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Evade Window",
+      "max": 5,
+      "review": "supplemented"
+    },
+    {
+      "name": "Evade Extender",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Fire Resistance",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Water Resistance",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Ice Resistance",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Thunder Resistance",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Dragon Resistance",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Blight Resistance",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Poison Resistance",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Paralysis Resistance",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Sleep Resistance",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Stun Resistance",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Muck Resistance",
+      "max": 2,
+      "review": "categorical",
+      "note": "Describes an immunity, action permission or unlocked item category; no single numerical stat bonus is required."
+    },
+    {
+      "name": "Blast Resistance",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Botanist",
+      "max": 4,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Geologist",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Partbreaker",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Capture Master",
+      "max": 1,
+      "review": "pending",
+      "note": "Can increase capture reward count. Exact activation probability has not been verified; it is not a guaranteed extra carve or reward."
+    },
+    {
+      "name": "Carving Master",
+      "max": 1,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Good Luck",
+      "max": 3,
+      "review": "pending",
+      "note": "Increases quest/target reward counts. Exact per-level probabilities have not been verified; reward rates from other Monster Hunter games are not substituted."
+    },
+    {
+      "name": "Speed Sharpening",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Bombardier",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Mushroomancer",
+      "max": 3,
+      "review": "categorical",
+      "note": "Describes an immunity, action permission or unlocked item category; no single numerical stat bonus is required."
+    },
+    {
+      "name": "Item Prolonger",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Wide-Range",
+      "max": 5,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Free Meal",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Heroics",
+      "max": 5,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Fortify",
+      "max": 1,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Flinch Free",
+      "max": 3,
+      "review": "categorical",
+      "note": "Describes an immunity, action permission or unlocked item category; no single numerical stat bonus is required."
+    },
+    {
+      "name": "Jump Master",
+      "max": 1,
+      "review": "categorical",
+      "note": "Describes an immunity, action permission or unlocked item category; no single numerical stat bonus is required."
+    },
+    {
+      "name": "Carving Pro",
+      "max": 1,
+      "review": "categorical",
+      "note": "Describes an immunity, action permission or unlocked item category; no single numerical stat bonus is required."
+    },
+    {
+      "name": "Hunger Resistance",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Leap of Faith",
+      "max": 1,
+      "review": "categorical",
+      "note": "Describes an immunity, action permission or unlocked item category; no single numerical stat bonus is required."
+    },
+    {
+      "name": "Diversion",
+      "max": 1,
+      "review": "categorical",
+      "note": "Describes an immunity, action permission or unlocked item category; no single numerical stat bonus is required."
+    },
+    {
+      "name": "Master Mounter",
+      "max": 1,
+      "review": "supplemented"
+    },
+    {
+      "name": "Chameleos Blessing",
+      "max": 4,
+      "review": "partial",
+      "note": "Numeric core or poison-duration bonus supplied; Spiribird/reward probability remains unverified."
+    },
+    {
+      "name": "Kushala Blessing",
+      "max": 4,
+      "review": "supplemented"
+    },
+    {
+      "name": "Teostra Blessing",
+      "max": 4,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Dragonheart",
+      "max": 5,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Wirebug Whisperer",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Wall Runner",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Counterstrike",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Rapid Morph",
+      "max": 3,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Hellfire Cloak",
+      "max": 4,
+      "review": "supplemented"
+    },
+    {
+      "name": "Wind Alignment",
+      "max": 5,
+      "review": "partial",
+      "note": "Numeric core or poison-duration bonus supplied; Spiribird/reward probability remains unverified."
+    },
+    {
+      "name": "Thunder Alignment",
+      "max": 5,
+      "review": "partial",
+      "note": "Numeric core or poison-duration bonus supplied; Spiribird/reward probability remains unverified."
+    },
+    {
+      "name": "Stormsoul",
+      "max": 5,
+      "review": "game_text",
+      "note": "Main per-level quantity is already stated in the game text, including quantities written as words."
+    },
+    {
+      "name": "Blood Rite",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Dereliction",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Furious",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Mail of Hellfire",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Coalescence",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Bloodlust",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Defiance",
+      "max": 5,
+      "review": "supplemented"
+    },
+    {
+      "name": "Sneak Attack",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Adrenaline Rush",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Redirection",
+      "max": 2,
+      "review": "supplemented"
+    },
+    {
+      "name": "Spiribird's Call",
+      "max": 1,
+      "review": "supplemented"
+    },
+    {
+      "name": "Charge Master",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Foray",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Tune-Up",
+      "max": 2,
+      "review": "supplemented"
+    },
+    {
+      "name": "Grinder (S)",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Bladescale Hone",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Wall Runner (Boost)",
+      "max": 1,
+      "review": "supplemented"
+    },
+    {
+      "name": "Quick Breath",
+      "max": 1,
+      "review": "supplemented"
+    },
+    {
+      "name": "Element Exploit",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Burst",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Guts",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Status Trigger",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Intrepid Heart",
+      "max": 2,
+      "review": "supplemented"
+    },
+    {
+      "name": "Buildup Boost",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Embolden",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Wind Mantle",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Powder Mantle",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Berserk",
+      "max": 2,
+      "review": "supplemented"
+    },
+    {
+      "name": "Strife",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Frostcraft",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Dragon Conversion",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Heaven-Sent",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Frenzied Bloodlust",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Blood Awakening",
+      "max": 3,
+      "review": "supplemented"
+    },
+    {
+      "name": "Shock Absorber",
+      "max": 1,
+      "review": "categorical",
+      "note": "Describes an immunity, action permission or unlocked item category; no single numerical stat bonus is required."
+    },
+    {
+      "name": "Inspiration",
+      "max": 1,
+      "review": "supplemented"
+    }
+  ]
+}

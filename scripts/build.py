@@ -64,6 +64,8 @@ def main():
         z.write(exe, exe.name)
         z.write(ROOT / "README.md", "README.md")
         z.write(ROOT / "LICENSE", "LICENSE.txt")
+        z.write(ROOT / "docs" / "SKILL_VALUES.md", "docs/SKILL_VALUES.md")
+        z.write(ROOT / "docs" / "SKILL_AUDIT.md", "docs/SKILL_AUDIT.md")
     print(f"\n{exe}  ({exe.stat().st_size / 1e6:.1f} MB)\n{archive}  ({archive.stat().st_size / 1e6:.1f} MB)")
 
 
