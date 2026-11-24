@@ -170,14 +170,14 @@ dependencies = [
 
 [[package]]
 name = "qurious-core"
-version = "0.21.3"
+version = "0.21.4"
 dependencies = [
  "rayon",
 ]
 
 [[package]]
 name = "qurious-native"
-version = "0.21.3"
+version = "0.21.4"
 dependencies = [
  "pyo3",
  "qurious-core",
