@@ -149,7 +149,8 @@ Talismans), **My equipment** (Inventory, My Loadouts, Export) and **Set builder*
     rarity, with what the last throwaway augment gives on it (what you lose and gain on that roll, so
     you know exactly where to stop); the card, the copies to craft and the progress then follow that
     piece, and *Back to the plan's piece* undoes it. A new plan starts without picks. Every piece draws from the same sequence, but how many draws an augment takes
-    depends on the piece's own skills (not its rarity or price), so only some pieces end at the same place. The *Now* column of the saved sets
+    depends on the piece's own skills (not its rarity or price), so only some pieces work: the picker lists only the ones after which the wanted augment still comes
+    and the sequence ends at the same place. The *Now* column of the saved sets
     is not worked out again on its own while a plan is shown (it plans every saved set together):
     **Check sets** does it. Make plan again only when the plan says so or the ticked sets change: a
     result already in your box (the piece with the wanted augment, or the talisman) is then listed as

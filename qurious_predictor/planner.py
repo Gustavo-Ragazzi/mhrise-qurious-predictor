@@ -428,7 +428,8 @@ class Planner:
         """For a step whose augments before the wanted one go on another piece: what that piece's last
         of them gives (to check you are where the plan is before the augment that counts), and the other
         pieces that can take them instead. How many draws an augment takes depends on the piece (its own
-        skills), not on its rarity, so only the pieces whose augments end at the same place work."""
+        skills), not on its rarity, so only the pieces after which the wanted augment still comes
+        (and the sequence ends at the same place) work."""
         spare = {str(it.armor_id) for it in box_armors if not it.augmented}
         for st in q["steps"]:
             k = st["augments"]
@@ -440,8 +441,11 @@ class Planner:
                 if aid != st["burnOn"] and (self.data["armors"][aid]["cost"] != q["cost"] or aid == st["id"]):
                     continue
                 mid, last = _native().augment_advance(nt, s0, *self._piece(aid), q["type"], k - 1)
-                after, _ = _native().augment_advance(nt, list(mid), *self._piece(st["id"]), q["type"], 1)
-                if tuple(after) == end or aid == st["burnOn"]:
+                after, got = _native().augment_advance(nt, list(mid), *self._piece(st["id"]), q["type"], 1)
+                # the same place afterwards is not enough: the wanted augment itself has to come too
+                # (two pieces can end at the same state with the augment that counts drawn differently)
+                if aid == st["burnOn"] or (tuple(after) == end and got is not None
+                                           and outcome_key(got) == outcome_key(st["expected"])):
                     # what the last throwaway augment gives on it: where to stop, before the one that counts
                     opts.append({"id": aid, "last": last, "spare": aid in spare})
             # the plan's own piece first, then the ones in your box without qurious, then the cheapest

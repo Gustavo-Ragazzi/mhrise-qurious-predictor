@@ -245,6 +245,11 @@ def test_progress_follows_the_throwaway_piece_picked():
         pl.progress(plan, g, box, picks={key: other["id"]})
         q = plan["armor"][0]
         assert q["progress"]["onRoute"] and q["progress"]["done"] == k // 2 and st["burnPick"] == other["id"]
+        # every piece offered gives the wanted augment after its throwaway ones, and ends where the plan does
+        end = advance(advance(gens[seq].state(), st["burnOn"], k)[0], st["id"], 1)[0]
+        for o in st["burnOptions"]:
+            after, got = advance(advance(gens[seq].state(), o["id"], k)[0], st["id"], 1)
+            assert after == end and planner.outcome_key(got) == planner.outcome_key(st["expected"])
         # and its last throwaway augment is the one shown for it
         _, last = advance(gens[seq].state(), other["id"], k)
         assert next(o for o in st["burnOptions"] if o["id"] == other["id"])["last"] == last
