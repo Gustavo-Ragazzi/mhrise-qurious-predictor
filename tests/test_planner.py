@@ -204,6 +204,7 @@ def test_progress_ticks_off_a_plan_without_planning_again():
     assert p["progress"]["offRoute"] == 1 and not q["progress"]["onRoute"] and not any(s["done"] for s in q["steps"])
 
 
+@needs_game
 def test_progress_follows_the_throwaway_piece_picked():
     data = gamedata.load(Path(GAME), log=lambda m: None)
     gens = [XorShift128((0x5151 + i, 0x2727 * (i + 1), 0x3939 ^ i, 0x4141)) for i in range(56)]
