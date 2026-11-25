@@ -120,6 +120,10 @@ class Api(SetsMixin):
         from .skill_catalog import catalog
         return catalog(self.data, self.settings.get("lang", "en"))
 
+    def weapon_reference(self):
+        from .weapon_catalog import reference
+        return reference(self.data, self._name)
+
     def skills(self):
         """Every skill, for the skill filter (filters also count the piece's own skills, so skills qurious
         never adds, like Blood Awakening, can still be wanted); ``qurious`` tells which ones it adds."""

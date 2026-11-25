@@ -14,7 +14,7 @@ from pathlib import Path
 
 from mhrise_exporter.pak import open_game_paks
 
-CACHE_VERSION = 3
+CACHE_VERSION = 4
 
 # name -> (atlas, group, index)
 SPRITES = {
@@ -38,6 +38,8 @@ SPRITES = {
     "talisman": ("EquipIcon", 0, 5),
     "weapon": ("EquipIcon", 0, 15),
 }
+for _type, _index in enumerate((16, 15, 21, 19, 17, 23, 20, 18, 22, 25, 24, 26, 27, 28)):
+    SPRITES[f"weapon{_type}"] = ("EquipIcon", 0, _index)
 
 
 def _read_uvs(raw: bytes):
