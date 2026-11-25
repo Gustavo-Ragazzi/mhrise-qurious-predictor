@@ -661,28 +661,45 @@ class SetsMixin:
         if any("start" not in q for q in plan["armor"] + plan["talismans"]):
             return {"plan": None}        # made by an older version: make it again
         try:
-            planner.Planner(self.data, self.melding).progress(plan, self.generators, self.box[0], self.box[1])
+            planner.Planner(self.data, self.melding).progress(plan, self.generators, self.box[0], self.box[1],
+                                                              last.get("picks"))
         except Exception as e:
             return {"plan": None, "error": f"Cannot check the plan: {e}"}
+        used = set()
         for q in plan["armor"]:
             for st in q["steps"]:
-                if st.get("burnLast"):
-                    st["burnResult"] = self._outcome_view(st.pop("burnLast"))
-                if "burnAlso" in st:
-                    # the other pieces that can take the throwaway augments instead, per rarity
-                    by, every = {}, []
-                    for aid in st.pop("burnAlso"):
-                        a = self.data["all_armors"][aid]
-                        n, r = self._armor_name(aid), a["rare"] + 1
-                        if n in (st.get("burnName"), st["name"]) or any(x["name"] == n for x in every):
+                if "burnOptions" in st:
+                    # every piece that can take the throwaway augments, per rarity, each with what its last
+                    # throwaway augment gives (where to stop); the one picked is the one the route follows
+                    by, names = {}, set()
+                    for o in st.pop("burnOptions"):
+                        a = self.data["all_armors"][o["id"]]
+                        n, r = self._armor_name(o["id"]), a["rare"] + 1
+                        mine = o["id"] in (st["burnPick"], st["burnOn"])
+                        if not mine and (n in names or n == st["name"]):
                             continue
-                        every.append({"name": n, "part": a["part"], "rarity": r})
-                        by.setdefault(r, []).append({"name": n, "part": a["part"]})
-                    # per rarity: the ones in your box first (the first two are shown, the rest on hover)
-                    st["burnAlso"] = [{"rarity": r, "pieces": by[r]} for r in sorted(by)]
-                if st.get("burnOn"):
-                    st["burnPart"] = self.data["all_armors"][st["burnOn"]]["part"]
-                    st["burnRarity"] = self.data["all_armors"][st["burnOn"]]["rare"] + 1
+                        names.add(n)
+                        by.setdefault(r, []).append({"id": o["id"], "name": n, "part": a["part"], "spare": o["spare"],
+                                                     "result": self._outcome_view(o["last"]),
+                                                     "picked": o["id"] == st["burnPick"], "plan": o["id"] == st["burnOn"]})
+                    st["burnChoices"] = [{"rarity": r, "pieces": by[r]} for r in sorted(by)]
+                    pick = next(x for r in by.values() for x in r if x["picked"])
+                    st.update(burnName=pick["name"], burnPart=pick["part"], burnResult=pick["result"],
+                              burnRarity=self.data["all_armors"][pick["id"]]["rare"] + 1, burnSpare=pick["spare"])
+                if st.get("burnOn") and st["augments"] > 1:
+                    used.add(st.get("burnPick", st["burnOn"]))
+        # the copies to craft follow the throwaway pieces picked
+        copies = []
+        for c in plan["newCopies"]:
+            c["burn"] = int(c["id"] in used)
+            c["count"] = c["keep"] + c["burn"]
+            if c["count"]:
+                copies.append(c)
+        for aid in sorted(used - {c["id"] for c in copies}):
+            a = self.data["all_armors"][aid]
+            copies.append({"id": aid, "name": self._armor_name(aid), "keep": 0, "burn": 1, "count": 1, "sets": [],
+                           "rarity": a["rare"] + 1, "part": a["part"]})
+        plan["newCopies"] = copies
         saved = self.saved_sets()
         sets = [x for x in saved if x["id"] in set(last["ids"])]
         sel = sorted(i for i in self.settings.get("planSel") or [] if any(x["id"] == i for x in saved))
@@ -690,6 +707,22 @@ class SetsMixin:
                          or len(sets) != len(last["ids"]) or self._plan_sig(sets) != last["sig"])
         plan["madeAt"] = last.get("when")
         return {"plan": plan}
+
+    def plan_burn_pick(self, seed, at, armor_id=None):
+        """Put a step's throwaway augments on another piece (one of its choices), or back on the plan's
+        own piece (``armor_id`` None). Kept with the plan; a new plan starts without picks."""
+        with self._lock:
+            last = self.settings.get("lastPlan")
+            if not last:
+                return {"error": "Make a plan first."}
+            picks = dict(last.get("picks") or {})
+            key = f"{int(seed)}:{int(at)}"
+            if armor_id is None:
+                picks.pop(key, None)
+            else:
+                picks[key] = str(armor_id)
+            self.save_settings({"lastPlan": {**last, "picks": picks}})
+            return self.planner_progress()["plan"]
 
     def _outcome_view(self, e) -> dict:
         d, sl, res, sk = e

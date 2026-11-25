@@ -12,6 +12,7 @@ import pytest
 
 from qurious_predictor import engine, gamedata, melding, planner, search
 from qurious_predictor.rng import XorShift128
+from qurious_predictor.savedata import ArmorItem
 
 GAME = os.environ.get("MHR_GAME_DIR")
 needs_game = pytest.mark.skipif(not (GAME and search._native), reason="needs MHR_GAME_DIR and the compiled engine")
@@ -201,3 +202,50 @@ def test_progress_ticks_off_a_plan_without_planning_again():
     g[seq] = XorShift128((1, 2, 3, 4))
     p = pl.progress(plan, g)
     assert p["progress"]["offRoute"] == 1 and not q["progress"]["onRoute"] and not any(s["done"] for s in q["steps"])
+
+
+def test_progress_follows_the_throwaway_piece_picked():
+    data = gamedata.load(Path(GAME), log=lambda m: None)
+    gens = [XorShift128((0x5151 + i, 0x2727 * (i + 1), 0x3939 ^ i, 0x4141)) for i in range(56)]
+    nt = search.native_tables(data)
+    ty = engine.TYPE_SKILL
+    seq = engine.seed_index(10, ty)      # cost 10: rarity 10 and cheaper rarity 9 pieces
+    pl = planner.Planner(data, melding.Tables(data["melding"]))
+    pieces = [(aid, a) for aid, a in data["armors"].items() if a["cost"] == 10]
+
+    def advance(state, aid, n):
+        a = data["armors"][aid]
+        return search._native.augment_advance(nt, list(state), a["table"], a["cost"], [tuple(x) for x in a["skills"]], ty, n)
+
+    # cheaper pieces of that cost in the box: the planner spends the augments before the wanted one there
+    low = min(data["all_armors"][x]["rare"] for x, _ in pieces)
+    box = [ArmorItem(int(x), False) for x, _ in pieces if data["all_armors"][x]["rare"] == low]
+    tries = [(aid, a, n) for aid, a in sorted(pieces, key=lambda x: -data["all_armors"][x[0]]["rare"])[:40] for n in (4, 9, 16)]
+    for aid, a, n in tries:
+        d, sl, res, sk = search._native.rolls(nt, gens[seq].state(), a["table"], a["cost"],
+                                              [tuple(s) for s in a["skills"]], ty, n)[-1]
+        sets = [{"name": "A", "targets": {"armor": [{"id": aid, "name": aid, "part": a["part"], "type": ty, "cost": 10, "n": n,
+                                                     "expected": [d, sl, list(res), sorted([s, v] for s, v in sk if v)]}],
+                                          "talismans": [], "craft": []}}]
+        plan = pl.plan(sets, gens, box)
+        st = plan["armor"][0]["steps"][0] if plan["armor"] else None
+        if not st or not st["burnOn"] or st["augments"] < 3:
+            continue
+        pl.progress(plan, gens, box)
+        other = next((o for o in st["burnOptions"] if o["id"] != st["burnOn"]), None)
+        if other is None:
+            continue
+        key = f"{plan['armor'][0]['seed']}:{st['at']}"
+        # halfway through the throwaway augments on the piece picked: on the route, that far
+        k = st["augments"] - 1
+        half, _ = advance(gens[seq].state(), other["id"], k // 2)
+        g = [XorShift128(x.state()) for x in gens]
+        g[seq] = XorShift128(tuple(half))
+        pl.progress(plan, g, box, picks={key: other["id"]})
+        q = plan["armor"][0]
+        assert q["progress"]["onRoute"] and q["progress"]["done"] == k // 2 and st["burnPick"] == other["id"]
+        # and its last throwaway augment is the one shown for it
+        _, last = advance(gens[seq].state(), other["id"], k)
+        assert next(o for o in st["burnOptions"] if o["id"] == other["id"])["last"] == last
+        return
+    pytest.skip("no plan with a throwaway step on these generators")

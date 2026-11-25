@@ -279,13 +279,25 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
 .rnode .brar { color: #8fb3d9; font-weight: 600; margin-right: 5px; }
 .rnode .bpc { display: inline-flex; align-items: center; gap: 3px; margin-right: 8px; white-space: nowrap; }
 .rnode .bpart { width: 14px; height: 14px; flex: none; }
-.rnode .bmore { color: #8fb3d9; cursor: help; border-bottom: 1px dotted #5d84ad; white-space: nowrap; }
-.rnode .btip { display: none; }
-#btipfloat { position: fixed; z-index: 1000; pointer-events: none; background: #141c26; border: 1px solid #5d84ad; border-radius: 6px;
-  padding: 6px 9px; font-size: 12px; color: var(--text); box-shadow: 0 4px 14px #0009; column-gap: 18px; }
-#btipfloat div { break-inside: avoid; white-space: nowrap; }
-#btipfloat .bpc { display: inline-flex; align-items: center; gap: 4px; line-height: 1.6; }
-#btipfloat .bpart { width: 14px; height: 14px; flex: none; }
+.rnode .bpc.pick { cursor: pointer; border-radius: 4px; padding: 0 3px; }
+.rnode .bpc.pick:hover { background: #22334a; color: var(--text); }
+.rnode .bmore { all: unset; color: #8fb3d9; cursor: pointer; border-bottom: 1px dotted #5d84ad; white-space: nowrap; font-size: 11.5px; }
+.rnode .bmore:hover { color: var(--text); }
+.rnode .bswap { all: unset; cursor: pointer; align-self: flex-start; font-size: 11.5px; color: #8fb3d9; border: 1px solid #5d84ad; border-radius: 4px; padding: 1px 8px; }
+.rnode .bswap:hover { background: #22334a; color: var(--text); }
+.rnode .bspare { font-size: 10.5px; color: var(--up); border: 1px solid var(--up); border-radius: 8px; padding: 0 5px; margin-left: 4px; }
+#bmodal .box { width: min(860px, 94vw); max-height: 86vh; }
+#bmodal .blist { overflow: auto; padding: 0 10px 10px; }
+#bmodal .bgrp { color: #8fb3d9; font-weight: 600; font-size: 12px; margin: 10px 0 4px; }
+#bmodal .brow { all: unset; box-sizing: border-box; width: 100%; display: grid; grid-template-columns: 22px minmax(170px, 230px) 1fr; gap: 8px; align-items: center;
+  padding: 5px 8px; border: 1px solid transparent; border-radius: 5px; cursor: pointer; }
+#bmodal .brow:hover { background: #1b2635; border-color: #5d84ad; }
+#bmodal .brow.on { background: #1b2635; border-color: var(--gold); }
+#bmodal .brow .bpart { width: 18px; height: 18px; }
+#bmodal .brow .bn { font-weight: 600; }
+#bmodal .brow .bn small { font-weight: 400; color: var(--gold); margin-left: 5px; }
+#bmodal .brow .rres { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+#bmodal .bspare { font-size: 10.5px; color: var(--up); border: 1px solid var(--up); border-radius: 8px; padding: 0 5px; margin-left: 5px; font-weight: 400; }
 .rnode.done .rnum { background: var(--up); }
 .rnode.next { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset; }
 .rnode .rlbl { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--gold2); margin-top: 2px; }
@@ -614,6 +626,14 @@ input.rollsin { width: 84px; }
   </section>
 </main>
 <div id="status"></div>
+<div class="modal" id="bmodal" style="display:none">
+  <div class="frame box">
+    <h2 id="bmtitle"></h2>
+    <div class="muted small" id="bmnote" style="padding:0 10px 4px"></div>
+    <div class="blist" id="bmlist"></div>
+    <div class="frow"><span class="spacer"></span><button class="btn" id="bmreset">Back to the plan's piece</button><button class="btn" id="bmclose">Close</button></div>
+  </div>
+</div>
 <div class="modal" id="modal" style="display:none">
   <div class="frame box">
     <h2 id="modaltitle"></h2>
@@ -2724,16 +2744,64 @@ function burnNode(q, s, i) {
     else if (q.steps.findIndex(x => !x.done) === i) st = "next";
   }
   const icon = part => part != null ? mask(PARTS[part], "#8fb3d9", PARTS[part], "bpart") : "";
-  const pc = x => `<span class="bpc">${icon(x.part)}${esc(x.name)}</span>`;
-  const also = (s.burnAlso || []).map(r => `<div class="balso"><span class="brar">rarity ${r.rarity}</span>${r.pieces.slice(0, 2).map(pc).join("")}${r.pieces.length > 2
-    ? `<span class="bmore">+${r.pieces.length - 2} more<span class="btip">${r.pieces.slice(2).map(x => `<div>${pc(x)}</div>`).join("")}</span></span>` : ""}</div>`).join("");
-  return `<div class="rnode burn ${st}"><div class="rhead"><span class="rnum">${st === "done" ? "✓" : "↻"}</span>${s.burnPart != null ? mask(PARTS[s.burnPart], "#8fb3d9", PARTS[s.burnPart]) : ""}<span class="rname">${esc(s.burnName)}</span></div>
+  const key = `${q.seed}:${s.at}`;
+  const pc = x => `<span class="bpc pick" data-bkey="${key}" data-bid="${x.id}" title="Use this one">${icon(x.part)}${esc(x.name)}</span>`;
+  const n = (s.burnChoices || []).reduce((a, r) => a + r.pieces.length, 0);
+  const also = (s.burnChoices || []).map(r => [r, r.pieces.filter(x => !x.picked)]).filter(([, xs]) => xs.length)
+    .map(([r, xs]) => `<div class="balso"><span class="brar">rarity ${r.rarity}</span>${xs.slice(0, 2).map(pc).join("")}${xs.length > 2
+      ? `<button class="bmore" data-bkey="${key}">+${xs.length - 2} more</button>` : ""}</div>`).join("");
+  return `<div class="rnode burn ${st}"><div class="rhead"><span class="rnum">${st === "done" ? "✓" : "↻"}</span>${s.burnPart != null ? mask(PARTS[s.burnPart], "#8fb3d9", PARTS[s.burnPart]) : ""}<span class="rname">${esc(s.burnName)}</span>${s.burnSpare ? `<span class="bspare" title="You have a copy without qurious">in box</span>` : ""}</div>
     <div class="btag">only for rolls · no set</div>
     ${st === "next" ? `<div class="small"><b style="color:var(--gold)">next</b>${s.doneHere ? ` · ${s.doneHere} of ${k} done` : ""}</div>` : ""}
     <div class="rat">${k}× <small>throw the results away</small></div>
     <div class="rlbl">Roll until #${k} gives</div><div class="rres">${s.burnResult ? resultCell(s.burnResult) : `<span class="muted">—</span>`}</div>
+    ${n > 1 ? `<button class="bswap" data-bkey="${key}">⇄ Change piece · ${n}</button>` : ""}
     ${also ? `<div class="rlbl" title="Not every piece works: the piece's own skills change the draws">Or on</div>${also}` : ""}</div>`;
 }
+// the throwaway step of a sequence by "seed:at"
+function burnStep(key) {
+  const [seed, at] = key.split(":").map(Number);
+  const q = (S.plan && S.plan.armor || []).find(x => x.seed === seed);
+  return q && q.steps.find(x => x.at === at) ? [q, q.steps.find(x => x.at === at)] : [];
+}
+function openBurnPicker(key) {
+  const [q, s] = burnStep(key);
+  if (!s) return;
+  const k = s.augments - 1;
+  $("bmtitle").textContent = `Throwaway piece · ${TYPE_SHORT(q.typeName)} cost ${q.cost} · step ${q.steps.indexOf(s) + 1}`;
+  $("bmnote").textContent = `${k}× on any of these ends where the plan needs it. What augment #${k} gives on each one:`;
+  $("bmlist").innerHTML = s.burnChoices.map(r => `<div class="bgrp">rarity ${r.rarity}</div>` + r.pieces.map(x =>
+    `<button class="brow ${x.picked ? "on" : ""}" data-bkey="${key}" data-bid="${x.id}">${x.part != null ? mask(PARTS[x.part], "#8fb3d9", PARTS[x.part], "bpart") : "<span></span>"}
+      <span class="bn">${esc(x.name)}${x.plan ? "<small>plan's pick</small>" : ""}${x.spare ? `<span class="bspare" title="You have a copy without qurious">in box</span>` : ""}</span>
+      <span class="rres">${resultCell(x.result)}</span></button>`).join("")).join("");
+  $("bmreset").dataset.bkey = key;
+  $("bmreset").style.display = s.burnPick === s.burnOn ? "none" : "";
+  $("bmodal").style.display = "";
+}
+async function pickBurn(key, id) {
+  const [seed, at] = key.split(":").map(Number);
+  const r = await api().plan_burn_pick(seed, at, id);
+  if (!r || r.error) return;
+  S.plan = r;
+  $("bmodal").style.display = "none";
+  // redraw in place: keep every scroll position
+  const keep = [];
+  for (let el = $("table"); el; el = el.parentElement) keep.push([el, el.scrollTop, el.scrollLeft]);
+  const y = scrollY;
+  renderPlanTable();
+  keep.forEach(([el, t, l]) => { el.scrollTop = t; el.scrollLeft = l; });
+  scrollTo(scrollX, y);
+}
+document.addEventListener("click", e => {
+  const t = e.target.closest && e.target.closest("[data-bkey]");
+  if (!t) return;
+  if (t.id === "bmreset") pickBurn(t.dataset.bkey, null);
+  else if (t.dataset.bid) pickBurn(t.dataset.bkey, t.dataset.bid);
+  else openBurnPicker(t.dataset.bkey);
+});
+$("bmclose").addEventListener("click", () => { $("bmodal").style.display = "none"; });
+$("bmodal").addEventListener("click", e => { if (e.target.id === "bmodal") $("bmodal").style.display = "none"; });
+document.addEventListener("keydown", e => { if (e.key === "Escape") $("bmodal").style.display = "none"; });
 function routeNode(i, part, name, sets, at, state, todo, result, foot) {
   return `<div class="rnode ${state ? state.cls : ""}"><div class="rhead"><span class="rnum">${state && state.cls === "done" ? "✓" : i + 1}</span>${part != null ? mask(PARTS[part], "var(--gold)", PARTS[part]) : ""}<span class="rname">${esc(name)}</span></div>
     ${state ? `<div class="small">${state.text}</div>` : ""}
@@ -2743,17 +2811,6 @@ function routeNode(i, part, name, sets, at, state, todo, result, foot) {
     <div class="rfor">for ${sets.map(esc).join(", ")}${foot ? ` · ${foot}` : ""}</div></div>`;
 }
 
-document.addEventListener("mouseover", e => {
-  const m = e.target.closest && e.target.closest(".bmore");
-  let f = document.getElementById("btipfloat");
-  if (!m) { if (f) f.remove(); return; }
-  if (!f) { f = document.createElement("div"); f.id = "btipfloat"; document.body.appendChild(f); }
-  f.innerHTML = m.querySelector(".btip").innerHTML;
-  f.style.columnCount = Math.ceil(f.children.length / 14);
-  const r = m.getBoundingClientRect(), h = f.offsetHeight, w = f.offsetWidth;
-  f.style.left = Math.max(4, Math.min(r.left, innerWidth - w - 4)) + "px";
-  f.style.top = (r.bottom + 4 + h < innerHeight ? r.bottom + 4 : Math.max(4, r.top - h - 4)) + "px";
-});
 window.addEventListener("pywebviewready", boot);
 </script>
 </body>

@@ -368,26 +368,29 @@ class Planner:
         return {"inOrder": in_order, "savedAugments": saved, "augments": augments, "talismans": talismans,
                 "missing": missing, "reordered": reordered, "together": True, "done": done}
 
-    def progress(self, plan: dict, generators, box_armors=(), box_talismans=()) -> dict:
+    def progress(self, plan: dict, generators, box_armors=(), box_talismans=(), picks=None) -> dict:
         """How far each sequence of a plan made earlier has come in the save as it is now, without
         planning again: the generator now is looked for along the plan's own route (every augment or
         meld of it, from the state the plan started at). Found after n augments: the steps up to n are
         done. Not found: something else moved that sequence, the rest of the plan no longer holds.
-        Fills ``progress`` on every sequence and ``done`` / ``inBox`` / ``doneHere`` on every step."""
+        Fills ``progress`` on every sequence and ``done`` / ``inBox`` / ``doneHere`` on every step.
+        ``picks`` ({"seed:at": armor id}) puts a step's throwaway augments on another piece that ends at
+        the same place (one of its ``burnOptions``), so the route follows the piece really used."""
         nt = search.native_tables(self.data)
         rolled = self.rolled(box_armors, box_talismans)
         done_all = left_all = 0
         off = 0
+        picks = picks or {}
         for q in plan["armor"]:
-            segs = []
-            for st in q["steps"]:
-                k = st["augments"]
-                if st.get("burnOn") and k > 1:
-                    segs += [(*self._piece(st["burnOn"]), k - 1), (*self._piece(st["id"]), 1)]
-                else:
-                    segs.append((*self._piece(st["id"]), k))
-            states = [tuple(x) for x in _native().augment_path(nt, list(q["start"]), q["type"], segs)]
+            states = self._route(q, nt, lambda st: st["burnOn"])
             self._burn_checks(q, states, nt, box_armors)
+            for st in q["steps"]:
+                if "burnOptions" in st:
+                    pick = picks.get(f"{q['seed']}:{st['at']}")
+                    st["burnPick"] = pick if any(o["id"] == pick for o in st["burnOptions"]) else st["burnOn"]
+            if any(st.get("burnPick", st["burnOn"]) != st["burnOn"] for st in q["steps"]):
+                # same states at every step's end, other ones in between: the route of the pieces used
+                states = self._route(q, nt, lambda st: st.get("burnPick", st["burnOn"]))
             now = tuple(generators[q["seed"]].state())
             n = states.index(now) if now in states else None
             self._mark(q, n, lambda st: self.is_rolled(st, rolled))
@@ -410,28 +413,39 @@ class Planner:
         plan["progress"] = {"augmentsDone": done_all, "augmentsLeft": left_all, "offRoute": off}
         return plan
 
+    def _route(self, q: dict, nt, burn_of) -> list:
+        """The state after every augment of a sequence's route, the throwaway ones on ``burn_of(step)``."""
+        segs = []
+        for st in q["steps"]:
+            k = st["augments"]
+            if st.get("burnOn") and k > 1:
+                segs += [(*self._piece(burn_of(st)), k - 1), (*self._piece(st["id"]), 1)]
+            else:
+                segs.append((*self._piece(st["id"]), k))
+        return [tuple(x) for x in _native().augment_path(nt, list(q["start"]), q["type"], segs)]
+
     def _burn_checks(self, q: dict, states: list, nt, box_armors=()):
         """For a step whose augments before the wanted one go on another piece: what that piece's last
         of them gives (to check you are where the plan is before the augment that counts), and the other
         pieces that can take them instead. How many draws an augment takes depends on the piece (its own
         skills), not on its rarity, so only the pieces whose augments end at the same place work."""
-        owned = {str(it.armor_id) for it in box_armors}
+        spare = {str(it.armor_id) for it in box_armors if not it.augmented}
         for st in q["steps"]:
             k = st["augments"]
             if not st.get("burnOn") or k < 2:
                 continue
             s0, end = list(states[st["at"] - k]), states[st["at"]]
-            _, st["burnLast"] = _native().augment_advance(nt, s0, *self._piece(st["burnOn"]), q["type"], k - 1)
-            also, seen = [], {st["burnOn"], st["id"]}
-            for aid, a in self.data["armors"].items():
-                if a["cost"] != q["cost"] or aid in seen:
+            opts = []
+            for aid in [st["burnOn"]] + [x for x in self.data["armors"] if x != st["burnOn"]]:
+                if aid != st["burnOn"] and (self.data["armors"][aid]["cost"] != q["cost"] or aid == st["id"]):
                     continue
-                mid, _ = _native().augment_advance(nt, s0, *self._piece(aid), q["type"], k - 1)
+                mid, last = _native().augment_advance(nt, s0, *self._piece(aid), q["type"], k - 1)
                 after, _ = _native().augment_advance(nt, list(mid), *self._piece(st["id"]), q["type"], 1)
-                if tuple(after) == end:
-                    also.append(aid)
-            # the ones in your box first, then the cheapest
-            st["burnAlso"] = sorted(also, key=lambda x: (x not in owned, self._rarity(x), x))
+                if tuple(after) == end or aid == st["burnOn"]:
+                    # what the last throwaway augment gives on it: where to stop, before the one that counts
+                    opts.append({"id": aid, "last": last, "spare": aid in spare})
+            # the plan's own piece first, then the ones in your box without qurious, then the cheapest
+            st["burnOptions"] = sorted(opts, key=lambda o: (o["id"] != st["burnOn"], not o["spare"], self._rarity(o["id"]), o["id"]))
 
     @staticmethod
     def _mark(q: dict, n, in_box, size: str = "augments"):
