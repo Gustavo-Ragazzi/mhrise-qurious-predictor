@@ -342,6 +342,34 @@ input.rollsin { width: 84px; }
 .skillvalues { display: block; margin-top: 6px; padding: 7px 9px; border-left: 2px solid var(--gold2); background: #14110d80; }
 .skillcard .valuesource { display: block; margin-top: 12px; color: var(--muted); font-size: 12px; }
 .skillcard .valuesource a { color: var(--gold2); }
+.weaponlayout { display:grid; grid-template-columns:280px minmax(0,1fr); gap:12px; padding:12px; }
+.weapontree { border:1px solid var(--line2); border-radius:5px; overflow:auto; max-height:calc(100vh - 280px); padding:10px; }
+.weapontree summary { cursor:pointer; color:var(--muted); }
+.weapontree details { margin-left:12px; }
+.weapontree > details { margin-left:0; }
+.weapontree button { border:0; background:transparent; color:var(--text); text-align:left; padding:4px; cursor:pointer; }
+.weapontree button.on { color:var(--gold); background:var(--panel); }
+.weaponmain { min-width:0; }
+.weaponlistwrap { overflow:auto; max-height:58vh; border:1px solid var(--line2); }
+.weaponlist { width:100%; border-collapse:collapse; white-space:nowrap; font-size:12px; }
+.weaponlist th { position:sticky; top:0; z-index:2; background:var(--panel); cursor:pointer; text-align:left; }
+.weaponlist td,.weaponlist th { padding:8px; border-bottom:1px solid var(--line); }
+.weaponlist tr[data-weapon] { cursor:pointer; }
+.weaponlist tr.on { background:#49391d; }
+.weaponlist tr:hover { background:#362b1c; }
+.weaponlist .wname { min-width:210px; }
+.sharpwrap { width:240px; height:12px; position:relative; margin:4px 5px; }
+.sharpbar { position:absolute; bottom:0; height:10px; width:100%; background:#070707; display:flex; overflow:hidden; }
+.sharpseg { height:100%; flex-shrink:0; }
+.weapondetail { margin-top:12px; padding:16px; border:1px solid var(--line2); border-radius:5px; background:var(--panel); }
+.weapondetail h3 { color:var(--gold); margin:0 0 12px; }
+.weaponfacts { display:flex; flex-wrap:wrap; gap:10px 24px; margin-bottom:12px; }
+.weaponfacts span { color:var(--muted); }
+.weaponfacts b { color:var(--text); }
+.weaponrecipes { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; margin-top:14px; }
+.weaponrecipes ul { padding-left:18px; }
+@media(max-width:1000px) { .weaponlayout { grid-template-columns:210px minmax(0,1fr); } }
+@media(max-width:720px) { .weaponlayout { grid-template-columns:1fr; } .weapontree { max-height:230px; } }
 </style>
 </head>
 <body>
@@ -447,6 +475,19 @@ input.rollsin { width: 84px; }
         <div class="picker slotpick" id="talslot1"></div>
         <div class="picker slotpick" id="talslot2"></div>
         <button class="btn" id="talclear" style="display:none">Clear filters</button>
+      </div>
+    </div>
+    <div class="filterbar" id="weaponbar" style="display:none">
+      <div class="frow" id="weaponcategories" aria-label="Weapon types"></div>
+      <div class="frow">
+        <input id="weaponsearch" type="search" placeholder="Search weapon name…" style="width:240px">
+        <label>Element/status <select id="weaponelement"></select></label>
+        <label>Rarity <select id="weaponrarity"><option value="0">All</option></select></label>
+        <label class="toggle"><input id="weaponfinal" type="checkbox"><span></span>Fully upgraded</label>
+        <label>Handicraft <select id="weaponhandicraft"></select></label>
+        <label class="toggle" title="Apply the automatic sharpness bonus from unlocking every Anomaly Slot. Paid Sharpness Boost augments are not included; attack and element remain base stats."><input id="weaponslotbonus" type="checkbox" checked><span></span>Max slot sharpness bonus</label>
+        <button class="btn" id="weaponexpand">Expand tree</button><button class="btn" id="weaponcollapse">Collapse tree</button>
+        <span id="weaponcount" class="muted"></span>
       </div>
     </div>
     <div class="filterbar" id="skillbar" style="display:none">
@@ -774,6 +815,7 @@ async function boot() {
   setupFilters();
   setupRanking();
   await loadSkills();
+  await loadWeapons();
   await loadPresets();
   await setupTalismans();
   setupInventory();
@@ -793,6 +835,10 @@ async function loadSkills() {
   skillPick.setItems(S.skills.map(skillItem), skillPick.value);
   updateLevels();
 }
+async function loadWeapons() {
+  S.weaponCatalog = await api().weapon_reference();
+  setupWeaponReference();
+}
 
 async function loadHunter() {
   status("Reading save…");
@@ -808,7 +854,7 @@ async function loadHunter() {
   if (!info.error) { S.bskills = info.skills; S.loadouts = info.loadouts; S.barmors = info.armors; S.bweapons = info.weapons; S.bweaponTypes = info.weaponTypes; }
   S.build = null; S.optCurrent = null; S.loadSum = null;
   syncBuildUi();
-  if (S.mode === "skills") return showMode();
+  if (["skills", "weapons"].includes(S.mode)) return showMode();
   if (S.mode === "all") return showMode();
   if (S.mode === "talisman") { showMode(); return runTal(); }
   if (S.mode === "inventory") { showMode(); return loadInventory(); }
@@ -880,7 +926,7 @@ function renderModes() {
   $("presetcol").style.display = rank ? "" : "none";
   $("filterbar").style.display = full || S.mode === "optimizer" ? "none" : "";
   $("rankbar").style.display = rank ? "" : "none";
-  for (const [bar, mode] of [["skillbar", "skills"], ["talbar", "talisman"], ["invbar", "inventory"], ["buildbar", "builder"], ["planbar", "planner"], ["expbar", "export"]])
+  for (const [bar, mode] of [["weaponbar", "weapons"], ["skillbar", "skills"], ["talbar", "talisman"], ["invbar", "inventory"], ["buildbar", "builder"], ["planbar", "planner"], ["expbar", "export"]])
     $(bar).style.display = S.mode === mode ? "" : "none";
   document.querySelector("main").style.gridTemplateColumns = full ? "minmax(0, 1fr)" : "";
   $("rolls").style.display = document.querySelector('label[for="rolls"]').style.display = full || S.mode === "optimizer" ? "none" : "";
@@ -1019,6 +1065,10 @@ function showSearchUi() {
 }
 
 function renderHead() {
+  if (S.mode === "weapons") {
+    $("head").innerHTML = `<span class="big">Weapons</span><span class="rar">${S.weaponCatalog?.weapons.length || 0} weapons</span><div class="note">Browse the upgrade tree and select a weapon for details. The sharpness bars show the selected Handicraft level. Choose Base to see sharpness without Handicraft. Max slot sharpness bonus includes the automatic bonus for eligible weapons; turn it off to compare unaugmented sharpness. Paid Sharpness Boost augments are not included. Attack and element remain base stats.</div>`;
+    return;
+  }
   if (S.mode === "skills") {
     const incomplete = (S.catalog || []).filter(s => ["partial", "pending"].includes(s.referenceStatus)).length;
     $("head").innerHTML = `<span class="big">Skills</span><span class="rar">${(S.catalog || []).length} skills</span>${incomplete ? `<span class="rar">${incomplete} partial / unverified references</span>` : ""}<div class="note">Equipment skill descriptions and effects at every level. Skill levels add up across your equipment, up to the skill's maximum level. Use Missing / partial values to see the remaining numeric reference gaps.</div>`;
@@ -1082,6 +1132,7 @@ const wantedIds = () => new Set(F().skills.flat().map(w => w.id));
 const MAX_ALL_ROWS = 400;
 
 function renderTable() {
+  if (S.mode === "weapons") return renderWeaponReference();
   $("table").classList.remove("all");
   if (S.mode === "skills") return renderSkillCatalog();
   if (S.mode === "builder") return renderBuildTable();
@@ -1181,8 +1232,8 @@ $("rolls").addEventListener("change", () => {
 });
 $("lang").addEventListener("change", async () => {
   S.settings.lang = $("lang").value; await api().save_settings({ lang: S.settings.lang });
-  await loadSkills(); syncFilterUi();
-  if (S.mode === "skills") showMode();
+  await loadSkills(); await loadWeapons(); syncFilterUi();
+  if (["skills", "weapons"].includes(S.mode)) showMode();
   S.talMethods = await api().talisman_methods(); syncTalUi();
   await loadHunter();
 });
@@ -1732,10 +1783,114 @@ const GROUPS = [
   { id: "equip", name: "My equipment", modes: [["inventory", "Inventory"], ["optimizer", "My Loadouts"], ["export", "Export"]] },
   { id: "build", name: "Set builder", modes: [["builder", "Set builder"], ["planner", "Saved sets & planner"]] },
   { id: "skills", name: "Skills", modes: [["skills", "Skills"]] },
+  { id: "weapons", name: "Weapons", modes: [["weapons", "Weapons"]] },
 ];
 const ALL_MODES = GROUPS.flatMap(g => g.modes.map(m => m[0]));
 const groupOf = mode => GROUPS.find(g => g.modes.some(m => m[0] === mode)) || GROUPS[0];
-const FULL_WIDTH = new Set(["talisman", "inventory", "export", "builder", "planner", "skills"]);
+const FULL_WIDTH = new Set(["talisman", "inventory", "export", "builder", "planner", "skills", "weapons"]);
+
+const SHARP_COLORS = ["#e52b21", "#f07e16", "#e8d914", "#35be48", "#3194ed", "#f6f0e5", "#b566db"];
+const SHARP_NAMES = ["Red", "Orange", "Yellow", "Green", "Blue", "White", "Purple"];
+const WV = () => S.weaponView || (S.weaponView = { type: 0, selected: null, sort: "sort", dir: 1 });
+const weaponSharpness = w => $("weaponslotbonus").checked && w.slotSharpnessBonus ? w.augmentedSharpness : w.sharpness;
+function sharpnessBar(sharp) {
+  if (!sharp) return `<span class="muted">—</span>`;
+  const level = Math.max(0, Math.min(5, +$("weaponhandicraft").value || 0));
+  const values = sharp.levels[level], color = values.findLastIndex(value => value > 0);
+  const summary = `${level === 0 ? "Base" : "Handicraft Lv" + level}: ${SHARP_NAMES[color]} ${values[color]} (${values.reduce((a,b) => a + b, 0)} total)`;
+  return `<div class="sharpwrap" role="img" aria-label="${esc(summary)}" title="${esc(summary)}"><div class="sharpbar">${values.map((value, color) =>
+    `<span class="sharpseg" style="width:${value / 4}%;background:${SHARP_COLORS[color]}" title="${SHARP_NAMES[color]}: ${value}"></span>`).join("")}</div></div>`;
+}
+
+function weaponElements(w) {
+  return [[w.element, w.elementValue], [w.element2, w.elementValue2]].filter(([type]) => type)
+    .map(([type, value]) => `${esc(S.weaponCatalog.elements[type])} ${value}`).join(" / ") || "—";
+}
+function setupWeaponReference() {
+  const c = S.weaponCatalog;
+  $("weaponelement").innerHTML = `<option value="-1">All</option>` + c.elements.map((name, i) => `<option value="${i}">${esc(name)}</option>`).join("");
+  $("weaponrarity").innerHTML = `<option value="0">All</option>` + Array.from({length:10}, (_, i) => `<option value="${i + 1}">R${i + 1}</option>`).join("");
+  $("weaponhandicraft").innerHTML = Array.from({length:6}, (_, i) => `<option value="${i}">${i === 0 ? "Base" : "Lv" + i}</option>`).join("");
+}
+function weaponFilteredRows() {
+  const query = $("weaponsearch").value.trim().toLocaleLowerCase(), element = +$("weaponelement").value, rarity = +$("weaponrarity").value;
+  return (S.weaponCatalog?.weapons || []).filter(w => w.type === WV().type && (!query || w.name.toLocaleLowerCase().includes(query))
+    && (element < 0 || w.element === element || (element > 0 && w.element2 === element)) && (!rarity || w.rarity === rarity)
+    && (!$("weaponfinal").checked || w.hasTree && !w.children.length));
+}
+function weaponTree(rows) {
+  const all = S.weaponCatalog.weapons.filter(w => w.type === WV().type), map = new Map(all.map(w => [w.id, w]));
+  const visible = new Set(rows.map(w => w.id));
+  for (const w of rows) {
+    const seen = new Set(); let parent = w.parent;
+    while (map.has(parent) && !seen.has(parent)) { seen.add(parent); visible.add(parent); parent = map.get(parent).parent; }
+  }
+  const emitted = new Set();
+  function node(w, path = new Set()) {
+    if (!visible.has(w.id) || path.has(w.id)) return "";
+    emitted.add(w.id); const next = new Set(path); next.add(w.id);
+    const children = w.children.map(id => map.get(id)).filter(Boolean).filter(w => visible.has(w.id));
+    const button = `<button class="${WV().selected === w.id ? "on" : ""}" data-weapon="${w.id}" title="${esc(w.name)}">${mask("weapon" + w.type, "var(--gold)", S.weaponCatalog.types[w.type].name)} ${esc(w.name)}</button>`;
+    return children.length ? `<details data-wbranch="${w.id}" ${WV().closed?.has(w.id) ? "" : "open"}><summary>${button}</summary>${children.map(w => node(w, next)).join("")}</details>` : `<div style="margin-left:12px">${button}</div>`;
+  }
+  let html = all.filter(w => !map.has(w.parent)).map(w => node(w)).join("");
+  html += all.filter(w => visible.has(w.id) && !emitted.has(w.id)).map(w => node(w)).join("");
+  return html || `<span class="muted">No matching weapons.</span>`;
+}
+function weaponSortValue(w, key) {
+  if (key !== "elementValue") return w[key] ?? 0;
+  const element = +$("weaponelement").value;
+  if (element > 0) return Math.max(w.element === element ? w.elementValue || 0 : 0,
+    w.element2 === element ? w.elementValue2 || 0 : 0);
+  return Math.max(w.element ? w.elementValue || 0 : 0, w.element2 ? w.elementValue2 || 0 : 0);
+}
+function renderWeaponReference() {
+  if (!S.weaponCatalog) return;
+  const view = WV(), rows = weaponFilteredRows(), byId = new Map(S.weaponCatalog.weapons.map(w => [w.id, w]));
+  $("weaponcategories").innerHTML = S.weaponCatalog.types.map(t => `<button class="chip ${view.type === t.id ? "on" : ""}" data-wtype="${t.id}">${mask("weapon" + t.id, "var(--gold)", t.name)} ${esc(t.name)}</button>`).join("");
+  $("weaponcount").textContent = `${rows.length} weapons`;
+  rows.sort((a,b) => {
+    const av = weaponSortValue(a, view.sort), bv = weaponSortValue(b, view.sort);
+    return (typeof av === "string" ? av.localeCompare(bv) : av - bv) * view.dir || a.sort - b.sort;
+  });
+  const th = (key, text) => `<th data-wsort="${key}">${text}${view.sort === key ? view.dir > 0 ? " ▲" : " ▼" : ""}</th>`;
+  $("table").innerHTML = `<div class="weaponlayout"><aside class="weapontree" aria-label="Weapon upgrade tree">${weaponTree(rows)}</aside><div class="weaponmain">
+    <div class="weaponlistwrap"><table class="weaponlist"><thead><tr>${th("sort", "#")}${th("name", "Weapon")}${th("rarity", "Rare")}${th("attack", "Attack")}${th("elementValue", "Element/status")}${th("affinity", "Affinity")}${th("defense", "Def.")}<th>Slots</th><th>Rampage</th><th>Sharpness · ${+$("weaponhandicraft").value ? "Handicraft Lv" + $("weaponhandicraft").value : "Base"}</th><th>Forge</th><th>Upgrade</th></tr></thead><tbody>${rows.map(w =>
+    `<tr data-weapon="${w.id}" class="${view.selected === w.id ? "on" : ""}"><td>${w.sort}</td><td class="wname">${mask("weapon" + w.type, "var(--gold)", w.name)} ${esc(w.name)}</td><td>${w.rarity}</td><td>${w.attack ?? "—"}</td><td>${weaponElements(w)}</td><td>${w.affinity ?? "—"}%${w.chaosAffinity != null ? " / " + w.chaosAffinity + "%" : ""}</td><td>${w.defense || "—"}</td><td>${w.slots.filter(Boolean).map(lv => slot(lv, false)).join("") || "—"}</td><td>${(w.rampageSlots || []).map(lv => slot(lv, false)).join("") || "—"}</td><td>${sharpnessBar(weaponSharpness(w))}</td><td>${w.forge ? w.forge.price.toLocaleString() + " z" : "—"}</td><td>${w.upgrade ? w.upgrade.price.toLocaleString() + " z" : "—"}</td></tr>`).join("") || `<tr><td colspan="12">No weapons match these filters.</td></tr>`}</tbody></table></div>
+    <div id="weapondetail" class="weapondetail">${view.selected && byId.has(view.selected) ? weaponDetail(byId.get(view.selected), byId) : `<span class="muted">Select a weapon in the tree or table to see its materials and weapon-specific details.</span>`}</div></div></div>`;
+}
+function weaponDetail(w, byId) {
+  const link = id => byId.has(id) ? `<button class="btn" data-weapon="${id}">${esc(byId.get(id).name)}</button>` : "—";
+  const recipe = (label, r) => `<div><b>${label}</b>${r ? `<p>${r.price.toLocaleString()} z</p><ul>${r.materials.map(m => `<li>${esc(m.name)} ×${m.count}</li>`).join("")}${r.categoryPoints ? `<li>${esc(r.category)}: ${r.categoryPoints} points</li>` : ""}</ul>` : `<p class="muted">Not available</p>`}</div>`;
+  return `<h3>${mask("weapon" + w.type, "var(--gold)", w.name)} ${esc(w.name)} · R${w.rarity}</h3><div class="weaponfacts"><span>Attack <b>${w.attack}</b></span><span>Affinity <b>${w.affinity}%${w.chaosAffinity != null ? " / " + w.chaosAffinity + "%" : ""}</b></span><span>Defense <b>+${w.defense}</b></span><span>${weaponElements(w)}</span><span>Buy <b>${w.buyPrice ? w.buyPrice.toLocaleString() + " z" : "—"}</b></span></div>
+    ${w.description ? `<p>${esc(w.description)}</p>` : ""}${w.rampageSkills.length ? `<p>Rampage skills: ${w.rampageSkills.map(esc).join(" · ")}</p>` : ""}
+    ${w.sharpness ? `<p class="muted">Slot-unlock sharpness bonus: ${w.slotSharpnessBonus ? `+${w.slotSharpnessBonus} ${$("weaponslotbonus").checked ? "(applied)" : "(disabled)"}` : "Not applicable"}. Paid Sharpness Boost augments are separate.</p>${sharpnessBar(weaponSharpness(w))}<p class="muted small">The bar shows the selected Handicraft level. Each level adds up to 10 sharpness units; fixed maximum bars do not extend.</p>` : ""}
+    <div class="weaponfacts">${w.special.map(([label,value]) => `<span>${esc(label)} <b>${esc(value)}</b></span>`).join("")}</div>
+    <p>Upgrade from: ${link(w.parent)}<br>Upgrade to: ${w.children.map(link).join(" ") || "—"}${!w.hasTree ? `<br><span class="muted">No upgrade tree entry in the game data.</span>` : ""}</p>
+    ${w.progress ? `<p class="muted">Tree unlock: Village ${w.progress.village || "—"} · Hub ${w.progress.hub || "—"} · MR ${w.progress.master || "—"}</p>` : ""}
+    <div class="weaponrecipes">${recipe("Forge", w.forge)}${recipe("Upgrade", w.upgrade)}</div>
+    ${w.ammo.length ? `<details open><summary>Ammo (${w.ammo.length})</summary><table class="weaponlist"><thead><tr><th>Ammo</th><th>Capacity</th><th>Handling</th><th>Rapid fire</th></tr></thead><tbody>${w.ammo.map(a => `<tr><td>${esc(a.name)}</td><td>${a.capacity}</td><td>${esc(a.behavior)}</td><td>${a.rapid ? "Yes" : "—"}</td></tr>`).join("")}</tbody></table></details>` : ""}`;
+}
+$("weaponcategories").addEventListener("click", e => {
+  const b = e.target.closest("[data-wtype]"); if (!b) return;
+  WV().type = +b.dataset.wtype; WV().selected = null; WV().closed = new Set(); renderWeaponReference();
+});
+for (const id of ["weaponsearch", "weaponelement", "weaponrarity", "weaponfinal", "weaponhandicraft", "weaponslotbonus"])
+  $(id).addEventListener(id === "weaponsearch" ? "input" : "change", renderWeaponReference);
+for (const [id, open] of [["weaponexpand", true], ["weaponcollapse", false]]) $(id).addEventListener("click", () => {
+  document.querySelectorAll("[data-wbranch]").forEach(d => { d.open = open; });
+});
+$("table").addEventListener("click", e => {
+  if (S.mode !== "weapons") return;
+  const sort = e.target.closest("[data-wsort]"), selected = e.target.closest("[data-weapon]");
+  if (!sort && !selected) return;
+  WV().closed = new Set([...document.querySelectorAll("[data-wbranch]")].filter(d => !d.open).map(d => d.dataset.wbranch));
+  if (sort) { const key = sort.dataset.wsort; WV().dir = WV().sort === key ? -WV().dir : 1; WV().sort = key; }
+  if (selected) { e.preventDefault(); WV().selected = selected.dataset.weapon; }
+  const scroll = document.querySelector(".weaponlistwrap"); const top = scroll?.scrollTop || 0, left = scroll?.scrollLeft || 0;
+  renderWeaponReference();
+  document.querySelector(".weaponlistwrap").scrollTo(left, top);
+});
 
 function renderSkillCatalog() {
   const query = $("catalogfilter").value.trim().toLocaleLowerCase();

@@ -12,7 +12,7 @@ from mhrise_exporter.pak import open_game_paks
 
 from .engine import Buildup, Tables
 
-CACHE_VERSION = 10
+CACHE_VERSION = 12
 DIR = "data/Define/Player/Equip/CustomBuildup"
 
 # Extra RSZ layouts (v16), from the kvasszn/ree-save-editor type dump.
@@ -141,6 +141,8 @@ def _weapon_fields(cls: str) -> list:
 for _cls in WEAPON_TYPES:
     rsz.SPECS[f"snow.equip.{_cls}BaseUserData"] = (None, [("_Param", "obj", True)])
     rsz.SPECS[f"snow.equip.{_cls}BaseUserData.Param"] = (None, _weapon_fields(_cls))
+from . import weapon_details
+weapon_details.install_specs(rsz)
 rsz._BY_HASH.update({rsz.hash_utf8(name): name for name in rsz.SPECS})
 
 
@@ -295,9 +297,11 @@ def build(game_dir: Path, log=print) -> dict:
         for wtype, cls in enumerate(WEAPON_TYPES):
             wdir = f"data/Define/Player/Weapon/{cls}"
             wmsgs = {}
+            explains = {}
             for suffix in ("", "_MR"):
                 try:
                     wmsgs.update(_msg_map(pak, f"{wdir}/{cls}_Name{suffix}"))
+                    explains.update(_msg_map(pak, f"{wdir}/{cls}_Explain{suffix}"))
                 except Exception:
                     pass
             for p in rsz.parse_user(pak.read_any(f"{wdir}/{cls}BaseData.user", ["2"]))[0]["_Param"]:
@@ -305,13 +309,36 @@ def build(game_dir: Path, log=print) -> dict:
                 if "en" not in names:
                     continue
                 weapons[str(p["_Id"])] = {"names": names, "type": wtype, "rare": p["_RareType"] + 1,
-                                         "slots": (_expand(p["_SlotNumList"]) + [0, 0, 0])[:3]}
+                                         "slots": (_expand(p["_SlotNumList"]) + [0, 0, 0])[:3],
+                                         **weapon_details.base_details(p)}
+                weapons[str(p["_Id"])]["description"] = _names(explains.get(f"W_{cls}_{p['_Id'] & 0xFFFF:03}_Explain"))
+            tree = rsz.parse_user(pak.read_any(f"{wdir}/{cls}UpdateTreeData.user", ["2"]))[0]["_Param"]
+            weapon_details.attach_tree(weapons, tree)
+            for kind, key in (("Product", "forge"), ("Process", "upgrade")):
+                for recipe in rsz.parse_user(pak.read_any(f"{wdir}/{cls}{kind}Data.user", ["2"]))[0]["_Param"]:
+                    if str(recipe["id"]) in weapons:
+                        weapons[str(recipe["id"])][key] = {k: recipe[k] for k in ("items", "counts", "category", "categoryPoints", "progress")}
+
+        slot_bonuses = weapon_details.slot_sharpness_bonuses(params("CustomBuildupWepTableUserData"),
+                                                           params("CustomBuildupSlotBonusUserData"))
+        for weapon in weapons.values():
+            weapon["slotSharpnessBonus"] = slot_bonuses.get(weapon["augmentTable"], 0) if weapon["rare"] == 10 and weapon["sharpness"] else 0
+        weapon_messages = {}
+        for entry in rsz.parse_user(pak.read_any("data/Define/Player/Equip/WeaponChaosCriticalUserData.user", ["2"]))[0]["_Param"]:
+            if str(entry["id"]) in weapons:
+                weapons[str(entry["id"])]["chaosAffinity"] = entry["affinity"]
+        for suffix in ("", "_MR"):
+            weapon_messages.update(_msg_map(pak, f"data/System/ContentsIdSystem/Item/Normal/ItemName{suffix}"))
+            weapon_messages.update(_msg_map(pak, f"data/Define/Player/Weapon/Horn/Horn_UniqueParam{suffix}"))
+            weapon_messages.update(_msg_map(pak, f"data/System/ContentsIdSystem/Common/ItemCategoryType_Name{suffix}"))
+            weapon_messages.update(_msg_map(pak, f"data/Define/Player/Skill/PlHyakuryuSkill/HyakuryuSkill_Name{suffix}"))
+        weapon_messages = {key: _names(value) for key, value in weapon_messages.items()}
 
         log("Reading crafting costs...")
         costs = _costs(pak)
     finally:
         pak.close()
-    return {"version": CACHE_VERSION, "costs": costs, "decorations": decorations, "weapons": weapons, "base": base, "armor_lots": armor_lots, "category_lots": category_lots,
+    return {"version": CACHE_VERSION, "costs": costs, "decorations": decorations, "weapons": weapons, "weapon_messages": weapon_messages, "base": base, "armor_lots": armor_lots, "category_lots": category_lots,
             "skill_costs": skill_costs, "skills": skills, "skill_details": skill_details, "max_levels": max_levels, "skill_colors": skill_colors, "armors": armors,
             "all_armors": all_armors,
             "deco_levels": deco_levels, "talisman_skills": talisman_skills, "melding": melding}

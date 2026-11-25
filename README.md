@@ -256,6 +256,24 @@ confirmed in game yet.
 
 ## Skills reference
 
+The **Weapons** tab is a save-independent reference for all 14 weapon types. Browse the upgrade
+tree, search names, filter element/status and rarity, or show only fully upgraded tree entries.
+The sortable table includes attack, affinity (including chaotic weapons), defense, elements,
+decoration and Rampage slots, sharpness, and forge/upgrade prices. Select a weapon for recipes,
+materials, descriptions, Rampage skills, melodies, phials, shelling, kinsect level, bow charges and
+coatings, or bowgun ammunition/handling as applicable. Values are the base weapon's stats.
+Sharpness displays the selected **Handicraft** level, from Base to Lv5, at the game's shared
+400-unit scale. Changing the selector updates the table and detail bars directly. Bowguns and bows
+have no sharpness bar. **Max slot sharpness bonus** is enabled by default: it reads the weapon's
+Anomaly Slot expansion bonuses from the game and applies the automatic sharpness increase to
+eligible rarity-10 melee weapons. This shifts units from the lowest colors to the highest possible
+color, keeping the gauge length and Handicraft limits intact. Disable it to compare the base bar.
+Paid Sharpness Boost augments are not assumed; attack/element columns remain base values.
+See the [Qurious Crafting measurements](https://kuroyonhon.com/mhrisesb/memo/52.php).
+Weapon data/icons are read from your installation, including Sunbreak;
+the cache rebuilds once to add the reference data. Layouts follow
+[mhrice](https://github.com/wwylele/mhrice/tree/main/src/rsz), like the existing game-data reader.
+
 In the Set builder, **Weapon** selects one of the 14 weapon types and **Weapon name** lists
 all matching weapons from your installed game, including Sunbreak. Selecting a weapon uses
 its decoration slots. Choose **None** to use the three manual slot selectors instead.
