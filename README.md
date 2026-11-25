@@ -141,7 +141,12 @@ Talismans), **My equipment** (Inventory, My Loadouts, Export) and **Set builder*
     from the save in a moment (each sequence is looked for along the plan's own route: steps passed are
     *done ✓*, the next one is marked with how many augments are left, a step passed whose result is not
     in your box is flagged, and a sequence that is nowhere on its route, because something else was
-    augmented on it, says *off the plan: press Make plan again*). The *Now* column of the saved sets
+    augmented on it, says *off the plan: press Make plan again*). When the augments before a wanted one go on another
+    piece, that piece gets its own blue card on the route (*only for rolls · no set*): how many
+    augments, what the last one gives (to check you are on the plan before the augment that counts)
+    and, per rarity, two other pieces that can take them instead (*+N more* lists the rest with their
+    part icons). Every piece draws from the same sequence, but how many draws an augment takes
+    depends on the piece's own skills (not its rarity or price), so only some pieces end at the same place. The *Now* column of the saved sets
     is not worked out again on its own while a plan is shown (it plans every saved set together):
     **Check sets** does it. Make plan again only when the plan says so or the ticked sets change: a
     result already in your box (the piece with the wanted augment, or the talisman) is then listed as

@@ -271,6 +271,21 @@ td.skills .sk { white-space: nowrap; margin: 1px 12px 1px 0; }
 .rnode .rat small { font-size: 11.5px; font-weight: 400; color: var(--muted); }
 .rnode .rfor { font-size: 11.5px; color: var(--muted); }
 .rnode.done { opacity: .55; }
+.rnode.burn { border: 1px dashed #5d84ad; background: #141c26; }
+.rnode.burn .rnum { background: #5d84ad; color: #0f1620; }
+.rnode.burn .rat { color: #8fb3d9; }
+.rnode .btag { align-self: flex-start; font-size: 11px; color: #8fb3d9; border: 1px solid #5d84ad; border-radius: 10px; padding: 0 7px; }
+.rnode .balso { font-size: 11.5px; color: var(--muted); line-height: 1.35; }
+.rnode .brar { color: #8fb3d9; font-weight: 600; margin-right: 5px; }
+.rnode .bpc { display: inline-flex; align-items: center; gap: 3px; margin-right: 8px; white-space: nowrap; }
+.rnode .bpart { width: 14px; height: 14px; flex: none; }
+.rnode .bmore { color: #8fb3d9; cursor: help; border-bottom: 1px dotted #5d84ad; white-space: nowrap; }
+.rnode .btip { display: none; }
+#btipfloat { position: fixed; z-index: 1000; pointer-events: none; background: #141c26; border: 1px solid #5d84ad; border-radius: 6px;
+  padding: 6px 9px; font-size: 12px; color: var(--text); box-shadow: 0 4px 14px #0009; column-gap: 18px; }
+#btipfloat div { break-inside: avoid; white-space: nowrap; }
+#btipfloat .bpc { display: inline-flex; align-items: center; gap: 4px; line-height: 1.6; }
+#btipfloat .bpart { width: 14px; height: 14px; flex: none; }
 .rnode.done .rnum { background: var(--up); }
 .rnode.next { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset; }
 .rnode .rlbl { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--gold2); margin-top: 2px; }
@@ -2449,10 +2464,11 @@ function renderPlan() {
         <span class="rar">${q.total.toLocaleString()} augments</span><span>${zenny(q.zenny)}</span>
         ${q.reordered ? `<span class="src roll">order changed to get every result</span>` : ""}${seqProgress(q, "augments")}</div>
         <div class="route">${routeStart()}`
-        + q.steps.map((s, i) => routeArrow(s.augments, i, "augment") + routeNode(i, s.part, s.name, s.sets, s.at, stepState(q, s, i, "augments"),
+        + q.steps.map((s, i) => (isBurn(s) ? routeArrow(s.augments - 1, i, "augment") + burnNode(q, s, i) + routeArrow(1, i, "augment", "the throwaway")
+                                            : routeArrow(s.augments, i, "augment"))
+          + routeNode(i, s.part, s.name, s.sets, s.at, stepState(q, s, i, "augments"),
             s.burnName && s.augments > 1
-              ? [`Augment <b>${esc(s.burnName)}</b> <b class="x">${s.augments - 1}×</b> <span class="muted">(throw the results away)</span>`,
-                 `Augment <b>${esc(s.name)}</b> <b class="x">1×</b>: keep it`]
+              ? [`Augment <b>${esc(s.name)}</b> <b class="x">1×</b>: keep it`]
               : [`Augment <b>${esc(s.name)}</b> <b class="x">${s.augments}×</b>${s.augments > 1 ? ": keep only the last" : ": keep it"}`],
             resultCell(s.result), `${zenny(s.zenny)} · rarity ${s.rarity}`)).join("")
         + `</div></div>`;
@@ -2522,8 +2538,8 @@ const partIcon = part =>part != null ? mask(PARTS[part], "var(--gold)", PARTS[pa
 function routeStart() {
   return `<div class="rnode start"><span class="rat">Start</span><small class="muted">the save when planned</small></div>`;
 }
-function routeArrow(k, i, what) {
-  const from = !i ? "the save" : what === "meld" ? "the last talisman" : "the last piece";
+function routeArrow(k, i, what, fromText) {
+  const from = fromText || (!i ? "the save" : what === "meld" ? "the last talisman" : "the last piece");
   return `<div class="rarrow" title="${k.toLocaleString()} ${what}${k > 1 ? "s" : ""} from ${from}"><b>+${k.toLocaleString()}</b><span class="ln">⟶</span><small>from ${from}</small></div>`;
 }
 // progress of one sequence of a plan made earlier (Planner.progress): done, off the plan, or how far
@@ -2539,9 +2555,29 @@ function stepState(q, s, i, what) {
   if (!g || !g.onRoute) return null;
   if (s.done) return { cls: "done", text: s.inBox ? `<span style="color:var(--up)">done ✓</span>` : `<span style="color:var(--down)" title="The sequence went past it, but this result is not in your box (augmented that copy again, or kept another one?)">rolled, but not in your box ⚠</span>` };
   const next = q.steps.findIndex(x => !x.done) === i;
-  if (!next) return null;
+  if (!next || (isBurn(s) && s.doneHere < s.augments - 1)) return null;
   const left = s.at - g.done;
   return { cls: "next", text: `<b style="color:var(--gold)">next</b>${s.doneHere ? ` · ${s.doneHere.toLocaleString()} of ${s[what].toLocaleString()} done` : ""} · ${left.toLocaleString()} to go` };
+}
+const isBurn = s => s.burnName && s.augments > 1;
+// the augments before a wanted one, spent on a piece kept for no set: its own card on the route
+function burnNode(q, s, i) {
+  const k = s.augments - 1, g = q.progress;
+  let st = "";
+  if (g && g.onRoute) {
+    if (s.done || s.doneHere >= k) st = "done";
+    else if (q.steps.findIndex(x => !x.done) === i) st = "next";
+  }
+  const icon = part => part != null ? mask(PARTS[part], "#8fb3d9", PARTS[part], "bpart") : "";
+  const pc = x => `<span class="bpc">${icon(x.part)}${esc(x.name)}</span>`;
+  const also = (s.burnAlso || []).map(r => `<div class="balso"><span class="brar">rarity ${r.rarity}</span>${r.pieces.slice(0, 2).map(pc).join("")}${r.pieces.length > 2
+    ? `<span class="bmore">+${r.pieces.length - 2} more<span class="btip">${r.pieces.slice(2).map(x => `<div>${pc(x)}</div>`).join("")}</span></span>` : ""}</div>`).join("");
+  return `<div class="rnode burn ${st}"><div class="rhead"><span class="rnum">${st === "done" ? "✓" : "↻"}</span>${s.burnPart != null ? mask(PARTS[s.burnPart], "#8fb3d9", PARTS[s.burnPart]) : ""}<span class="rname">${esc(s.burnName)}</span></div>
+    <div class="btag">only for rolls · no set</div>
+    ${st === "next" ? `<div class="small"><b style="color:var(--gold)">next</b>${s.doneHere ? ` · ${s.doneHere} of ${k} done` : ""}</div>` : ""}
+    <div class="rat">${k}× <small>throw the results away</small></div>
+    <div class="rlbl">Roll until #${k} gives</div><div class="rres">${s.burnResult ? resultCell(s.burnResult) : `<span class="muted">—</span>`}</div>
+    ${also ? `<div class="rlbl" title="Not every piece works: the piece's own skills change the draws">Or on</div>${also}` : ""}</div>`;
 }
 function routeNode(i, part, name, sets, at, state, todo, result, foot) {
   return `<div class="rnode ${state ? state.cls : ""}"><div class="rhead"><span class="rnum">${state && state.cls === "done" ? "✓" : i + 1}</span>${part != null ? mask(PARTS[part], "var(--gold)", PARTS[part]) : ""}<span class="rname">${esc(name)}</span></div>
@@ -2552,6 +2588,17 @@ function routeNode(i, part, name, sets, at, state, todo, result, foot) {
     <div class="rfor">for ${sets.map(esc).join(", ")}${foot ? ` · ${foot}` : ""}</div></div>`;
 }
 
+document.addEventListener("mouseover", e => {
+  const m = e.target.closest && e.target.closest(".bmore");
+  let f = document.getElementById("btipfloat");
+  if (!m) { if (f) f.remove(); return; }
+  if (!f) { f = document.createElement("div"); f.id = "btipfloat"; document.body.appendChild(f); }
+  f.innerHTML = m.querySelector(".btip").innerHTML;
+  f.style.columnCount = Math.ceil(f.children.length / 14);
+  const r = m.getBoundingClientRect(), h = f.offsetHeight, w = f.offsetWidth;
+  f.style.left = Math.max(4, Math.min(r.left, innerWidth - w - 4)) + "px";
+  f.style.top = (r.bottom + 4 + h < innerHeight ? r.bottom + 4 : Math.max(4, r.top - h - 4)) + "px";
+});
 window.addEventListener("pywebviewready", boot);
 </script>
 </body>

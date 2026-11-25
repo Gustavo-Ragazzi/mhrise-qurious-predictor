@@ -387,6 +387,7 @@ class Planner:
                 else:
                     segs.append((*self._piece(st["id"]), k))
             states = [tuple(x) for x in _native().augment_path(nt, list(q["start"]), q["type"], segs)]
+            self._burn_checks(q, states, nt, box_armors)
             now = tuple(generators[q["seed"]].state())
             n = states.index(now) if now in states else None
             self._mark(q, n, lambda st: self.is_rolled(st, rolled))
@@ -408,6 +409,29 @@ class Planner:
             off += n is None
         plan["progress"] = {"augmentsDone": done_all, "augmentsLeft": left_all, "offRoute": off}
         return plan
+
+    def _burn_checks(self, q: dict, states: list, nt, box_armors=()):
+        """For a step whose augments before the wanted one go on another piece: what that piece's last
+        of them gives (to check you are where the plan is before the augment that counts), and the other
+        pieces that can take them instead. How many draws an augment takes depends on the piece (its own
+        skills), not on its rarity, so only the pieces whose augments end at the same place work."""
+        owned = {str(it.armor_id) for it in box_armors}
+        for st in q["steps"]:
+            k = st["augments"]
+            if not st.get("burnOn") or k < 2:
+                continue
+            s0, end = list(states[st["at"] - k]), states[st["at"]]
+            _, st["burnLast"] = _native().augment_advance(nt, s0, *self._piece(st["burnOn"]), q["type"], k - 1)
+            also, seen = [], {st["burnOn"], st["id"]}
+            for aid, a in self.data["armors"].items():
+                if a["cost"] != q["cost"] or aid in seen:
+                    continue
+                mid, _ = _native().augment_advance(nt, s0, *self._piece(aid), q["type"], k - 1)
+                after, _ = _native().augment_advance(nt, list(mid), *self._piece(st["id"]), q["type"], 1)
+                if tuple(after) == end:
+                    also.append(aid)
+            # the ones in your box first, then the cheapest
+            st["burnAlso"] = sorted(also, key=lambda x: (x not in owned, self._rarity(x), x))
 
     @staticmethod
     def _mark(q: dict, n, in_box, size: str = "augments"):

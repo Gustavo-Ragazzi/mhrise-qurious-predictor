@@ -664,6 +664,25 @@ class SetsMixin:
             planner.Planner(self.data, self.melding).progress(plan, self.generators, self.box[0], self.box[1])
         except Exception as e:
             return {"plan": None, "error": f"Cannot check the plan: {e}"}
+        for q in plan["armor"]:
+            for st in q["steps"]:
+                if st.get("burnLast"):
+                    st["burnResult"] = self._outcome_view(st.pop("burnLast"))
+                if "burnAlso" in st:
+                    # the other pieces that can take the throwaway augments instead, per rarity
+                    by, every = {}, []
+                    for aid in st.pop("burnAlso"):
+                        a = self.data["all_armors"][aid]
+                        n, r = self._armor_name(aid), a["rare"] + 1
+                        if n in (st.get("burnName"), st["name"]) or any(x["name"] == n for x in every):
+                            continue
+                        every.append({"name": n, "part": a["part"], "rarity": r})
+                        by.setdefault(r, []).append({"name": n, "part": a["part"]})
+                    # per rarity: the ones in your box first (the first two are shown, the rest on hover)
+                    st["burnAlso"] = [{"rarity": r, "pieces": by[r]} for r in sorted(by)]
+                if st.get("burnOn"):
+                    st["burnPart"] = self.data["all_armors"][st["burnOn"]]["part"]
+                    st["burnRarity"] = self.data["all_armors"][st["burnOn"]]["rare"] + 1
         saved = self.saved_sets()
         sets = [x for x in saved if x["id"] in set(last["ids"])]
         sel = sorted(i for i in self.settings.get("planSel") or [] if any(x["id"] == i for x in saved))
