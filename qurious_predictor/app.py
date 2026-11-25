@@ -67,6 +67,7 @@ class Api(SetsMixin):
             if not game_dir or not (Path(game_dir) / "re_chunk_000.pak").exists():
                 return {"error": "Monster Hunter Rise was not found. Choose the game folder."}
             self.data = gamedata.load(Path(game_dir), self.cache_dir, log=lambda m: None)
+            self._game_data = self.data
             self.tables = gamedata.tables(self.data)
             self.melding = melding.Tables(self.data["melding"])
             icon_map = icons.load(Path(game_dir), self.cache_dir, self.data.get("fingerprint", ""))
@@ -139,6 +140,8 @@ class Api(SetsMixin):
             acc, h = match[0]
             try:
                 save = core.load_slot(acc.save_dir, acc.steamid64, h.slot)
+                self.hunter_sex = savedata.hunter_sex(save)
+                self.data = savedata.armor_for_hunter(self._game_data, self.hunter_sex)
                 self.generators = savedata.manual_generators(save)
                 owned = savedata.owned_armor(save)
                 self.box = savedata.box_items(save, self.data)

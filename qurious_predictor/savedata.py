@@ -27,6 +27,23 @@ class SaveDataError(Exception):
     pass
 
 
+def hunter_sex(save: SaveFile) -> int | None:
+    """Read the hunter's own guild card, never a received hunter's card."""
+    for manager in save.walk_classes("snow.GuildCardManager.GuildCardSaveData"):
+        card = manager.get("MyData")
+        value = card.get("Sex") if isinstance(card, Class) else None
+        if isinstance(value, Scalar) and value.u in (0, 1):
+            return value.u
+    return None
+
+
+def armor_for_hunter(data: dict, sex: int | None) -> dict:
+    """Keep the full catalog intact so switching hunters restores their armor."""
+    return {**data, **{key: {aid: a for aid, a in data[key].items()
+                            if sex is None or a.get("sex", 2) in (sex, 2)}
+                      for key in ("armors", "all_armors")}}
+
+
 def manual_generators(save: SaveFile) -> list[XorShift128]:
     """FacilityDataManager._RandomManual, as stored in the save."""
     for _, c in save.entries:

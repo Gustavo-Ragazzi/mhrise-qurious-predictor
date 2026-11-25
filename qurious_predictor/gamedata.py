@@ -12,7 +12,7 @@ from mhrise_exporter.pak import open_game_paks
 
 from .engine import Buildup, Tables
 
-CACHE_VERSION = 12
+CACHE_VERSION = 13
 DIR = "data/Define/Player/Equip/CustomBuildup"
 
 # Extra RSZ layouts (v16), from the kvasszn/ree-save-editor type dump.
@@ -258,6 +258,7 @@ def build(game_dir: Path, log=print) -> dict:
                 continue
             # every armor piece, for the inventory tab
             all_armors[str(aid)] = {
+                "sex": p["_SexualEquipable"],  # 0 male, 1 female, 2 both
                 "names": _names(armor_msgs.get(f"A_{PARTS[kind - 1]}_{aid & 0xFFFF:03}_Name")),
                 "skills": [[s, lv] for s, lv in zip(p["_SkillList"], p["_SkillLvList"]) if s],
                 "slots": p["_DecorationsNumList"],
@@ -270,6 +271,7 @@ def build(game_dir: Path, log=print) -> dict:
             if not p["_CustomTableNo"]:
                 continue
             armors[str(aid)] = {
+                "sex": p["_SexualEquipable"],
                 "names": _names(armor_msgs.get(f"A_{PARTS[kind - 1]}_{aid & 0xFFFF:03}_Name")),
                 "table": p["_CustomTableNo"],
                 "cost": p["_CustomCost"],
