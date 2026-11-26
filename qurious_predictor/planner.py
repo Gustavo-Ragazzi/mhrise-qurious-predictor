@@ -394,7 +394,7 @@ class Planner:
             now = tuple(generators[q["seed"]].state())
             n = states.index(now) if now in states else None
             self._mark(q, n, lambda st: self.is_rolled(st, rolled))
-            off += n is None
+            off += n is None and not q["progress"]["finished"]
             done_all += n or 0
             left_all += q["total"] - (n or 0)
         mt = melding.native_tables(self.data["melding"])
@@ -409,7 +409,7 @@ class Planner:
             now = tuple(generators[g["generator"]].state())
             n = states.index(now) if now in states else None
             self._mark(g, n, lambda st: self.is_rolled(st, rolled, True), "talismans")
-            off += n is None
+            off += n is None and not g["progress"]["finished"]
         plan["progress"] = {"augmentsDone": done_all, "augmentsLeft": left_all, "offRoute": off}
         return plan
 
@@ -457,9 +457,11 @@ class Planner:
                          "finished": n is not None and n >= q["total"]}
         for st in q["steps"]:
             first = st["at"] - st[size]
-            st["done"] = n is not None and n >= st["at"]
             st["inBox"] = bool(in_box(st))
+            st["done"] = st["inBox"] or (n is not None and n >= st["at"])
             st["doneHere"] = max(0, n - first) if n is not None and first < n < st["at"] else 0
+        if q["steps"] and all(st["inBox"] for st in q["steps"]):
+            q["progress"]["finished"] = True
 
     @staticmethod
     def rolled(box_armors=(), box_talismans=()) -> tuple[set, set]:

@@ -288,3 +288,39 @@ def test_talisman_progress_walks_long_routes_once(monkeypatch, done):
     assert steps[1]["done"] == (done == 800)
     assert steps[1]["doneHere"] == (150 if done == 650 else 0)
     assert result["progress"]["offRoute"] == int(done is None)
+
+
+@pytest.mark.parametrize("now", [0, -1])
+def test_reload_checks_collected_talisman_without_advancing_route(monkeypatch, now):
+    from types import SimpleNamespace
+    from qurious_predictor.savedata import TalismanItem
+
+    monkeypatch.setattr(planner, "_native", lambda: SimpleNamespace(
+        meld_path=lambda tables, state, segments: ([], [state[0] + 1])))
+    monkeypatch.setattr(search, "native_tables", lambda data: None)
+    monkeypatch.setattr(melding, "native_tables", lambda data: None)
+    pl = planner.Planner({"costs": {}, "melding": {}}, None)
+    step = {"method": 11, "target": 16, "talismans": 9, "at": 9,
+            "skills": [[16, 5], [1, 2]], "slots": [4, 1, 1]}
+    seq = {"start": [0], "generator": 0, "steps": [step], "total": 9}
+    plan = {"armor": [], "talismans": [seq]}
+    generators = [SimpleNamespace(state=lambda: [now])]
+    wrong = TalismanItem([(16, 5), (1, 2)], [3, 1, 1])
+    pl.progress(plan, generators, box_talismans=[wrong])
+    assert not step["inBox"] and not step["done"]
+    # Reload after collecting the queued result: sequence state stays unchanged.
+    owned = TalismanItem([(1, 2), (16, 5)], [1, 4, 1])
+    pl.progress(plan, generators, box_talismans=[owned])
+    assert step["inBox"] and step["done"]
+    assert seq["progress"]["finished"]
+    assert seq["progress"]["done"] == (0 if now == 0 else None)
+    assert plan["progress"]["offRoute"] == 0
+
+
+def test_owned_step_does_not_advance_later_targets():
+    seq = {"total": 20, "steps": [
+        {"at": 9, "talismans": 9}, {"at": 20, "talismans": 11}]}
+    planner.Planner._mark(seq, 0, lambda step: step["at"] == 9, "talismans")
+    assert seq["steps"][0]["done"]
+    assert not seq["steps"][1]["done"]
+    assert seq["progress"] == {"done": 0, "onRoute": True, "finished": False}

@@ -2661,9 +2661,9 @@ function renderPlan() {
           ${g.gradeName ? `<span class="tgrade">grade ${g.gradeName}</span>` : ""}${seqProgress(g, "talismans") ? `<div class="small">${seqProgress(g, "talismans")}</div>` : ""}
           <div class="muted small">${g.total.toLocaleString()} meld${g.total > 1 ? "s" : ""}${g.used ? `<br>uses ${g.used.toLocaleString()} talismans` : ""}${g.points ? `<br>${g.points.toLocaleString()} melding points` : ""}</div></td>`}
         <td class="n"><span class="rnum">${s.done ? "✓" : i + 1}</span>${(st => st ? `<div class="small">${st.text}</div>` : "")(stepState(g, s, i, "talismans"))}</td>
-        <td><b class="tbig">${s.talismans.toLocaleString()}×</b>
+        <td>${s.inBox ? `<b style="color:var(--up)">Already owned ✓</b>` : `<b class="tbig">${s.talismans.toLocaleString()}×</b>
           <div class="muted small">${i ? `${s.talismans.toLocaleString()} after step ${i} · ` : ""}#${s.at.toLocaleString()} from the plan's start${per ? ` · uses ${(s.talismans * per).toLocaleString()} talismans` : ""}</div>
-          <div class="small">${s.talismans > 1 ? `keep only the last one (meld ${s.talismans.toLocaleString()})` : "keep it"}</div></td>
+          <div class="small">${s.talismans > 1 ? `keep only the last one (meld ${s.talismans.toLocaleString()})` : "keep it"}</div>`}</td>
         <td>${s.targetName ? `<span class="sk">${skillIcon(s.targetColor, s.targetName)}<b class="nm">${esc(s.targetName)}</b></span>` : `<span class="muted">—</span>`}</td>
         <td><div class="tcard"><div class="tchead">${mask("talisman", "var(--gold)", "Talisman")}<span class="muted small">Talisman</span></div>${s.skillRows.map(k => `<div class="sk">${skillIcon(k.color, k.name)}<span class="nm">${esc(k.name)}</span> <b style="color:var(--gold)">Lv ${k.level}</b></div>`).join("")}
           <div class="slots">${s.slots.map(l => slot(l, false)).join("")}</div></div></td>
@@ -2721,14 +2721,15 @@ function routeArrow(k, i, what, fromText) {
 function seqProgress(q, what) {
   const g = q.progress;
   if (!g) return "";
-  if (!g.onRoute) return `<b style="color:var(--down)" title="The save is not anywhere on this route: something else was ${what === "augments" ? "augmented" : "melded"} on this sequence. The rest of it no longer holds">off the plan: press Make plan again</b>`;
   if (g.finished) return `<span style="color:var(--up)">done ✓</span>`;
+  if (!g.onRoute) return `<b style="color:var(--down)" title="The save is not anywhere on this route: something else was ${what === "augments" ? "augmented" : "melded"} on this sequence. The rest of it no longer holds">off the plan: press Make plan again</b>`;
   return g.done ? `<span class="pill">${g.done.toLocaleString()} of ${q.total.toLocaleString()} done</span>` : "";
 }
 function stepState(q, s, i, what) {
   const g = q.progress;
-  if (!g || !g.onRoute) return null;
+  if (!g) return null;
   if (s.done) return { cls: "done", text: s.inBox ? `<span style="color:var(--up)">done ✓</span>` : `<span style="color:var(--down)" title="The sequence went past it, but this result is not in your box (augmented that copy again, or kept another one?)">rolled, but not in your box ⚠</span>` };
+  if (!g.onRoute) return null;
   const next = q.steps.findIndex(x => !x.done) === i;
   if (!next || (isBurn(s) && s.doneHere < s.augments - 1)) return null;
   const left = s.at - g.done;
