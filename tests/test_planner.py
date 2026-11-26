@@ -255,3 +255,36 @@ def test_progress_follows_the_throwaway_piece_picked():
         assert next(o for o in st["burnOptions"] if o["id"] == other["id"])["last"] == last
         return
     pytest.skip("no plan with a throwaway step on these generators")
+
+
+@pytest.mark.parametrize("done", [0, 500, 650, 800, None])
+def test_talisman_progress_walks_long_routes_once(monkeypatch, done):
+    from types import SimpleNamespace
+
+    work = 0
+
+    def meld_path(tables, state, segments):
+        nonlocal work
+        value = state[0]
+        for method, target, count in segments:
+            work += count
+            value += (method + target) * count
+        return [], [value]
+
+    monkeypatch.setattr(planner, "_native", lambda: SimpleNamespace(meld_path=meld_path))
+    monkeypatch.setattr(search, "native_tables", lambda data: None)
+    monkeypatch.setattr(melding, "native_tables", lambda data: None)
+    steps = [{"method": 11, "target": 2, "talismans": 500, "at": 500, "skills": [], "slots": []},
+             {"method": 11, "target": 5, "talismans": 300, "at": 800, "skills": [], "slots": []}]
+    sequence = {"start": [0], "generator": 0, "steps": steps, "total": 800}
+    now = -1 if done is None else min(done, 500) * 13 + max(0, done - 500) * 16
+    generators = [SimpleNamespace(state=lambda: [now])]
+    pl = planner.Planner({"costs": {}, "melding": {}}, None)
+    result = pl.progress({"armor": [], "talismans": [sequence]}, generators)
+
+    assert work == 800  # total simulated melds stays linear even for long routes
+    assert sequence["progress"] == {"done": done, "onRoute": done is not None, "finished": done == 800}
+    assert steps[0]["done"] == (done is not None and done >= 500)
+    assert steps[1]["done"] == (done == 800)
+    assert steps[1]["doneHere"] == (150 if done == 650 else 0)
+    assert result["progress"]["offRoute"] == int(done is None)

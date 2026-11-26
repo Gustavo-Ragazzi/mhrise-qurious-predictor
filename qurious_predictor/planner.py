@@ -402,10 +402,10 @@ class Planner:
             # the state after every meld of the route (each step melded in one go, as the plan says)
             states, state = [tuple(g["start"])], list(g["start"])
             for st in g["steps"]:
-                for j in range(1, st["talismans"] + 1):
-                    _, after = _native().meld_path(mt, list(state), [(st["method"], st["target"], j)])
-                    states.append(tuple(after))
-                state = list(states[-1])
+                # Walk each meld once; replaying every prefix makes long plans quadratic.
+                for _ in range(st["talismans"]):
+                    _, state = _native().meld_path(mt, list(state), [(st["method"], st["target"], 1)])
+                    states.append(tuple(state))
             now = tuple(generators[g["generator"]].state())
             n = states.index(now) if now in states else None
             self._mark(g, n, lambda st: self.is_rolled(st, rolled, True), "talismans")
