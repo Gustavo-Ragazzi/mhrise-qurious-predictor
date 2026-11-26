@@ -415,7 +415,7 @@ pub fn create_result(
             remaining -= b.cost;
             drop_zero_group(res, &mut remaining, entry.group());
         }
-        if remaining == 0 {
+        if remaining <= 0 {
             break;
         }
     }

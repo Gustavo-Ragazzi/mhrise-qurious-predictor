@@ -42,7 +42,9 @@ Def/Res/Slot/Skill), `CustomBuildupArmorLotUserData` (buildup weights per catego
    in one augment.
 7. Accepted entries reduce `remaining`. If a group sums to 0 (all defense, one element's
    resistance, one skill), the whole group is removed and its cost refunded.
-8. The roll ends when `remaining == 0`.
+8. The roll ends when `remaining <= 0`. A dropped group refunds its costs, which can leave `remaining`
+   below 0 (a skill's forced `-1`, cost -10, cancelled by a later `+1` of it, cost 6): the roll ends
+   there too (seen in game on Flaming Espinas Grip, Slots+; `tests/test_real_rolls.py`).
 
 | type | forced lots |
 | --- | --- |

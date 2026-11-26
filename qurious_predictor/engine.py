@@ -232,7 +232,7 @@ def create_result(rng: XorShift128, tables: Tables, table: int, total_cost: int,
             res.append(entry)
             remaining -= b.cost
             drop_zero_group(entry.group())
-        if remaining == 0:
+        if remaining <= 0:
             break
     return res
 
