@@ -2635,7 +2635,7 @@ function renderPlan() {
     h += `<div class="pstage"><span class="pnum">${++n}</span><div><b>Augment armor</b><span class="muted"> · always on the new copies from step 1. One route per sequence: follow it left to right; sequences do not move each other, so any can go first.
       After each piece: save in game and press Reload save: the plan ticks off what you rolled.</span></div></div>`;
     for (const q of p.armor) {
-      h += `<div class="setcard"><div class="sethead"><span class="big">${esc(TYPE_SHORT(q.typeName))} · cost ${q.cost}</span>
+      h += `<div class="setcard"><div class="sethead"><span class="big">${esc(TYPE_SHORT(q.typeName))}${q.mixed ? " · follow the options on each step" : ` · cost ${q.cost}`}</span>
         <span class="rar">${q.total.toLocaleString()} augments</span><span>${zenny(q.zenny)}</span>
         ${q.reordered ? `<span class="src roll">order changed to get every result</span>` : ""}${seqProgress(q, "augments")}</div>
         <div class="route">${routeStart()}`
@@ -2645,7 +2645,7 @@ function renderPlan() {
             s.burnName && s.augments > 1
               ? [`Augment <b>${esc(s.name)}</b> <b class="x">1×</b>: keep it`]
               : [`Augment <b>${esc(s.name)}</b> <b class="x">${s.augments}×</b>${s.augments > 1 ? ": keep only the last" : ": keep it"}`],
-            resultCell(s.result), `${zenny(s.zenny)} · rarity ${s.rarity}`)).join("")
+            resultCell(s.result), `${esc(TYPE_SHORT(S.types.find(t => t.id === s.type).name))} · cost ${s.cost} · ${zenny(s.zenny)} · rarity ${s.rarity}`)).join("")
         + `</div></div>`;
     }
   }
@@ -2752,7 +2752,7 @@ function burnNode(q, s, i) {
     .map(([r, xs]) => `<div class="balso"><span class="brar">rarity ${r.rarity}</span>${xs.slice(0, 2).map(pc).join("")}${xs.length > 2
       ? `<button class="bmore" data-bkey="${key}">+${xs.length - 2} more</button>` : ""}</div>`).join("");
   return `<div class="rnode burn ${st}"><div class="rhead"><span class="rnum">${st === "done" ? "✓" : "↻"}</span>${s.burnPart != null ? mask(PARTS[s.burnPart], "#8fb3d9", PARTS[s.burnPart]) : ""}<span class="rname">${esc(s.burnName)}</span>${s.burnSpare ? `<span class="bspare" title="You have a copy without qurious">in box</span>` : ""}</div>
-    <div class="btag">only for rolls · no set</div>
+    <div class="btag">${esc(TYPE_SHORT(S.types.find(t => t.id === s.type).name))} · cost ${s.cost} · only for rolls</div>
     ${st === "next" ? `<div class="small"><b style="color:var(--gold)">next</b>${s.doneHere ? ` · ${s.doneHere} of ${k} done` : ""}</div>` : ""}
     <div class="rat">${k}× <small>throw the results away</small></div>
     <div class="rlbl">Roll until #${k} gives</div><div class="rres">${s.burnResult ? resultCell(s.burnResult) : `<span class="muted">—</span>`}</div>
@@ -2769,7 +2769,7 @@ function openBurnPicker(key) {
   const [q, s] = burnStep(key);
   if (!s) return;
   const k = s.augments - 1;
-  $("bmtitle").textContent = `Throwaway piece · ${TYPE_SHORT(q.typeName)} cost ${q.cost} · step ${q.steps.indexOf(s) + 1}`;
+  $("bmtitle").textContent = `Throwaway piece · ${TYPE_SHORT(S.types.find(t => t.id === s.type).name)} cost ${s.cost} · step ${q.steps.indexOf(s) + 1}`;
   $("bmnote").textContent = `${k}× on any of these ends where the plan needs it. What augment #${k} gives on each one:`;
   $("bmlist").innerHTML = s.burnChoices.map(r => `<div class="bgrp">rarity ${r.rarity}</div>` + r.pieces.map(x =>
     `<button class="brow ${x.picked ? "on" : ""}" data-bkey="${key}" data-bid="${x.id}">${x.part != null ? mask(PARTS[x.part], "#8fb3d9", PARTS[x.part], "bpart") : "<span></span>"}

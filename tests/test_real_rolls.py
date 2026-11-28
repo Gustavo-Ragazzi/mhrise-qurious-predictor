@@ -19,6 +19,17 @@ pytestmark = pytest.mark.skipif(not (GAME and search._native), reason="needs MHR
 STATE = (3431597797, 1326392685, 2179619026, 828648148)
 
 
+def test_kaiser_uses_generator_35_not_the_enum_cost_tier():
+    gd = gamedata.load(Path(GAME), log=lambda m: None)
+    a = next(x for x in gd['armors'].values() if x['names'].get('en') == 'Kaiser Crown X')
+    assert engine.seed_index(a['cost'], engine.TYPE_AUGMENT) == 35
+    nt = search.native_tables(gd)
+    after, row = search._native.augment_advance(nt, [2751145438,2451486738,3155500154,666053897],
+        a['table'], a['cost'], [tuple(s) for s in a['skills']], engine.TYPE_AUGMENT, 1)
+    assert tuple(after) == (3155500154,666053897,364268471,3611330697)
+    assert _summary(gd, row) == (16, 0, [0]*5, [])
+
+
 def _summary(gd, row):
     d, sl, res, sk = row
     name = lambda s: gd["skills"][str(s)]["en"]

@@ -660,6 +660,11 @@ class SetsMixin:
         plan = json.loads(json.dumps(last["plan"]))
         if any("start" not in q for q in plan["armor"] + plan["talismans"]):
             return {"plan": None}        # made by an older version: make it again
+        rolled = planner.Planner.rolled(*self.box)
+        pending = [q for q in plan["armor"] if not all(planner.Planner.is_rolled(st, rolled) for st in q["steps"])]
+        if (any(any(engine.seed_index(st["cost"], st["type"]) != q["seed"] for st in q["steps"]) for q in pending)
+                or len({q["seed"] for q in pending}) != len(pending)):
+            return {"plan": None, "error": "This plan used an incorrect armor sequence mapping. Press Make plan to recalculate from your save."}
         try:
             planner.Planner(self.data, self.melding).progress(plan, self.generators, self.box[0], self.box[1],
                                                               last.get("picks"))

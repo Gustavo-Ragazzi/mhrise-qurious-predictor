@@ -27,15 +27,19 @@ def plan_paths(plan: dict) -> dict:
     augments in turn (segments) and the augments it keeps (reserved)."""
     armor = {}
     for q in plan["armor"]:
-        segs, owner = [], []
+        segs, typed, owner, options = [], [], [], []
         for st in q["steps"]:
             if st.get("burnOn"):
                 segs += [(st["burnOn"], st["augments"] - 1), (st["id"], 1)]
+                typed += [(st["burnOn"], st["augments"] - 1, st["type"]), (st["id"], 1, st["type"])]
             else:
                 segs.append((st["id"], st["augments"]))
+                typed.append((st["id"], st["augments"], st["type"]))
+            options += [(st["cost"], st["type"])] * st["augments"]
         for aid, k in segs:
             owner += [aid] * k
         armor[q["seed"]] = {"cost": q["cost"], "type": q["type"], "segments": segs, "owner": owner,
+                            "typedSegments": typed, "options": options,
                             "reserved": [st["at"] for st in q["steps"]], "total": q["total"]}
     tals = {}
     for g in plan["talismans"]:
@@ -156,8 +160,10 @@ class Builder:
             # on a sequence the saved sets' plan uses, new rolls come after it (counted from its end) ...
             path_states = {}
             for seq, pa in paths.items():
-                segs = [(*self._piece_args(aid), k) for aid, k in pa["segments"]]
-                path_states[seq] = native().augment_path(nt, states[seq], pa["type"], segs)
+                path_states[seq] = [states[seq]]
+                for aid, k, ty in pa.get("typedSegments", [(a, k, pa["type"]) for a, k in pa["segments"]]):
+                    segment = native().augment_path(nt, path_states[seq][-1], ty, [(*self._piece_args(aid), k)])
+                    path_states[seq].extend(segment[1:])
                 states[seq] = path_states[seq][-1]
             rows, lineage, split = native().augment_candidates(
                 nt, pieces, states, list(engine.TYPE_NAMES), int(o.qurious_rolls), relevant, weights,
@@ -188,6 +194,8 @@ class Builder:
             # ... or from inside it: an augment of the plan that goes on another piece without moving
             # the generator differently (the plan stays the same); its roll number is its place in the plan
             for seq, pa in paths.items():
+                if len(set(pa.get("options", []))) > 1:
+                    continue  # mixed routes remain fixed; new candidates are searched after them
                 same = [x for x in pieces if self.data["armors"][str(x[0])]["cost"] == pa["cost"]]
                 rows = native().path_candidates(nt, path_states[seq][:int(o.qurious_rolls) + 1], pa["reserved"], same,
                                                 pa["type"], relevant,

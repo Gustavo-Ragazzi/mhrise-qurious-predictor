@@ -10,8 +10,15 @@ calling the game's own functions from known generator states and comparing input
 * `genU32()`: `t = x ^ (x << 15); x, y, z = y, z, w; w = w ^ (w >> 21) ^ t ^ (t >> 4); return w`.
 * `genF32()` = `genU32() / 2^32`.
 * `FacilityDataManager._RandomManual` holds 56 generators (enum `RandomSeedManual`).
-  `CustomBuildup_TT_YY` = index `32 + (TT-1)*4 + (YY-1)`: TT = cost tier (cost 10, 12, … 20),
-  YY = augment type. All 56 states are saved in `FacilityDataManager.SaveData` as a GUID list.
+  `GuiCustomBuildup.calcRandomSeed(cost)` uses `32 + type + tier * (3 - type)`, where
+  `tier = trunc((cost - 10) / 2)` (0..5; otherwise generator 18). The enum names do **not**
+  describe this arithmetic. Normal/Skills+/Slots+ have strides 3/2/1, and Stability always
+  uses 35. Cost 12 shares generator 35 across all four options. Confirmed by reading the
+  game's selector and by a Kaiser Crown X normal augment moving only generator 35:
+  `(2751145438,2451486738,3155500154,666053897)` ->
+  `(3155500154,666053897,364268471,3611330697)`, yielding defense +16 only.
+  Plans must group by generator and walk each step with its own option and cost.
+  All 56 states are saved in `FacilityDataManager.SaveData` as a GUID list.
 
 Every weighted lot draws one `genU32()` and picks with `u % sum(weights)`.
 

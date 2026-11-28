@@ -2,8 +2,8 @@
 saved sets need, from the save as it is now, and what it costs.
 
 How the generators move (see docs/RESEARCH.md):
-* armor: one generator per augment cost (10, 12 ... 20) and option (Augment, Stability, Skills+,
-  Slots+). An augment moves only its own generator, by a number of draws that depends on what it
+* armor: costs and options can share a generator (see engine.seed_index). An augment moves only
+  its own generator, by a number of draws that depends on what it
   rolls and, sometimes, on the piece. So the planner walks each sequence with the pieces really
   augmented and looks for each wanted augment again from the current state.
 * talismans: Qurious Melding—Vigor has one generator; Qurious Melding—Cyclus one per grade of the
@@ -197,30 +197,31 @@ class Planner:
         wanted one (on another copy), as they did when the roadmap was first made."""
         groups = {}
         for t in targets:
-            groups.setdefault((t["cost"], t["type"]), []).append(t)
+            groups.setdefault(engine.seed_index(t["cost"], t["type"]), []).append(t)
         owned = {}
         for it in box_armors:
             a = self.data["armors"].get(str(it.armor_id))
             if a:
                 owned.setdefault(a["cost"], set()).add(str(it.armor_id))
         sequences, missing = [], []
-        for (cost, ty), ts in sorted(groups.items()):
-            seq = engine.seed_index(cost, ty)
+        for seq, ts in sorted(groups.items()):
+            cost, ty = ts[0]["cost"], ts[0]["type"]
             start = generators[seq].state()
             nt = search.native_tables(self.data)
             others = sorted({x["id"] for x in ts} | {x["via"] for x in ts if x.get("via")}
-                            | {x["id"] for x in rolled_targets if (x["cost"], x["type"]) == (cost, ty)})
+                            | {x["id"] for x in rolled_targets if engine.seed_index(x["cost"], x["type"]) == seq})
 
-            def find(state, t, limit, ty=ty):
+            def find(state, t, limit):
                 """The wanted augment with the augments before it on the piece itself or, when that is
                 closer, on another piece of this roadmap (a set saved with an augment from inside the
                 saved sets' plan needs the augments before it on the piece the plan spent them on)."""
+                ty = t["type"]
                 table, c, skills = self._piece(t["id"])
                 key = outcome_key(t["expected"])
                 best = _native().augment_find(nt, list(state), table, c, skills, ty, key, int(limit))
                 best = (*best, None) if best else None
                 for b in [t.get("via")] + [x for x in others if x != t.get("via")]:
-                    if not b or b == t["id"]:
+                    if not b or b == t["id"] or self.data["armors"][b]["cost"] != c:
                         continue
                     lim = min(int(limit), VIA_LIMIT) if best is None else min(best[0] - 1, VIA_LIMIT)
                     if lim <= 0:
@@ -234,11 +235,15 @@ class Planner:
             missing += gone           # some augment does not come again: the others are planned
             if not best:
                 continue
-            cheap = min(owned.get(cost, ()), key=self._rarity, default=None)
-            burns = self._cheap_burns(start, [(t, k, st) for t, k, st, _ in best], ty, cheap)
+            burns, state = [], start
+            for t, k, end, _ in best:
+                cheap = min(owned.get(t["cost"], ()), key=self._rarity, default=None)
+                burns += self._cheap_burns(state, [(t, k, end)], t["type"], cheap)
+                state = end
             burns = [via or b for (_, _, _, via), b in zip(best, burns)]
             rows, done, zenny, points = [], 0, 0, 0
             for (t, k, _, _), burn in zip(best, burns):
+                ty = t["type"]
                 done += k
                 if burn:
                     z1, p1 = self._armor_cost(burn, ty, k - 1)
@@ -250,7 +255,10 @@ class Planner:
                 points += pts
                 rows.append({**t, "augments": k, "at": done, "burnOn": burn, "zenny": z, "points": pts})
             order_changed = [r["id"] for r in rows] != [t["id"] for t in sorted(ts, key=lambda t: t["n"])]
-            sequences.append({"cost": cost, "type": ty, "typeName": engine.TYPE_NAMES[ty], "seed": seq,
+            mixed = len({(t["cost"], t["type"]) for t in ts}) > 1
+            sequences.append({"cost": cost, "type": ts[0]["type"],
+                              "typeName": "Shared sequence" if mixed else engine.TYPE_NAMES[ts[0]["type"]],
+                              "mixed": mixed, "seed": seq,
                               "start": list(start), "total": done, "steps": rows, "zenny": zenny, "points": points,
                               "reordered": order_changed and len(rows) > 1})
         return sequences, missing
@@ -331,12 +339,12 @@ class Planner:
         rolled = self.rolled(box_armors, box_talismans)
         for t in s["targets"]["armor"]:
             if not self.is_rolled(t, rolled):        # already in the box: done
-                by_seq.setdefault((t["cost"], t["type"]), []).append(t)
-        for (cost, ty), ts in by_seq.items():
-            state, done = generators[engine.seed_index(cost, ty)].state(), 0
+                by_seq.setdefault(engine.seed_index(t["cost"], t["type"]), []).append(t)
+        for seq, ts in by_seq.items():
+            state, done = generators[seq].state(), 0
             for t in sorted(ts, key=lambda t: t["n"]):
                 table, c, skills = self._piece(t["id"])
-                state, last = _native().augment_advance(nt, list(state), table, c, skills, ty, t["n"] - done)
+                state, last = _native().augment_advance(nt, list(state), table, c, skills, t["type"], t["n"] - done)
                 done = t["n"]
                 if last is None or outcome_key(last) != outcome_key(t["expected"]):
                     in_order = False
@@ -415,14 +423,17 @@ class Planner:
 
     def _route(self, q: dict, nt, burn_of) -> list:
         """The state after every augment of a sequence's route, the throwaway ones on ``burn_of(step)``."""
-        segs = []
+        states = [tuple(q["start"])]
         for st in q["steps"]:
+            segs = []
             k = st["augments"]
             if st.get("burnOn") and k > 1:
                 segs += [(*self._piece(burn_of(st)), k - 1), (*self._piece(st["id"]), 1)]
             else:
                 segs.append((*self._piece(st["id"]), k))
-        return [tuple(x) for x in _native().augment_path(nt, list(q["start"]), q["type"], segs)]
+            path = _native().augment_path(nt, list(states[-1]), st["type"], segs)
+            states.extend(tuple(x) for x in path[1:])
+        return states
 
     def _burn_checks(self, q: dict, states: list, nt, box_armors=()):
         """For a step whose augments before the wanted one go on another piece: what that piece's last
@@ -438,10 +449,10 @@ class Planner:
             s0, end = list(states[st["at"] - k]), states[st["at"]]
             opts = []
             for aid in [st["burnOn"]] + [x for x in self.data["armors"] if x != st["burnOn"]]:
-                if aid != st["burnOn"] and (self.data["armors"][aid]["cost"] != q["cost"] or aid == st["id"]):
+                if aid != st["burnOn"] and (self.data["armors"][aid]["cost"] != st["cost"] or aid == st["id"]):
                     continue
-                mid, last = _native().augment_advance(nt, s0, *self._piece(aid), q["type"], k - 1)
-                after, got = _native().augment_advance(nt, list(mid), *self._piece(st["id"]), q["type"], 1)
+                mid, last = _native().augment_advance(nt, s0, *self._piece(aid), st["type"], k - 1)
+                after, got = _native().augment_advance(nt, list(mid), *self._piece(st["id"]), st["type"], 1)
                 # the same place afterwards is not enough: the wanted augment itself has to come too
                 # (two pieces can end at the same state with the augment that counts drawn differently)
                 if aid == st["burnOn"] or (tuple(after) == end and got is not None

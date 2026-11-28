@@ -57,13 +57,13 @@ fn forced_ids(buildup_type: i32, k: i32) -> Option<&'static [i32]> {
     }
 }
 
-/// FacilityDataManager.RandomSeedManual index used for an augment (CustomBuildup_TT_YY).
+/// GuiCustomBuildup.calcRandomSeed: strides depend on type; streams can be shared.
 pub fn seed_index(cost: i32, buildup_type: i32) -> usize {
-    let tier = (cost - 10).div_euclid(2);
+    let tier = (cost - 10) / 2;
     if !(0..=5).contains(&tier) {
         return 18;
     }
-    (32 + tier * 4 + buildup_type) as usize
+    (32 + buildup_type + tier * (3 - buildup_type)) as usize
 }
 
 // ---- via.Random ------------------------------------------------------------------------------------
@@ -634,7 +634,11 @@ mod tests {
     #[test]
     fn seed_layout() {
         assert_eq!(seed_index(10, TYPE_SLOT), 34);
-        assert_eq!(seed_index(20, TYPE_STABILITY), 55);
+        assert_eq!(seed_index(12, TYPE_AUGMENT), 35);
+        assert_eq!(seed_index(12, TYPE_SKILL), 35);
+        assert_eq!(seed_index(12, TYPE_SLOT), 35);
+        assert_eq!(seed_index(16, TYPE_AUGMENT), 41);
+        assert_eq!(seed_index(20, TYPE_STABILITY), 35);
         assert_eq!(seed_index(8, 0), 18);
     }
 }

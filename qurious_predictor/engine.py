@@ -55,15 +55,15 @@ FORCED_IDS = {
 
 
 def seed_index(cost: int, buildup_type: int) -> int:
-    """FacilityDataManager.RandomSeedManual used for an augment: CustomBuildup_TT_YY.
+    """Match GuiCustomBuildup.calcRandomSeed, including its shared streams.
 
-    Tier TT = (cost - 10) / 2 + 1 (cost 10..20), type YY = buildup_type + 1. Confirmed in game
-    for cost 10; other tiers follow the enum layout (CustomBuildup_01_01 = 32 ... _06_04 = 55).
+    The game uses type-dependent strides, not the four-entry enum name layout.
+    Normal/Skills+/Slots+ use strides 3/2/1; Stability always uses generator 35.
     """
-    tier = (cost - 10) // 2
+    tier = int((cost - 10) / 2)  # the game's signed division truncates toward zero
     if not 0 <= tier <= 5:
         return 18  # RandomSeedManual.CustomBuildup
-    return 32 + tier * 4 + buildup_type
+    return 32 + buildup_type + tier * (3 - buildup_type)
 
 
 @dataclass(frozen=True)
