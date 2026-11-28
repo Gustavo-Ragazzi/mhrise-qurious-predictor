@@ -1127,7 +1127,7 @@ function renderHead() {
     ${a.count ? `<span class="own">✓ crafted ×${a.count}</span>` : `<span class="muted">not crafted yet</span>`}
     <div class="note"><b>Rolls</b> = 1 is the next "${esc(tp.name)}" on this piece, 2 the one after, and so on. This sequence${seed !== "" ? ` (generator ${seed})` : ""} is shared by every
       armor piece with cost ${a.cost} and the same augment option (${same} crafted in your box). Augmenting any of them
-      moves it forward, so reload the save after each augment. Other options and costs are independent.</div>`;
+      moves it forward, so reload the save after each augment. Other options and costs can share this sequence too; follow the saved plan's order.</div>`;
 }
 
 function renderTabs() {
@@ -2527,7 +2527,7 @@ function renderPlanHead() {
   $("head").innerHTML = `<span class="big">Saved sets & planner</span>${(S.saved || []).length ? `<span class="rar">${S.saved.length} saved</span>` : ""}
     <div class="note">Tick the sets you want and press <b>Make plan</b>: what to roll, in which order, from the save as it is now, and
     what it costs. <b>What moves what</b>: each augment cost (10, 12 … 20) and option (Augment, Stability, Skills+, Slots+) has its own
-    sequence: rolling Slots+ never moves Skills+, cost 10 never moves cost 12. Inside one sequence the order matters: every augment
+    sequence selected by the game; some costs and options share it. Follow each route's order and the option shown on every step. Inside one sequence the order matters: every augment
     moves it by a different amount depending on what it rolls (and sometimes on the piece), so the planner walks each sequence with the
     pieces really augmented, finds every wanted augment again and picks the order that needs the fewest augments. Talismans: Qurious
     Melding—Vigor has one sequence; Cyclus one per grade of the picked skill (C, B, A, S): every skill of that grade moves the same one.</div>`;

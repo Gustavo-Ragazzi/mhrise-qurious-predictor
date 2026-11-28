@@ -162,7 +162,7 @@ Talismans), **My equipment** (Inventory, My Loadouts, Export) and **Set builder*
     talismans to meld and which to keep, the pieces to craft, and the cost (zenny, Amber Essence
     points, melding points, talismans used up by Cyclus), with how many of each Amber
     Essence or melding material would pay it. What moves what: each augment cost and option has its
-    own sequence (Slots+ never moves Skills+; cost 10 never moves cost 12), Vigor has one sequence and
+    sequence selected by the game (some costs and options share it), Vigor has one sequence and
     Cyclus one per grade of the picked skill. Inside a sequence the order matters: an augment moves it
     by a different amount depending on what it rolls and sometimes on the piece, so the planner walks
     each sequence with the pieces really augmented, finds every wanted result again (also after you
